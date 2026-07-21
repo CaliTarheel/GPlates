@@ -187,6 +187,12 @@
     <addaction name="action_Configure_Geometry_Rendering"/>
     <addaction name="separator"/>
    </widget>
+   <widget class="QMenu" name="menu_World_Building">
+    <property name="title">
+     <string>&amp;World Building</string>
+    </property>
+    <addaction name="action_Naturalize_Coastline"/>
+   </widget>
    <widget class="QMenu" name="menu_Features">
     <property name="title">
      <string>Fe&amp;atures</string>
@@ -244,10 +250,22 @@
    <addaction name="menu_Reconstruction"/>
    <addaction name="menu_Utilities"/>
    <addaction name="menu_Tools"/>
+   <addaction name="menu_World_Building"/>
    <addaction name="menu_Window"/>
    <addaction name="menu_Help"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
+  <action name="action_Naturalize_Coastline">
+   <property name="text">
+    <string>&amp;Naturalize Coastline...</string>
+   </property>
+   <property name="toolTip">
+    <string>Add a controlled, spherical swiggle to long coastline sections</string>
+   </property>
+   <property name="statusTip">
+    <string>Preview and naturalize a selected polygon or polyline while preserving shared boundaries.</string>
+   </property>
+  </action>
   <action name="action_Cut">
    <property name="enabled">
     <bool>false</bool>

@@ -37,6 +37,10 @@ set(srcs
     MovePoleOperation.h
     MoveVertexGeometryOperation.cc
     MoveVertexGeometryOperation.h
+    NaturalizeCoastlineGeometry.cc
+    NaturalizeCoastlineGeometry.h
+    NaturalizeCoastlineOperation.cc
+    NaturalizeCoastlineOperation.h
     QueryProximityThreshold.h
     RenderedArrowedPolyline.h
     RenderedCircleSymbol.h
