@@ -87,6 +87,8 @@ set(srcs
     SplitFeatureGeometryOperation.h
     SplitFeatureUndoCommand.cc
     SplitFeatureUndoCommand.h
+    SplitPlateOperation.cc
+    SplitPlateOperation.h
     UndoRedo.cc
     UndoRedo.h
     VisibleReconstructionGeometryExport.cc
