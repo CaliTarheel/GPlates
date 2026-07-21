@@ -640,6 +640,14 @@ target_compile_definitions(${SOURCE_TARGET} PUBLIC BOOST_VARIANT_USE_RELAXED_GET
 # Apparently it wasn't fixed in 1.69 (only 1.70 and above).
 target_compile_definitions(${SOURCE_TARGET} PUBLIC BOOST_ALLOW_DEPRECATED_HEADERS)
 
+# CGAL CORE defines LONG_BIT using sizeof(long), which cannot be evaluated by
+# the preprocessor when a Python header later compares LONG_BIT in a #if.
+# MinGW uses the Windows LLP64 ABI, where long is always 32 bits, so provide a
+# preprocessor-compatible definition before either dependency is included.
+if (MINGW)
+	target_compile_definitions(${SOURCE_TARGET} PUBLIC LONG_BIT=32)
+endif()
+
 #
 # COMPILE_DEFINITIONS (target property) for MSVC compiler only.
 #
