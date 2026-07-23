@@ -91,6 +91,12 @@ set(srcs
     SplitFeatureGeometryOperation.h
     SplitFeatureUndoCommand.cc
     SplitFeatureUndoCommand.h
+    SplitPlateOperation.cc
+    SplitPlateOperation.h
+    SubductionCutterGeometry.cc
+    SubductionCutterGeometry.h
+    SubductionCutterOperation.cc
+    SubductionCutterOperation.h
     UndoRedo.cc
     UndoRedo.h
     VisibleReconstructionGeometryExport.cc

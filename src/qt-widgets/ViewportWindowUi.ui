@@ -192,6 +192,10 @@
      <string>&amp;World Building</string>
     </property>
     <addaction name="action_Naturalize_Coastline"/>
+    <addaction name="action_Split_Plate"/>
+    <addaction name="action_Subduction_Cutter"/>
+    <addaction name="separator"/>
+    <addaction name="action_Manage_Colouring"/>
    </widget>
    <widget class="QMenu" name="menu_Features">
     <property name="title">
@@ -263,7 +267,29 @@
     <string>Add a controlled, spherical swiggle to long coastline sections</string>
    </property>
    <property name="statusTip">
-    <string>Preview and naturalize a selected polygon or polyline while preserving shared boundaries.</string>
+    <string>Preview and swiggle a selected polygon or polyline while preserving shared boundaries.</string>
+   </property>
+  </action>
+  <action name="action_Split_Plate">
+   <property name="text">
+    <string>&amp;Split Plate</string>
+   </property>
+   <property name="toolTip">
+    <string>Split a polygon using a polyline</string>
+   </property>
+   <property name="statusTip">
+    <string>Capture a selected polygon, then select a polyline and split the polygon into two features.</string>
+   </property>
+  </action>
+  <action name="action_Subduction_Cutter">
+   <property name="text">
+    <string>&amp;Subduction...</string>
+   </property>
+   <property name="toolTip">
+    <string>Cut overlapping subducting plate polygons through a reconstruction-time range</string>
+   </property>
+   <property name="statusTip">
+    <string>Assign overriding and subducting plates, sample their overlap through time, and time-hide subducted pieces.</string>
    </property>
   </action>
   <action name="action_Cut">

@@ -93,6 +93,8 @@ namespace GPlatesViewOperations
 	class CloneOperation;
 	class DeleteFeatureOperation;
 	class NaturalizeCoastlineOperation;
+	class SplitPlateOperation;
+	class SubductionCutterOperation;
 }
 
 namespace GPlatesQtWidgets
@@ -478,7 +480,13 @@ namespace GPlatesQtWidgets
 		pop_up_python_console();
 
 		void
+		handle_split_plate();
+
+		void
 		handle_naturalize_coastline();
+
+		void
+		handle_subduction_cutter();
 
 		void
 		open_dataset_webpage();
@@ -521,8 +529,14 @@ namespace GPlatesQtWidgets
 		//! For deleting a feature.
 		boost::scoped_ptr<GPlatesViewOperations::DeleteFeatureOperation> d_delete_feature_operation_ptr;
 
+		//! For splitting a polygon feature with a selected polyline.
+		boost::scoped_ptr<GPlatesViewOperations::SplitPlateOperation> d_split_plate_operation_ptr;
+
 		//! For roughening long coastline sections while preserving shared geometry.
 		boost::scoped_ptr<GPlatesViewOperations::NaturalizeCoastlineOperation> d_naturalize_coastline_operation_ptr;
+
+		//! For chronologically cutting subducting plate polygons beneath an overriding plate.
+		boost::scoped_ptr<GPlatesViewOperations::SubductionCutterOperation> d_subduction_cutter_operation_ptr;
 
 
 		/**

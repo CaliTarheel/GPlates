@@ -28,7 +28,6 @@
 #include "MoveVertex.h"
 
 #include "view-operations/MoveVertexGeometryOperation.h"
-#include "view-operations/MoveVertexGeometryOperation.h"
 #include "view-operations/RenderedGeometryCollection.h"
 
 namespace GPlatesMaths
@@ -57,7 +56,8 @@ GPlatesCanvasTools::MoveVertex::MoveVertex(
 					canvas_tool_workflows,
 					query_proximity_threshold,
 					feature_focus)),
-	d_is_in_drag(false)
+	d_is_in_drag(false),
+	d_is_in_lasso(false)
 {  }
 
 
@@ -73,7 +73,9 @@ GPlatesCanvasTools::MoveVertex::handle_activation()
 	// Activate our MoveVertexGeometryOperation.
 	d_move_vertex_geometry_operation->activate();
 
-	set_status_bar_message(QT_TR_NOOP("Drag to move a vertex of the current geometry."));
+	set_status_bar_message(QT_TR_NOOP(
+			"Drag a selected vertex to move the group. Shift-drag to lasso vertices; "
+			"Shift-click to toggle one vertex."));
 }
 
 
@@ -82,6 +84,8 @@ GPlatesCanvasTools::MoveVertex::handle_deactivation()
 {
 	// Deactivate our MoveVertexGeometryOperation.
 	d_move_vertex_geometry_operation->deactivate();
+	d_is_in_drag = false;
+	d_is_in_lasso = false;
 }
 
 void
@@ -170,6 +174,71 @@ GPlatesCanvasTools::MoveVertex::handle_left_release_after_drag(
 
 	d_move_vertex_geometry_operation->end_drag(current_point_on_sphere);
 	d_is_in_drag = false;
+}
+
+
+void
+GPlatesCanvasTools::MoveVertex::handle_shift_left_click(
+		const GPlatesMaths::PointOnSphere &point_on_sphere,
+		bool is_on_earth,
+		double proximity_inclusion_threshold)
+{
+	if (is_on_earth)
+	{
+		d_move_vertex_geometry_operation->toggle_vertex_selection(
+				point_on_sphere,
+				proximity_inclusion_threshold);
+	}
+}
+
+
+void
+GPlatesCanvasTools::MoveVertex::handle_shift_left_drag(
+		const GPlatesMaths::PointOnSphere &initial_point_on_sphere,
+		bool was_on_earth,
+		double initial_proximity_inclusion_threshold,
+		const GPlatesMaths::PointOnSphere &current_point_on_sphere,
+		bool is_on_earth,
+		double current_proximity_inclusion_threshold,
+		const boost::optional<GPlatesMaths::PointOnSphere> &centre_of_viewport)
+{
+	if (!was_on_earth)
+	{
+		return;
+	}
+
+	if (!d_is_in_lasso)
+	{
+		d_move_vertex_geometry_operation->begin_lasso(initial_point_on_sphere);
+		d_is_in_lasso = true;
+	}
+
+	d_move_vertex_geometry_operation->update_lasso(current_point_on_sphere);
+}
+
+
+void
+GPlatesCanvasTools::MoveVertex::handle_shift_left_release_after_drag(
+		const GPlatesMaths::PointOnSphere &initial_point_on_sphere,
+		bool was_on_earth,
+		double initial_proximity_inclusion_threshold,
+		const GPlatesMaths::PointOnSphere &current_point_on_sphere,
+		bool is_on_earth,
+		double current_proximity_inclusion_threshold,
+		const boost::optional<GPlatesMaths::PointOnSphere> &centre_of_viewport)
+{
+	if (!d_is_in_lasso && was_on_earth)
+	{
+		d_move_vertex_geometry_operation->begin_lasso(initial_point_on_sphere);
+		d_is_in_lasso = true;
+	}
+
+	if (d_is_in_lasso)
+	{
+		d_move_vertex_geometry_operation->update_lasso(current_point_on_sphere);
+		d_move_vertex_geometry_operation->end_lasso();
+		d_is_in_lasso = false;
+	}
 }
 
 void

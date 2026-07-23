@@ -137,6 +137,8 @@
 #include "view-operations/NaturalizeCoastlineOperation.h"
 #include "view-operations/RenderedGeometryCollection.h"
 #include "view-operations/RenderedGeometryParameters.h"
+#include "view-operations/SplitPlateOperation.h"
+#include "view-operations/SubductionCutterOperation.h"
 #include "view-operations/UndoRedo.h"
 
 namespace GPlatesQtWidgets
@@ -199,11 +201,19 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			new GPlatesViewOperations::DeleteFeatureOperation(
 				get_view_state().get_feature_focus(),
 				get_application_state())),
+	d_split_plate_operation_ptr(
+			new GPlatesViewOperations::SplitPlateOperation(
+				get_view_state().get_feature_focus(),
+				get_application_state())),
 	d_naturalize_coastline_operation_ptr(
 			new GPlatesViewOperations::NaturalizeCoastlineOperation(
 				get_view_state().get_feature_focus(),
 				get_application_state(),
 				get_view_state().get_rendered_geometry_collection())),
+	d_subduction_cutter_operation_ptr(
+			new GPlatesViewOperations::SubductionCutterOperation(
+				get_application_state(),
+				get_view_state())),
 	d_dialogs_ptr(
 			new GPlatesGui::Dialogs(
 				get_application_state(),
@@ -952,10 +962,20 @@ void
 GPlatesQtWidgets::ViewportWindow::connect_world_building_menu_actions()
 {
 	QObject::connect(
+			action_Split_Plate,
+			SIGNAL(triggered()),
+			this,
+			SLOT(handle_split_plate()));
+	QObject::connect(
 			action_Naturalize_Coastline,
 			SIGNAL(triggered()),
 			this,
 			SLOT(handle_naturalize_coastline()));
+	QObject::connect(
+			action_Subduction_Cutter,
+			SIGNAL(triggered()),
+			this,
+			SLOT(handle_subduction_cutter()));
 }
 
 
@@ -1938,6 +1958,40 @@ GPlatesQtWidgets::ViewportWindow::pop_up_python_console()
 
 
 void
+GPlatesQtWidgets::ViewportWindow::handle_split_plate()
+{
+	const GPlatesViewOperations::SplitPlateOperation::Result result =
+			d_split_plate_operation_ptr->trigger();
+
+	status_message(result.message);
+
+	switch (result.outcome)
+	{
+	case GPlatesViewOperations::SplitPlateOperation::POLYGON_CAPTURED:
+		QMessageBox::information(
+				this,
+				tr("Split Plate — Polygon Captured"),
+				result.message);
+		break;
+
+	case GPlatesViewOperations::SplitPlateOperation::SPLIT_COMPLETED:
+		QMessageBox::information(
+				this,
+				tr("Split Plate Complete"),
+				result.message);
+		break;
+
+	case GPlatesViewOperations::SplitPlateOperation::OPERATION_ERROR:
+		QMessageBox::warning(
+				this,
+				tr("Split Plate"),
+				result.message);
+		break;
+	}
+}
+
+
+void
 GPlatesQtWidgets::ViewportWindow::handle_naturalize_coastline()
 {
 	const GPlatesViewOperations::NaturalizeCoastlineOperation::Result result =
@@ -1951,6 +2005,24 @@ GPlatesQtWidgets::ViewportWindow::handle_naturalize_coastline()
 	else if (result.outcome == GPlatesViewOperations::NaturalizeCoastlineOperation::NATURALIZE_COMPLETED)
 	{
 		QMessageBox::information(this, tr("Naturalize Coastline Complete"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_subduction_cutter()
+{
+	const GPlatesViewOperations::SubductionCutterOperation::Result result =
+			d_subduction_cutter_operation_ptr->trigger(this);
+	status_message(result.message);
+
+	if (result.outcome == GPlatesViewOperations::SubductionCutterOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Subduction Cutter"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::SubductionCutterOperation::CUT_COMPLETED)
+	{
+		QMessageBox::information(this, tr("Subduction Cutter Complete"), result.message);
 	}
 }
 
