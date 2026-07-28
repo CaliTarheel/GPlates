@@ -126,4 +126,3 @@ GPlatesCanvasTools::ClickGeometry::handle_shift_left_click(
 		fp_dialog().choose_query_widget_and_open();
 	}
 }
-

@@ -183,9 +183,26 @@
     <property name="title">
      <string>&amp;Tools</string>
     </property>
+    <widget class="QMenu" name="menu_Polygon_Operations">
+     <property name="title">
+      <string>&amp;Polygon Operations</string>
+     </property>
+     <addaction name="action_Polygon_Boolean_Operations"/>
+     <addaction name="action_Split_Plate"/>
+    </widget>
     <addaction name="action_Use_Small_Icons"/>
     <addaction name="action_Configure_Geometry_Rendering"/>
     <addaction name="separator"/>
+    <addaction name="menu_Polygon_Operations"/>
+    <addaction name="action_Rotation_File_Editor"/>
+   </widget>
+   <widget class="QMenu" name="menu_World_Building">
+    <property name="title">
+     <string>&amp;World Building</string>
+    </property>
+    <addaction name="action_Subduction_Cutter"/>
+    <addaction name="separator"/>
+    <addaction name="action_Manage_Colouring"/>
    </widget>
    <widget class="QMenu" name="menu_Features">
     <property name="title">
@@ -248,6 +265,50 @@
    <addaction name="menu_Help"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
+  <action name="action_Split_Plate">
+   <property name="text">
+    <string>&amp;Split Plate...</string>
+   </property>
+   <property name="toolTip">
+    <string>Split a polygon using a polyline</string>
+   </property>
+   <property name="statusTip">
+    <string>Choose a visible polygon and cutter polyline in a transient window and split the polygon into two features.</string>
+   </property>
+  </action>
+  <action name="action_Polygon_Boolean_Operations">
+   <property name="text">
+    <string>&amp;Boolean Operations...</string>
+   </property>
+   <property name="toolTip">
+    <string>Union, subtract, intersect, or XOR visible spherical polygons</string>
+   </property>
+   <property name="statusTip">
+    <string>Select subject and modifier polygons in a transient window and apply an exact spherical Boolean operation.</string>
+   </property>
+  </action>
+  <action name="action_Rotation_File_Editor">
+   <property name="text">
+    <string>&amp;Rotation File Editor...</string>
+   </property>
+   <property name="toolTip">
+    <string>Connect, disconnect, or create plates in a loaded rotation collection</string>
+   </property>
+   <property name="statusTip">
+    <string>Edit plate circuits at the current reconstruction time while preserving absolute plate motion.</string>
+   </property>
+  </action>
+  <action name="action_Subduction_Cutter">
+   <property name="text">
+    <string>&amp;Subduction...</string>
+   </property>
+   <property name="toolTip">
+    <string>Cut overlapping subducting plate polygons through a reconstruction-time range</string>
+   </property>
+   <property name="statusTip">
+    <string>Assign overriding and subducting plates, sample their overlap through time, and time-hide subducted pieces.</string>
+   </property>
+  </action>
   <action name="action_Cut">
    <property name="enabled">
     <bool>false</bool>

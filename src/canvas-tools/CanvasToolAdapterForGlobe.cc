@@ -399,4 +399,3 @@ GPlatesCanvasTools::CanvasToolAdapterForGlobe::handle_move_without_drag(
 					current_pos_on_globe));
 	}
 }
-

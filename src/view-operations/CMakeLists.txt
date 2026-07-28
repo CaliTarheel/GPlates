@@ -37,6 +37,10 @@ set(srcs
     MovePoleOperation.h
     MoveVertexGeometryOperation.cc
     MoveVertexGeometryOperation.h
+    PolygonBooleanGeometry.cc
+    PolygonBooleanGeometry.h
+    PolygonBooleanOperation.cc
+    PolygonBooleanOperation.h
     QueryProximityThreshold.h
     RenderedArrowedPolyline.h
     RenderedCircleSymbol.h
@@ -78,6 +82,8 @@ set(srcs
     RenderedSquareSymbol.h
     RenderedStrainMarkerSymbol.h
     RenderedString.h
+    RotationFileEditorOperation.cc
+    RotationFileEditorOperation.h
     RenderedSubductionTeethPolyline.h
     RenderedTangentialArrow.h
     RenderedTriangleSymbol.h
@@ -87,8 +93,16 @@ set(srcs
     SplitFeatureGeometryOperation.h
     SplitFeatureUndoCommand.cc
     SplitFeatureUndoCommand.h
+    SplitPlateOperation.cc
+    SplitPlateOperation.h
+    SubductionCutterGeometry.cc
+    SubductionCutterGeometry.h
+    SubductionCutterOperation.cc
+    SubductionCutterOperation.h
     UndoRedo.cc
     UndoRedo.h
+    VisibleGeometrySelection.cc
+    VisibleGeometrySelection.h
     VisibleReconstructionGeometryExport.cc
     VisibleReconstructionGeometryExport.h
 )

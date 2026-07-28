@@ -59,6 +59,26 @@ namespace GPlatesCanvasTools
 			Q_EMIT snap_vertices_setup_changed(should_check_nearby_vertices, threshold, should_use_plate_id, plate_id);
 		}
 
+		void
+		request_delete_selected_vertices()
+		{
+			Q_EMIT delete_selected_vertices_requested();
+		}
+
+		void
+		request_average_selected_vertex_positions()
+		{
+			Q_EMIT average_selected_vertex_positions_requested();
+		}
+
+		void
+		set_vertex_selection_state(
+				unsigned int selected_vertex_count,
+				bool can_delete_selection)
+		{
+			Q_EMIT vertex_selection_state_changed(selected_vertex_count, can_delete_selection);
+		}
+
 	Q_SIGNALS:
 		// NOTE: all signals/slots should use namespace scope for all arguments
 		//       otherwise differences between signals and slots will cause Qt
@@ -70,6 +90,17 @@ namespace GPlatesCanvasTools
 				double threshold,
 				bool should_use_plate_id,
 				GPlatesModel::integer_plate_id_type plate_id);
+
+		void
+		delete_selected_vertices_requested();
+
+		void
+		average_selected_vertex_positions_requested();
+
+		void
+		vertex_selection_state_changed(
+				unsigned int selected_vertex_count,
+				bool can_delete_selection);
 
 	};
 }

@@ -411,4 +411,3 @@ GPlatesCanvasTools::CanvasToolAdapterForMap::handle_move_without_drag(
 			is_on_surface,
 			&CanvasTool::handle_move_without_drag);
 }
-

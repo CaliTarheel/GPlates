@@ -263,6 +263,7 @@ set(srcs
     FeatureSummaryWidget.cc
     FeatureSummaryWidget.h
     FeatureSummaryWidgetUi.ui
+    FeatureTypeDisplayPreferences.h
     FileDialogFilter.h
     FiniteRotationCalculatorDialog.cc
     FiniteRotationCalculatorDialog.h
@@ -419,6 +420,8 @@ set(srcs
     PreferencesDialog.cc
     PreferencesDialog.h
     PreferencesDialogUi.ui
+    PreferencesPaneAdvancedCapability.cc
+    PreferencesPaneAdvancedCapability.h
     PreferencesPaneFiles.cc
     PreferencesPaneFiles.h
     PreferencesPaneFilesUi.ui
