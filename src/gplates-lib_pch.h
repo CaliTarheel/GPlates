@@ -182,7 +182,6 @@
 #include <QSpacerItem>
 #include <QTextEdit>
 #include <QWidget>
-#include <QXmlItem>
 #include <QUndoCommand>
 #include <Qt>
 #include <QTcpServer>
@@ -319,11 +318,8 @@
 #include <QNetworkProxyFactory>
 #include <QNetworkProxy>
 #include <QtNetwork>
-#include <QXmlQuery>
 #include <QLatin1Char>
 #include <QDomDocument>
-#include <QXmlResultItems>
-#include <QXmlSerializer>
 #include <QChar>
 #include <QUuid>
 #include <QTemporaryFile>
@@ -348,11 +344,9 @@
 #include <QMimeData>
 #include <QIODevice>
 #include <QPaintEngine>
-#include <QMatrix>
 #include <QRadioButton>
 #include <QTextDocument>
 #include <QFontDialog>
-#include <QDesktopWidget>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QContextMenuEvent>

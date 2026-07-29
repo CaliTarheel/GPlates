@@ -599,6 +599,21 @@ if (GPLATES_USE_PRECOMPILED_HEADERS)
 	set(_EXCLUDE_PCH_SOURCE_FILES
 			# HellingerThread.cc redefines BOOST_PYTHON_MAX_ARITY, so Boost headers (eg, pre-compiled header) cannot be included before that...
 			qt-widgets/HellingerThread.cc)
+
+	# OpenGL translation units deliberately include GLEW before any Qt/OpenGL
+	# headers. A forced precompiled header either reverses that order or consumes
+	# GLEW before the translation unit can establish its extension declarations,
+	# which leaves symbols such as glMapBufferRange unavailable on MSVC. Keep the
+	# project PCH for the rest of the codebase, but preserve the explicit include
+	# contract of every OpenGL source file.
+	get_target_property(_SOURCE_FILES ${SOURCE_TARGET} SOURCES)
+	foreach(_SOURCE_FILE IN LISTS _SOURCE_FILES)
+		if (_SOURCE_FILE MATCHES "/opengl/.*\\.cc$")
+			list(APPEND _EXCLUDE_PCH_SOURCE_FILES "${_SOURCE_FILE}")
+		endif()
+	endforeach()
+	unset(_SOURCE_FILES)
+
 	foreach(_SOURCE_FILE IN LISTS _EXCLUDE_PCH_SOURCE_FILES)
 		set_source_files_properties(${_SOURCE_FILE} PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 	endforeach()
