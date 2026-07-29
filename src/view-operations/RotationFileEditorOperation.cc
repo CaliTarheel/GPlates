@@ -743,7 +743,7 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 					sample_iter != sequence_iter->sampling->time_samples().end(); ++sample_iter)
 			{
 				const bool at_one_ma = sample_iter->valid_time()->get_time_position().is_real() &&
-						std::fabs(sample_time(*sample_iter) - 1.0) < 1e-9;
+						std::fabs(sample_time(**sample_iter) - 1.0) < 1e-9;
 				const QString description = sample_iter->description()
 						? GPlatesUtils::make_qstring_from_icu_string(
 								sample_iter->description().get()->get_value().get())
@@ -768,7 +768,7 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 					sample_iter != sequence_iter->sampling->time_samples().end(); ++sample_iter)
 			{
 				const bool real_time = sample_iter->valid_time()->get_time_position().is_real();
-				const double time = real_time ? sample_time(*sample_iter) : 0.0;
+				const double time = real_time ? sample_time(**sample_iter) : 0.0;
 				const QString description = sample_iter->description()
 						? GPlatesUtils::make_qstring_from_icu_string(
 								sample_iter->description().get()->get_value().get())
@@ -832,11 +832,11 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 				{
 					continue;
 				}
-				const double time = sample_time(*sample_iter);
+				const double time = sample_time(**sample_iter);
 				if (time > 1.0 + 1e-9 && time < source_time)
 				{
 					selected_sequence = &*sequence_iter;
-					source_sample = &*sample_iter;
+					source_sample = &**sample_iter;
 					source_time = time;
 				}
 			}
@@ -859,7 +859,7 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 				sample_iter != selected_sequence->sampling->time_samples().end(); ++sample_iter)
 		{
 			if (!sample_iter->valid_time()->get_time_position().is_real() ||
-					std::fabs(sample_time(*sample_iter) - 1.0) > 1e-9)
+					std::fabs(sample_time(**sample_iter) - 1.0) > 1e-9)
 			{
 				replacement_samples.push_back(sample_iter->clone());
 			}
