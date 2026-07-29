@@ -100,6 +100,7 @@ namespace GPlatesViewOperations
 	class CloneOperation;
 	class DeleteFeatureOperation;
 	class NaturalizeCoastlineOperation;
+	class RotationFileEditorOperation;
 	class SplitPlateOperation;
 	class SubductionCutterOperation;
 }
@@ -521,6 +522,9 @@ namespace GPlatesQtWidgets
 		handle_subduction_cutter();
 
 		void
+		handle_rotation_file_editor();
+
+		void
 		open_dataset_webpage();
 		
 	private:
@@ -569,6 +573,9 @@ namespace GPlatesQtWidgets
 
 		//! For chronologically cutting subducting plate polygons beneath an overriding plate.
 		boost::scoped_ptr<GPlatesViewOperations::SubductionCutterOperation> d_subduction_cutter_operation_ptr;
+
+		//! For motion-preserving plate circuit edits in loaded rotation collections.
+		boost::scoped_ptr<GPlatesViewOperations::RotationFileEditorOperation> d_rotation_file_editor_operation_ptr;
 
 
 		/**

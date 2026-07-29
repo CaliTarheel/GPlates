@@ -82,6 +82,8 @@ set(srcs
     RenderedSquareSymbol.h
     RenderedStrainMarkerSymbol.h
     RenderedString.h
+    RotationFileEditorOperation.cc
+    RotationFileEditorOperation.h
     RenderedSubductionTeethPolyline.h
     RenderedTangentialArrow.h
     RenderedTriangleSymbol.h
