@@ -185,6 +185,7 @@
     </property>
     <addaction name="action_Use_Small_Icons"/>
     <addaction name="action_Configure_Geometry_Rendering"/>
+    <addaction name="action_Rotation_File_Editor"/>
     <addaction name="separator"/>
    </widget>
    <widget class="QMenu" name="menu_Features">
@@ -1190,6 +1191,17 @@
    </property>
    <property name="menuRole">
     <enum>QAction::NoRole</enum>
+   </property>
+  </action>
+  <action name="action_Rotation_File_Editor">
+   <property name="text">
+    <string>&amp;Rotation File Editor...</string>
+   </property>
+   <property name="toolTip">
+    <string>Connect, disconnect, or create plates in a loaded rotation collection</string>
+   </property>
+   <property name="statusTip">
+    <string>Edit plate circuits at the current reconstruction time while preserving absolute plate motion.</string>
    </property>
   </action>
   <action name="action_Open_Project">
