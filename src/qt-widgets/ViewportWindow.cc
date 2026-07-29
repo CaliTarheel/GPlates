@@ -376,6 +376,24 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			*this,
 			this);
 
+	d_select_last_created_feature_action = new QAction(tr("Select Last Created Feature"), this);
+	d_select_last_created_feature_action->setObjectName("action_Select_Last_Created_Feature");
+	d_select_last_created_feature_action->setStatusTip(
+			tr("Focus the most recently created feature, including outside its valid time"));
+	d_select_last_created_feature_action->setEnabled(false);
+	menu_Features->addSeparator();
+	menu_Features->addAction(d_select_last_created_feature_action);
+	QObject::connect(
+			d_select_last_created_feature_action,
+			SIGNAL(triggered()),
+			this,
+			SLOT(select_last_created_feature()));
+	QObject::connect(
+			&d_task_panel_ptr->digitisation_widget().get_create_feature_dialog(),
+			SIGNAL(feature_created(GPlatesModel::FeatureHandle::weak_ref)),
+			this,
+			SLOT(remember_created_feature(GPlatesModel::FeatureHandle::weak_ref)));
+
 	// Switch to the appropriate task panel tab when a canvas tool is activated.
 	QObject::connect(
 			&canvas_tool_workflows(),
@@ -895,6 +913,30 @@ GPlatesQtWidgets::ViewportWindow::connect_features_menu_actions()
 			&dialogs(), SLOT(pop_up_velocity_domain_lat_lon_dialog()));
 	QObject::connect(action_Generate_Deforming_Mesh_Points, SIGNAL(triggered()),
 			&dialogs(), SLOT(pop_up_generate_deforming_mesh_points_dialog()));
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::remember_created_feature(
+		GPlatesModel::FeatureHandle::weak_ref feature)
+{
+	d_last_created_feature = feature;
+	d_select_last_created_feature_action->setEnabled(feature.is_valid());
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::select_last_created_feature()
+{
+	if (!d_last_created_feature.is_valid())
+	{
+		d_select_last_created_feature_action->setEnabled(false);
+		status_message(tr("The last-created feature is no longer available."));
+		return;
+	}
+
+	get_view_state().get_feature_focus().set_focus(d_last_created_feature);
+	status_message(tr("Selected the last-created feature."));
 }
 
 
