@@ -36,6 +36,7 @@ __pycache__/
 /gmon.out
 /_CPack_Packages/
 /bin/
+/playtest-install/
 /install_manifest*.txt
 /.vs*
 /*.log
