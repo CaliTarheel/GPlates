@@ -41,6 +41,8 @@ set(srcs
     NaturalizeCoastlineGeometry.h
     NaturalizeCoastlineOperation.cc
     NaturalizeCoastlineOperation.h
+    PlateIdReassignmentOperation.cc
+    PlateIdReassignmentOperation.h
     QueryProximityThreshold.h
     RenderedArrowedPolyline.h
     RenderedCircleSymbol.h

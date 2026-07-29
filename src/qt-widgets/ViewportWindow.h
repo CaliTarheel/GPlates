@@ -100,6 +100,7 @@ namespace GPlatesViewOperations
 	class CloneOperation;
 	class DeleteFeatureOperation;
 	class NaturalizeCoastlineOperation;
+	class PlateIdReassignmentOperation;
 	class RotationFileEditorOperation;
 	class SplitPlateOperation;
 	class SubductionCutterOperation;
@@ -576,6 +577,8 @@ namespace GPlatesQtWidgets
 
 		//! For motion-preserving plate circuit edits in loaded rotation collections.
 		boost::scoped_ptr<GPlatesViewOperations::RotationFileEditorOperation> d_rotation_file_editor_operation_ptr;
+
+		boost::scoped_ptr<GPlatesViewOperations::PlateIdReassignmentOperation> d_plate_id_reassignment_operation_ptr;
 
 
 		/**
