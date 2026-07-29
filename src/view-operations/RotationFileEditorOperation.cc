@@ -656,11 +656,11 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 				{
 					continue;
 				}
-				const double time = sample_time(*sample_iter);
+				const double time = sample_time(**sample_iter);
 				if (time > current_time + 1e-9 && time < source_time)
 				{
 					selected_sequence = &*sequence_iter;
-					source_sample = &*sample_iter;
+					source_sample = &**sample_iter;
 					source_time = time;
 				}
 			}
@@ -685,7 +685,7 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 				sample_iter != selected_sequence->sampling->time_samples().end(); ++sample_iter)
 		{
 			if (!sample_iter->valid_time()->get_time_position().is_real() ||
-					std::fabs(sample_time(*sample_iter) - current_time) > 1e-9)
+					std::fabs(sample_time(**sample_iter) - current_time) > 1e-9)
 			{
 				replacement_samples.push_back(sample_iter->clone());
 			}
