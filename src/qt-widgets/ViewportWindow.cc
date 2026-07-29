@@ -136,6 +136,7 @@
 #include "view-operations/DeleteFeatureOperation.h"
 #include "view-operations/RenderedGeometryCollection.h"
 #include "view-operations/RenderedGeometryParameters.h"
+#include "view-operations/RotationFileEditorOperation.h"
 #include "view-operations/UndoRedo.h"
 
 namespace GPlatesQtWidgets
@@ -197,6 +198,9 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	d_delete_feature_operation_ptr(
 			new GPlatesViewOperations::DeleteFeatureOperation(
 				get_view_state().get_feature_focus(),
+				get_application_state())),
+	d_rotation_file_editor_operation_ptr(
+			new GPlatesViewOperations::RotationFileEditorOperation(
 				get_application_state())),
 	d_dialogs_ptr(
 			new GPlatesGui::Dialogs(
@@ -887,6 +891,8 @@ GPlatesQtWidgets::ViewportWindow::connect_tools_menu_actions()
 		d_canvas_tools_dock_ptr, SLOT(use_small_canvas_tool_icons(bool)));
 	QObject::connect(action_Configure_Geometry_Rendering, SIGNAL(triggered()),
 			&dialogs(), SLOT(pop_up_configure_canvas_tool_geometry_render_parameters_dialog()));
+	QObject::connect(action_Rotation_File_Editor, SIGNAL(triggered()),
+			this, SLOT(handle_rotation_file_editor()));
 
 	// Populate the Tools menu with a sub-menu for each canvas tool workflow.
 	// And for each workflow populate its sub-menu with the workflow tool actions.
@@ -1916,6 +1922,24 @@ void
 GPlatesQtWidgets::ViewportWindow::pop_up_python_console()
 {
 	d_view_state.get_python_manager().pop_up_python_console();
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_rotation_file_editor()
+{
+	const GPlatesViewOperations::RotationFileEditorOperation::Result result =
+			d_rotation_file_editor_operation_ptr->trigger(this);
+	status_message(result.message);
+
+	if (result.outcome == GPlatesViewOperations::RotationFileEditorOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Rotation File Editor"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::RotationFileEditorOperation::OPERATION_COMPLETED)
+	{
+		QMessageBox::information(this, tr("Rotation File Editor"), result.message);
+	}
 }
 
 
