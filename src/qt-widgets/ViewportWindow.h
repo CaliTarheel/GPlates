@@ -37,6 +37,8 @@
 #include <QTimer>
 #include <QCloseEvent>
 #include <QMainWindow>
+#include <QPoint>
+#include <QPointF>
 #include <QPointer>
 #include <QString>
 #include <QStringList>
@@ -80,6 +82,11 @@ namespace GPlatesGui
 	class TrinketArea;
 	class UnsavedChangesTracker;
 	class UtilitiesMenu;
+}
+
+namespace GPlatesMaths
+{
+	class PointOnSphere;
 }
 
 namespace GPlatesPresentation
@@ -214,6 +221,11 @@ namespace GPlatesQtWidgets
 
 		GPlatesGui::UtilitiesMenu &
 		utilities_menu();
+
+		/** Shows statistics for the currently focused feature at a global screen position. */
+		void
+		show_focused_feature_context_menu(
+				const QPoint &global_position);
 
 	public Q_SLOTS:
 		
@@ -351,6 +363,11 @@ namespace GPlatesQtWidgets
 		set_window_title(
 				boost::optional<QString> project_filename = boost::none);
 
+		void
+		show_feature_context_menu_at_point(
+				const GPlatesMaths::PointOnSphere &point_on_sphere,
+				double proximity_inclusion_threshold);
+
 	private Q_SLOTS:
 
 		void
@@ -430,6 +447,21 @@ namespace GPlatesQtWidgets
 		handle_canvas_tool_activated(
 				GPlatesGui::CanvasToolWorkflows::WorkflowType workflow,
 				GPlatesGui::CanvasToolWorkflows::ToolType tool);
+
+		void
+		handle_globe_feature_context_menu(
+				const GPlatesMaths::PointOnSphere &click_position,
+				const GPlatesMaths::PointOnSphere &oriented_click_position,
+				bool is_on_globe,
+				Qt::MouseButton button,
+				Qt::KeyboardModifiers modifiers);
+
+		void
+		handle_map_feature_context_menu(
+				const QPointF &click_position,
+				bool is_on_surface,
+				Qt::MouseButton button,
+				Qt::KeyboardModifiers modifiers);
 
 		void
 		handle_changed_project_filename(
