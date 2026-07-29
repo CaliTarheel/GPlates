@@ -218,10 +218,13 @@ namespace
 		const boost::optional<GPlatesModel::TopLevelProperty::non_null_ptr_type> property =
 				GPlatesModel::ModelUtils::create_top_level_property(
 						reconstruction_plate_id_property_name(), plate_id_value);
-		return property
-				? property.get()
-				: GPlatesModel::TopLevelPropertyInline::create(
-						reconstruction_plate_id_property_name(), plate_id_value);
+		if (property)
+		{
+			return property.get();
+		}
+
+		return GPlatesModel::TopLevelPropertyInline::create(
+				reconstruction_plate_id_property_name(), plate_id_value);
 	}
 
 
