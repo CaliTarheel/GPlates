@@ -88,6 +88,12 @@ namespace GPlatesQtWidgets
 		handle_average_selected_vertex_positions();
 
 		void
+		handle_cluster_selected_vertices();
+
+		void
+		handle_snap_selected_vertices_to_plate();
+
+		void
 		handle_vertex_selection_state_changed(
 				unsigned int selected_vertex_count,
 				bool can_delete_selection);

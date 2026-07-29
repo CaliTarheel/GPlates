@@ -32,6 +32,8 @@
 #include "ModifyGeometryWidget.h"
 #include "LatLonCoordinatesTable.h"
 
+#include <QInputDialog>
+
 #include "canvas-tools/ModifyGeometryState.h"
 
 
@@ -62,6 +64,16 @@ GPlatesQtWidgets::ModifyGeometryWidget::ModifyGeometryWidget(
 			SIGNAL(clicked()),
 			this,
 			SLOT(handle_average_selected_vertex_positions()));
+	QObject::connect(
+			button_cluster_selected_vertices,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_cluster_selected_vertices()));
+	QObject::connect(
+			button_snap_selected_vertices_to_plate,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_snap_selected_vertices_to_plate()));
 	QObject::connect(
 			&d_modify_geometry_state,
 			SIGNAL(vertex_selection_state_changed(unsigned int,bool)),
@@ -101,6 +113,61 @@ GPlatesQtWidgets::ModifyGeometryWidget::handle_average_selected_vertex_positions
 
 
 void
+GPlatesQtWidgets::ModifyGeometryWidget::handle_cluster_selected_vertices()
+{
+	bool accepted = false;
+	const double threshold_degrees = QInputDialog::getDouble(
+			this,
+			tr("Cluster Selected Vertices"),
+			tr("Maximum separation (degrees):"),
+			0.1,
+			0.000001,
+			180.0,
+			6,
+			&accepted);
+	if (accepted)
+	{
+		d_modify_geometry_state.request_cluster_selected_vertices(threshold_degrees);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ModifyGeometryWidget::handle_snap_selected_vertices_to_plate()
+{
+	bool accepted = false;
+	const int plate_id = QInputDialog::getInt(
+			this,
+			tr("Snap Selected Vertices to Plate"),
+			tr("Guide Plate ID:"),
+			0,
+			0,
+			99999999,
+			1,
+			&accepted);
+	if (!accepted)
+	{
+		return;
+	}
+	const double threshold_degrees = QInputDialog::getDouble(
+			this,
+			tr("Snap Selected Vertices to Plate"),
+			tr("Maximum snap distance (degrees):"),
+			1.0,
+			0.000001,
+			180.0,
+			6,
+			&accepted);
+	if (accepted)
+	{
+		d_modify_geometry_state.request_snap_selected_vertices_to_plate(
+				plate_id,
+				threshold_degrees);
+	}
+}
+
+
+void
 GPlatesQtWidgets::ModifyGeometryWidget::handle_vertex_selection_state_changed(
 		unsigned int selected_vertex_count,
 		bool can_delete_selection)
@@ -117,4 +184,6 @@ GPlatesQtWidgets::ModifyGeometryWidget::handle_vertex_selection_state_changed(
 
 	button_average_vertex_positions->setEnabled(selected_vertex_count > 1);
 	button_delete_selected_vertices->setEnabled(can_delete_selection);
+	button_cluster_selected_vertices->setEnabled(selected_vertex_count > 1);
+	button_snap_selected_vertices_to_plate->setEnabled(selected_vertex_count > 0);
 }

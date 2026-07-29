@@ -290,6 +290,15 @@ namespace GPlatesViewOperations
 
 		void
 		handle_average_selected_vertex_positions_requested();
+
+		void
+		handle_cluster_selected_vertices_requested(
+				double threshold_degrees);
+
+		void
+		handle_snap_selected_vertices_to_plate_requested(
+				GPlatesModel::integer_plate_id_type plate_id,
+				double threshold_degrees);
 	
 	private:
 		
@@ -427,6 +436,15 @@ namespace GPlatesViewOperations
 
 		void
 		average_selected_vertex_positions();
+
+		void
+		cluster_selected_vertices(
+				double threshold_degrees);
+
+		void
+		snap_selected_vertices_to_plate(
+				GPlatesModel::integer_plate_id_type plate_id,
+				double threshold_degrees);
 
 		void
 		clear_vertex_selection();
