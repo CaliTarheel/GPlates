@@ -618,6 +618,16 @@ target_include_directories(${SOURCE_TARGET} PUBLIC ${PROJECT_BINARY_DIR}/src)
 
 # External library include directories are treated as system include directories.
 # 'src/system-fixes' contains files copied from external libraries.
+#
+# The Python.h wrapper in this directory uses '#include_next' to reach the real
+# Python header after clearing CGAL CORE's incompatible LONG_BIT macro. MSVC does
+# not implement '#include_next', so put the real Python include directory ahead
+# of the wrapper on that compiler. The Windows LONG_BIT definition below then
+# prevents CGAL CORE from introducing the incompatible definition in the first
+# place.
+if (MSVC)
+	target_include_directories(${SOURCE_TARGET} SYSTEM BEFORE PUBLIC ${Python3_INCLUDE_DIRS})
+endif()
 target_include_directories(${SOURCE_TARGET} SYSTEM PUBLIC ${PROJECT_SOURCE_DIR}/src/system-fixes)
 
 
@@ -642,9 +652,9 @@ target_compile_definitions(${SOURCE_TARGET} PUBLIC BOOST_ALLOW_DEPRECATED_HEADER
 
 # CGAL CORE defines LONG_BIT using sizeof(long), which cannot be evaluated by
 # the preprocessor when a Python header later compares LONG_BIT in a #if.
-# MinGW uses the Windows LLP64 ABI, where long is always 32 bits, so provide a
+# Windows uses the LLP64 ABI, where long is always 32 bits, so provide a
 # preprocessor-compatible definition before either dependency is included.
-if (MINGW)
+if (WIN32)
 	target_compile_definitions(${SOURCE_TARGET} PUBLIC LONG_BIT=32)
 endif()
 
