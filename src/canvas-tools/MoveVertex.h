@@ -135,6 +135,35 @@ namespace GPlatesCanvasTools
 				bool is_on_earth,
 				double current_proximity_inclusion_threshold,
 				const boost::optional<GPlatesMaths::PointOnSphere> &centre_of_viewport);
+
+		virtual
+		void
+		handle_shift_left_click(
+				const GPlatesMaths::PointOnSphere &point_on_sphere,
+				bool is_on_earth,
+				double proximity_inclusion_threshold);
+
+		virtual
+		void
+		handle_shift_left_drag(
+				const GPlatesMaths::PointOnSphere &initial_point_on_sphere,
+				bool was_on_earth,
+				double initial_proximity_inclusion_threshold,
+				const GPlatesMaths::PointOnSphere &current_point_on_sphere,
+				bool is_on_earth,
+				double current_proximity_inclusion_threshold,
+				const boost::optional<GPlatesMaths::PointOnSphere> &centre_of_viewport);
+
+		virtual
+		void
+		handle_shift_left_release_after_drag(
+				const GPlatesMaths::PointOnSphere &initial_point_on_sphere,
+				bool was_on_earth,
+				double initial_proximity_inclusion_threshold,
+				const GPlatesMaths::PointOnSphere &current_point_on_sphere,
+				bool is_on_earth,
+				double current_proximity_inclusion_threshold,
+				const boost::optional<GPlatesMaths::PointOnSphere> &centre_of_viewport);
 				
 		void
 		handle_move_without_drag(
@@ -167,6 +196,8 @@ namespace GPlatesCanvasTools
 		 * Whether or not this tool is currently in the midst of a drag.
 		 */
 		bool d_is_in_drag;
+
+		bool d_is_in_lasso;
 
 		void
 		handle_left_drag(
