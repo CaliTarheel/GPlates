@@ -152,6 +152,7 @@
 #include "view-operations/CloneOperation.h"
 #include "view-operations/DeleteFeatureOperation.h"
 #include "view-operations/NaturalizeCoastlineOperation.h"
+#include "view-operations/PlateDirectionArrowsOperation.h"
 #include "view-operations/PlateIdReassignmentOperation.h"
 #include "view-operations/RenderedGeometryCollection.h"
 #include "view-operations/RenderedGeometryParameters.h"
@@ -241,6 +242,12 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 				get_application_state(),
 				get_view_state(),
 				this)),
+	d_plate_direction_arrows_operation_ptr(
+			new GPlatesViewOperations::PlateDirectionArrowsOperation(
+				get_application_state(),
+				get_view_state(),
+				get_view_state().get_rendered_geometry_collection(),
+				this)),
 	d_dialogs_ptr(
 			new GPlatesGui::Dialogs(
 				get_application_state(),
@@ -318,6 +325,28 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			SIGNAL(triggered()),
 			d_plate_id_reassignment_operation_ptr.get(),
 			SLOT(trigger_bulk()));
+
+	QAction *show_plate_direction_arrows_action = new QAction(
+			tr("Show Plate Direction Arrows..."), this);
+	show_plate_direction_arrows_action->setObjectName("action_Show_Plate_Direction_Arrows");
+	show_plate_direction_arrows_action->setStatusTip(
+			tr("Draw motion arrows directly on visible features without a velocity domain"));
+	QAction *clear_plate_direction_arrows_action = new QAction(
+			tr("Clear Plate Direction Arrows"), this);
+	clear_plate_direction_arrows_action->setObjectName("action_Clear_Plate_Direction_Arrows");
+	menu_Reconstruction->addSeparator();
+	menu_Reconstruction->addAction(show_plate_direction_arrows_action);
+	menu_Reconstruction->addAction(clear_plate_direction_arrows_action);
+	QObject::connect(
+			show_plate_direction_arrows_action,
+			SIGNAL(triggered()),
+			d_plate_direction_arrows_operation_ptr.get(),
+			SLOT(show_dialog()));
+	QObject::connect(
+			clear_plate_direction_arrows_action,
+			SIGNAL(triggered()),
+			d_plate_direction_arrows_operation_ptr.get(),
+			SLOT(clear()));
 
 	// FIXME: remove this when all non Qt widget state has been moved into ViewState.
 	// This is a temporary solution to avoiding passing ViewportWindow references around

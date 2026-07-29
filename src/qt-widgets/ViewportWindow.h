@@ -102,6 +102,7 @@ namespace GPlatesViewOperations
 	class CloneOperation;
 	class DeleteFeatureOperation;
 	class NaturalizeCoastlineOperation;
+	class PlateDirectionArrowsOperation;
 	class PlateIdReassignmentOperation;
 	class RotationFileEditorOperation;
 	class SplitPlateOperation;
@@ -588,6 +589,9 @@ namespace GPlatesQtWidgets
 		boost::scoped_ptr<GPlatesViewOperations::RotationFileEditorOperation> d_rotation_file_editor_operation_ptr;
 
 		boost::scoped_ptr<GPlatesViewOperations::PlateIdReassignmentOperation> d_plate_id_reassignment_operation_ptr;
+
+		//! For drawing direct plate-motion arrows on visible features.
+		boost::scoped_ptr<GPlatesViewOperations::PlateDirectionArrowsOperation> d_plate_direction_arrows_operation_ptr;
 
 
 		/**
