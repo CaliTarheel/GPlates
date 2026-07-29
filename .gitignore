@@ -30,7 +30,9 @@ __pycache__/
 # /
 #
 /build*/
+/.conda-env/
 /INSTALL
+/install/
 /gmon.out
 /_CPack_Packages/
 /bin/
