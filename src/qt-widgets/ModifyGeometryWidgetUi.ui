@@ -78,6 +78,36 @@
         </item>
        </layout>
       </item>
+      <item>
+       <layout class="QHBoxLayout" >
+        <item>
+         <widget class="QPushButton" name="button_cluster_selected_vertices" >
+          <property name="enabled" >
+           <bool>false</bool>
+          </property>
+          <property name="toolTip" >
+           <string>Move selected vertices within a distance threshold to their cluster average</string>
+          </property>
+          <property name="text" >
+           <string>&amp;Cluster Nearby...</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="button_snap_selected_vertices_to_plate" >
+          <property name="enabled" >
+           <bool>false</bool>
+          </property>
+          <property name="toolTip" >
+           <string>Snap each selected vertex to the nearest visible vertex on a guide Plate ID</string>
+          </property>
+          <property name="text" >
+           <string>&amp;Snap to Plate...</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
      </layout>
     </widget>
    </item>
