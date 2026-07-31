@@ -321,12 +321,7 @@ GPlatesFileIO::PlatesRotationFormatWriter::PlatesRotationFormatAccumulator::prin
 	}
 	else if (reconstruction_pole_data.comment)
 	{
-		const QString comment = reconstruction_pole_data.comment->qstring();
-		if (!comment.isEmpty() && !comment.at(0).isSpace())
-		{
-			os << ' ';
-		}
-		os << comment;
+		os << reconstruction_pole_data.comment->qstring();
 	}
 
 
