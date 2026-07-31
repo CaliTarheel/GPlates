@@ -160,6 +160,22 @@ namespace
 	}
 
 
+	GPlatesPropertyValues::GpmlTimeSample::non_null_ptr_type
+	create_copied_rotation_sample(
+			double time,
+			const GPlatesPropertyValues::GpmlTimeSample &source_sample,
+			const GPlatesPropertyValues::GpmlFiniteRotation &source_rotation,
+			const QString &comment)
+	{
+		using namespace GPlatesPropertyValues;
+		return GpmlTimeSample::create(
+				source_rotation.clone(),
+				GmlTimeInstant::create(GeoTimeInstant(time)),
+				XsString::create(GPlatesUtils::make_icu_string_from_qstring(comment)),
+				source_sample.get_value_type());
+	}
+
+
 	GPlatesModel::TopLevelProperty::non_null_ptr_type
 	create_sampling_property(
 			const sample_seq_type &samples)
@@ -918,9 +934,10 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 				replacement_samples.push_back(sample_iter->clone());
 			}
 		}
-		replacement_samples.push_back(create_rotation_sample(
+		replacement_samples.push_back(create_copied_rotation_sample(
 				current_time,
-				source_rotation->get_finite_rotation(),
+				*source_sample,
+				*source_rotation,
 				QObject::tr("GreaterPlates: copied pole from %1 Ma").arg(source_time, 0, 'f', 2)));
 		std::sort(replacement_samples.begin(), replacement_samples.end(), sample_less_than);
 
