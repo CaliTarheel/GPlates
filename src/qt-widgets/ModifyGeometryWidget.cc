@@ -109,6 +109,10 @@ GPlatesQtWidgets::ModifyGeometryWidget::handle_vertex_selection_state_changed(
 	{
 		label_vertex_selection_count->setText(tr("No vertices selected"));
 	}
+	else if (selected_vertex_count == 1)
+	{
+		label_vertex_selection_count->setText(tr("1 vertex selected"));
+	}
 	else
 	{
 		label_vertex_selection_count->setText(
