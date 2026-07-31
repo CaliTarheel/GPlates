@@ -778,12 +778,21 @@ GPlatesViewOperations::MoveVertexGeometryOperation::cluster_selected_vertices(
 
 	std::vector<GPlatesMaths::PointOnSphere> positions;
 	positions.reserve(indices.size());
+	bool changed_position = false;
 	for (size_t index = 0; index < indices.size(); ++index)
 	{
 		const size_t root = parent[index];
-		positions.push_back(counts[root] > 1 && !sums[root].is_zero_magnitude()
+		const GPlatesMaths::PointOnSphere clustered_position =
+				counts[root] > 1 && !sums[root].is_zero_magnitude()
 				? GPlatesMaths::PointOnSphere(sums[root].get_normalisation())
-				: original_points[index]);
+				: original_points[index];
+		positions.push_back(clustered_position);
+		changed_position = changed_position || clustered_position != original_points[index];
+	}
+
+	if (!changed_position)
+	{
+		return;
 	}
 
 	move_selected_vertices_to(
@@ -814,22 +823,39 @@ GPlatesViewOperations::MoveVertexGeometryOperation::snap_selected_vertices_to_pl
 
 	std::vector<GPlatesMaths::PointOnSphere> positions;
 	positions.reserve(d_selected_vertex_indices.size());
-	for (std::set<GeometryBuilder::PointIndex>::const_iterator selected =
-			d_selected_vertex_indices.begin(); selected != d_selected_vertex_indices.end(); ++selected)
+	bool changed_position = false;
+	try
 	{
-		const GPlatesMaths::PointOnSphere original =
-				d_geometry_builder.get_geometry_point(0, *selected);
-		d_geometry_builder.clear_secondary_geometries();
-		update_secondary_geometries(original);
-		const boost::optional<GPlatesMaths::PointOnSphere> guide_vertex =
-				d_geometry_builder.get_secondary_vertex();
-		positions.push_back(guide_vertex ? guide_vertex.get() : original);
+		for (std::set<GeometryBuilder::PointIndex>::const_iterator selected =
+				d_selected_vertex_indices.begin(); selected != d_selected_vertex_indices.end(); ++selected)
+		{
+			const GPlatesMaths::PointOnSphere original =
+					d_geometry_builder.get_geometry_point(0, *selected);
+			d_geometry_builder.clear_secondary_geometries();
+			update_secondary_geometries(original);
+			const boost::optional<GPlatesMaths::PointOnSphere> guide_vertex =
+					d_geometry_builder.get_secondary_vertex();
+			const GPlatesMaths::PointOnSphere snapped_position =
+					guide_vertex ? guide_vertex.get() : original;
+			positions.push_back(snapped_position);
+			changed_position = changed_position || snapped_position != original;
+		}
+	}
+	catch (...)
+	{
+		qWarning() << "Unable to find guide vertices for the selected Plate ID.";
+		positions.clear();
 	}
 	d_geometry_builder.clear_secondary_geometries();
 	d_should_check_nearby_vertices = previous_should_check;
 	d_should_use_plate_id_filter = previous_should_filter;
 	d_nearby_vertex_threshold = previous_threshold;
 	d_filter_plate_id = previous_plate_id;
+
+	if (!changed_position || positions.empty())
+	{
+		return;
+	}
 
 	move_selected_vertices_to(
 			positions,
@@ -1134,6 +1160,18 @@ GPlatesViewOperations::MoveVertexGeometryOperation::update_secondary_geometries(
 		// so check that it's not the focus geometry before checking the closeness.
 		if (recon_geom && *recon_geom != focus_rg)
 		{
+			if (d_should_use_plate_id_filter)
+			{
+				const boost::optional<const GPlatesAppLogic::ReconstructedFeatureGeometry *> rfg =
+						GPlatesAppLogic::ReconstructionGeometryUtils::get_reconstruction_geometry_derived_type<
+								const GPlatesAppLogic::ReconstructedFeatureGeometry *>(recon_geom.get());
+				if (!rfg || !d_filter_plate_id || !(*rfg)->reconstruction_plate_id() ||
+						*(*rfg)->reconstruction_plate_id() != *d_filter_plate_id)
+				{
+					continue;
+				}
+			}
+
 			if (it->d_proximity_hit_detail->index())
 			{
 				unsigned int vertex_index = *(it->d_proximity_hit_detail->index());
@@ -1171,22 +1209,7 @@ GPlatesViewOperations::MoveVertexGeometryOperation::update_secondary_geometries(
 							const GPlatesAppLogic::ReconstructedFeatureGeometry *>(recon_geom.get());
 			if (rfg)
 			{
-				boost::optional<GPlatesModel::integer_plate_id_type> plate_id =
-						rfg.get()->reconstruction_plate_id();
-				if (d_should_use_plate_id_filter)
-				{ 
-					if ( d_filter_plate_id &&
-						plate_id &&
-						(*plate_id == *d_filter_plate_id))
-						{
-							d_geometry_builder.add_secondary_geometry(*recon_geom,closest_vertex_index);
-						}
-				}
-				else
-				{
-				// No plate-id filter selected, so add the geometry. 
-						d_geometry_builder.add_secondary_geometry(*recon_geom,closest_vertex_index);
-				}
+				d_geometry_builder.add_secondary_geometry(*recon_geom,closest_vertex_index);
 			}
 		}
 	}
