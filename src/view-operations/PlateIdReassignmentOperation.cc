@@ -1,5 +1,26 @@
 /* $Id$ */
 
+/**
+ * \file
+ *
+ * Copyright (C) 2026 CaliTarheel
+ *
+ * This file is part of GPlates.
+ *
+ * GPlates is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License, version 2, as published by
+ * the Free Software Foundation.
+ *
+ * GPlates is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ */
+
 #include "PlateIdReassignmentOperation.h"
 
 #include <memory>
@@ -356,6 +377,25 @@ GPlatesViewOperations::PlateIdReassignmentOperation::trigger()
 				QObject::tr("The selected feature is not in a feature collection."));
 		return;
 	}
+	const GPlatesAppLogic::Reconstruction &reconstruction =
+			d_application_state.get_current_reconstruction();
+	unsigned int active_geometry_property_count = 0;
+	for (GPlatesModel::FeatureHandle::iterator property_iter = source_feature->begin();
+			property_iter != source_feature->end(); ++property_iter)
+	{
+		if (GPlatesAppLogic::GeometryUtils::get_geometry_from_property(
+				property_iter, reconstruction.get_reconstruction_time()))
+		{
+			++active_geometry_property_count;
+		}
+	}
+	if (active_geometry_property_count != 1)
+	{
+		QMessageBox::information(d_parent_widget, QObject::tr("Reassign Plate ID"),
+				QObject::tr("This operation currently requires exactly one active geometry property. ") +
+				QObject::tr("Features with multiple active geometries are left unchanged so none can jump."));
+		return;
+	}
 
 	QDialog dialog(d_parent_widget);
 	dialog.setWindowTitle(QObject::tr("Reassign Plate ID Without Jumping"));
@@ -381,6 +421,14 @@ GPlatesViewOperations::PlateIdReassignmentOperation::trigger()
 	QObject::connect(buttons, SIGNAL(rejected()), &dialog, SLOT(reject()));
 	if (dialog.exec() != QDialog::Accepted)
 	{
+		return;
+	}
+	if (mode_combo->currentData().toInt() == 1 &&
+			(*source_rfg)->reconstruction_plate_id() &&
+			plate_id_spin->value() == *(*source_rfg)->reconstruction_plate_id())
+	{
+		QMessageBox::information(d_parent_widget, QObject::tr("Reassign Plate ID"),
+				QObject::tr("The focused feature already has Plate ID %1.").arg(plate_id_spin->value()));
 		return;
 	}
 
@@ -427,15 +475,16 @@ GPlatesViewOperations::PlateIdReassignmentOperation::trigger()
 				QObject::tr("Could not prepare the selected feature's Plate ID and geometry."));
 		return;
 	}
-	prepared_feature->set(prepared_plate_property, create_plate_id_property(plate_id_spin->value()));
+	GPlatesModel::TopLevelProperty::non_null_ptr_type prepared_plate =
+			create_plate_id_property(plate_id_spin->value());
+	prepared_plate->set_xml_attributes((*source_plate_property)->get_xml_attributes());
+	prepared_feature->set(prepared_plate_property, prepared_plate);
 
 	std::vector<GPlatesAppLogic::ReconstructLayerProxy::non_null_ptr_type> reconstruct_layer_outputs;
 	GPlatesAppLogic::LayerProxyUtils::find_reconstruct_layer_outputs_of_feature_collection(
 			reconstruct_layer_outputs,
 			source_collection_ptr->reference(),
 			d_application_state.get_reconstruct_graph());
-	const GPlatesAppLogic::Reconstruction &reconstruction =
-			d_application_state.get_current_reconstruction();
 	const GPlatesAppLogic::ReconstructMethodRegistry reconstruct_method_registry;
 	const GPlatesMaths::GeometryOnSphere::non_null_ptr_to_const_type present_day_geometry =
 			!reconstruct_layer_outputs.empty()
