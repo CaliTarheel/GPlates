@@ -1,5 +1,26 @@
 /* $Id$ */
 
+/**
+ * \file
+ *
+ * Copyright (C) 2026 CaliTarheel
+ *
+ * This file is part of GPlates.
+ *
+ * GPlates is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License, version 2, as published by
+ * the Free Software Foundation.
+ *
+ * GPlates is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+ * for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ */
+
 #include <algorithm>
 #include <cmath>
 #include <memory>
@@ -11,9 +32,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
-#include <QGroupBox>
 #include <QLabel>
-#include <QMessageBox>
 #include <QObject>
 #include <QPushButton>
 #include <QSpinBox>
@@ -641,12 +660,15 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 	const sequence_seq_type sequences = collect_sequences(collection);
 	const std::set<GPlatesModel::integer_plate_id_type> plate_ids = collect_plate_ids(sequences);
 	std::set<GPlatesModel::integer_plate_id_type> all_loaded_plate_ids;
+	sequence_seq_type all_loaded_sequences;
 	for (size_t file_index = 0; file_index < rotation_files.size(); ++file_index)
 	{
 		const sequence_seq_type file_sequences = collect_sequences(
 				rotation_files[file_index].get_file().get_feature_collection());
 		const std::set<GPlatesModel::integer_plate_id_type> file_plate_ids = collect_plate_ids(file_sequences);
 		all_loaded_plate_ids.insert(file_plate_ids.begin(), file_plate_ids.end());
+		all_loaded_sequences.insert(
+				all_loaded_sequences.end(), file_sequences.begin(), file_sequences.end());
 	}
 	const EditMode mode = static_cast<EditMode>(mode_combo->currentData().toInt());
 	const TimeDirection direction = static_cast<TimeDirection>(direction_combo->currentData().toInt());
@@ -888,10 +910,6 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 						.arg(source_time, 0, 'f', 2).arg(moving_plate).arg(fixed_plate)
 						.arg(current_time, 0, 'f', 2));
 	}
-	if (mode == CONNECT_PLATE && would_create_cycle(tree_creator, current_time, moving_plate, fixed_plate))
-	{
-		return Result(OPERATION_ERROR, QObject::tr("That parent choice would create a plate-circuit cycle."));
-	}
 	if (direction == TOWARD_PRESENT && current_time <= 1e-9)
 	{
 		return Result(OPERATION_ERROR, QObject::tr("At 0 Ma there is no younger interval toward the present."));
@@ -919,6 +937,41 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 		return Result(OPERATION_ERROR,
 				QObject::tr("Plate %1 has no rotation history younger than %2 Ma in the selected collection.")
 						.arg(moving_plate).arg(current_time, 0, 'f', 2));
+	}
+
+	const std::vector<double> new_sequence_times = build_sample_times(
+			current_time, youngest_time, oldest_time, direction, all_loaded_sequences);
+	std::vector<double> topology_check_times(new_sequence_times);
+	for (std::vector<double>::const_iterator time_iter = new_sequence_times.begin();
+			time_iter != new_sequence_times.end() && time_iter + 1 != new_sequence_times.end(); ++time_iter)
+	{
+		topology_check_times.push_back((*time_iter + *(time_iter + 1)) * 0.5);
+	}
+	for (std::vector<double>::const_iterator time_iter = topology_check_times.begin();
+			time_iter != topology_check_times.end(); ++time_iter)
+	{
+		const GPlatesAppLogic::ReconstructionTree::non_null_ptr_to_const_type tree =
+				tree_creator.get_reconstruction_tree(*time_iter);
+		if (!tree->get_composed_absolute_rotation_or_none(fixed_plate))
+		{
+			return Result(OPERATION_ERROR,
+					QObject::tr("Parent plate %1 is absent from the rotation tree at %2 Ma.")
+							.arg(fixed_plate).arg(*time_iter, 0, 'f', 2));
+		}
+		if (mode != CREATE_PLATE &&
+				!tree->get_composed_absolute_rotation_or_none(moving_plate))
+		{
+			return Result(OPERATION_ERROR,
+					QObject::tr("Plate %1 is absent from the rotation tree at %2 Ma.")
+							.arg(moving_plate).arg(*time_iter, 0, 'f', 2));
+		}
+		if (mode == CONNECT_PLATE &&
+				would_create_cycle(tree_creator, *time_iter, moving_plate, fixed_plate))
+		{
+			return Result(OPERATION_ERROR,
+					QObject::tr("That parent choice would create a plate-circuit cycle at %1 Ma.")
+							.arg(*time_iter, 0, 'f', 2));
+		}
 	}
 
 	existing_change_seq_type changes;
@@ -1000,11 +1053,10 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 	}
 	else
 	{
-		const std::vector<double> times = build_sample_times(
-				current_time, youngest_time, oldest_time, direction, sequences);
 		try
 		{
-			for (std::vector<double>::const_iterator time_iter = times.begin(); time_iter != times.end(); ++time_iter)
+			for (std::vector<double>::const_iterator time_iter = new_sequence_times.begin();
+					time_iter != new_sequence_times.end(); ++time_iter)
 			{
 				new_samples.push_back(create_rotation_sample(
 						*time_iter,
