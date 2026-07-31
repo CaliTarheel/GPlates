@@ -107,6 +107,16 @@ GPlatesViewOperations::MoveVertexGeometryOperation::MoveVertexGeometryOperation(
 			SIGNAL(average_selected_vertex_positions_requested()),
 			this,
 			SLOT(handle_average_selected_vertex_positions_requested()));
+	QObject::connect(
+			&modify_geometry_state,
+			SIGNAL(cluster_selected_vertices_requested(double)),
+			this,
+			SLOT(handle_cluster_selected_vertices_requested(double)));
+	QObject::connect(
+			&modify_geometry_state,
+			SIGNAL(snap_selected_vertices_to_plate_requested(GPlatesModel::integer_plate_id_type,double)),
+			this,
+			SLOT(handle_snap_selected_vertices_to_plate_requested(GPlatesModel::integer_plate_id_type,double)));
 }
 
 void
@@ -707,6 +717,154 @@ GPlatesViewOperations::MoveVertexGeometryOperation::average_selected_vertex_posi
 
 
 void
+GPlatesViewOperations::MoveVertexGeometryOperation::cluster_selected_vertices(
+		double threshold_degrees)
+{
+	if (d_selected_vertex_indices.size() < 2)
+	{
+		return;
+	}
+
+	std::vector<GeometryBuilder::PointIndex> indices(
+			d_selected_vertex_indices.begin(), d_selected_vertex_indices.end());
+	std::vector<GPlatesMaths::PointOnSphere> original_points;
+	std::vector<size_t> parent(indices.size());
+	original_points.reserve(indices.size());
+	for (size_t index = 0; index < indices.size(); ++index)
+	{
+		original_points.push_back(d_geometry_builder.get_geometry_point(0, indices[index]));
+		parent[index] = index;
+	}
+
+	const double closeness_threshold =
+			std::cos(GPlatesMaths::convert_deg_to_rad(threshold_degrees));
+	for (size_t lhs = 0; lhs < indices.size(); ++lhs)
+	{
+		for (size_t rhs = lhs + 1; rhs < indices.size(); ++rhs)
+		{
+			if (GPlatesMaths::calculate_closeness(
+					original_points[lhs], original_points[rhs]).dval() < closeness_threshold)
+			{
+				continue;
+			}
+
+			size_t lhs_root = lhs;
+			while (parent[lhs_root] != lhs_root)
+			{
+				lhs_root = parent[lhs_root];
+			}
+			size_t rhs_root = rhs;
+			while (parent[rhs_root] != rhs_root)
+			{
+				rhs_root = parent[rhs_root];
+			}
+			parent[rhs_root] = lhs_root;
+		}
+	}
+
+	std::vector<GPlatesMaths::Vector3D> sums(indices.size());
+	std::vector<unsigned int> counts(indices.size(), 0);
+	for (size_t index = 0; index < indices.size(); ++index)
+	{
+		size_t root = index;
+		while (parent[root] != root)
+		{
+			root = parent[root];
+		}
+		parent[index] = root;
+		sums[root] = sums[root] + GPlatesMaths::Vector3D(original_points[index].position_vector());
+		++counts[root];
+	}
+
+	std::vector<GPlatesMaths::PointOnSphere> positions;
+	positions.reserve(indices.size());
+	bool changed_position = false;
+	for (size_t index = 0; index < indices.size(); ++index)
+	{
+		const size_t root = parent[index];
+		const GPlatesMaths::PointOnSphere clustered_position =
+				counts[root] > 1 && !sums[root].is_zero_magnitude()
+				? GPlatesMaths::PointOnSphere(sums[root].get_normalisation())
+				: original_points[index];
+		positions.push_back(clustered_position);
+		changed_position = changed_position || clustered_position != original_points[index];
+	}
+
+	if (!changed_position)
+	{
+		return;
+	}
+
+	move_selected_vertices_to(
+			positions,
+			false,
+			QObject::tr("cluster selected vertices within %1 degrees").arg(threshold_degrees));
+}
+
+
+void
+GPlatesViewOperations::MoveVertexGeometryOperation::snap_selected_vertices_to_plate(
+		GPlatesModel::integer_plate_id_type plate_id,
+		double threshold_degrees)
+{
+	if (d_selected_vertex_indices.empty())
+	{
+		return;
+	}
+
+	const bool previous_should_check = d_should_check_nearby_vertices;
+	const bool previous_should_filter = d_should_use_plate_id_filter;
+	const double previous_threshold = d_nearby_vertex_threshold;
+	const boost::optional<GPlatesModel::integer_plate_id_type> previous_plate_id = d_filter_plate_id;
+	d_should_check_nearby_vertices = true;
+	d_should_use_plate_id_filter = true;
+	d_nearby_vertex_threshold = std::cos(GPlatesMaths::convert_deg_to_rad(threshold_degrees));
+	d_filter_plate_id = plate_id;
+
+	std::vector<GPlatesMaths::PointOnSphere> positions;
+	positions.reserve(d_selected_vertex_indices.size());
+	bool changed_position = false;
+	try
+	{
+		for (std::set<GeometryBuilder::PointIndex>::const_iterator selected =
+				d_selected_vertex_indices.begin(); selected != d_selected_vertex_indices.end(); ++selected)
+		{
+			const GPlatesMaths::PointOnSphere original =
+					d_geometry_builder.get_geometry_point(0, *selected);
+			d_geometry_builder.clear_secondary_geometries();
+			update_secondary_geometries(original);
+			const boost::optional<GPlatesMaths::PointOnSphere> guide_vertex =
+					d_geometry_builder.get_secondary_vertex();
+			const GPlatesMaths::PointOnSphere snapped_position =
+					guide_vertex ? guide_vertex.get() : original;
+			positions.push_back(snapped_position);
+			changed_position = changed_position || snapped_position != original;
+		}
+	}
+	catch (...)
+	{
+		qWarning() << "Unable to find guide vertices for the selected Plate ID.";
+		positions.clear();
+	}
+	d_geometry_builder.clear_secondary_geometries();
+	d_should_check_nearby_vertices = previous_should_check;
+	d_should_use_plate_id_filter = previous_should_filter;
+	d_nearby_vertex_threshold = previous_threshold;
+	d_filter_plate_id = previous_plate_id;
+
+	if (!changed_position || positions.empty())
+	{
+		return;
+	}
+
+	move_selected_vertices_to(
+			positions,
+			false,
+			QObject::tr("snap selected vertices to Plate ID %1").arg(plate_id));
+}
+
+
+void
 GPlatesViewOperations::MoveVertexGeometryOperation::clear_vertex_selection()
 {
 	d_selected_vertex_indices.clear();
@@ -1002,6 +1160,18 @@ GPlatesViewOperations::MoveVertexGeometryOperation::update_secondary_geometries(
 		// so check that it's not the focus geometry before checking the closeness.
 		if (recon_geom && *recon_geom != focus_rg)
 		{
+			if (d_should_use_plate_id_filter)
+			{
+				const boost::optional<const GPlatesAppLogic::ReconstructedFeatureGeometry *> rfg =
+						GPlatesAppLogic::ReconstructionGeometryUtils::get_reconstruction_geometry_derived_type<
+								const GPlatesAppLogic::ReconstructedFeatureGeometry *>(recon_geom.get());
+				if (!rfg || !d_filter_plate_id || !(*rfg)->reconstruction_plate_id() ||
+						*(*rfg)->reconstruction_plate_id() != *d_filter_plate_id)
+				{
+					continue;
+				}
+			}
+
 			if (it->d_proximity_hit_detail->index())
 			{
 				unsigned int vertex_index = *(it->d_proximity_hit_detail->index());
@@ -1039,22 +1209,7 @@ GPlatesViewOperations::MoveVertexGeometryOperation::update_secondary_geometries(
 							const GPlatesAppLogic::ReconstructedFeatureGeometry *>(recon_geom.get());
 			if (rfg)
 			{
-				boost::optional<GPlatesModel::integer_plate_id_type> plate_id =
-						rfg.get()->reconstruction_plate_id();
-				if (d_should_use_plate_id_filter)
-				{ 
-					if ( d_filter_plate_id &&
-						plate_id &&
-						(*plate_id == *d_filter_plate_id))
-						{
-							d_geometry_builder.add_secondary_geometry(*recon_geom,closest_vertex_index);
-						}
-				}
-				else
-				{
-				// No plate-id filter selected, so add the geometry. 
-						d_geometry_builder.add_secondary_geometry(*recon_geom,closest_vertex_index);
-				}
+				d_geometry_builder.add_secondary_geometry(*recon_geom,closest_vertex_index);
 			}
 		}
 	}
@@ -1161,6 +1316,29 @@ GPlatesViewOperations::MoveVertexGeometryOperation::handle_average_selected_vert
 	if (d_is_active)
 	{
 		average_selected_vertex_positions();
+	}
+}
+
+
+void
+GPlatesViewOperations::MoveVertexGeometryOperation::handle_cluster_selected_vertices_requested(
+		double threshold_degrees)
+{
+	if (d_is_active)
+	{
+		cluster_selected_vertices(threshold_degrees);
+	}
+}
+
+
+void
+GPlatesViewOperations::MoveVertexGeometryOperation::handle_snap_selected_vertices_to_plate_requested(
+		GPlatesModel::integer_plate_id_type plate_id,
+		double threshold_degrees)
+{
+	if (d_is_active)
+	{
+		snap_selected_vertices_to_plate(plate_id, threshold_degrees);
 	}
 }
 

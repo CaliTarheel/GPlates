@@ -72,6 +72,21 @@ namespace GPlatesCanvasTools
 		}
 
 		void
+		request_cluster_selected_vertices(
+				double threshold_degrees)
+		{
+			Q_EMIT cluster_selected_vertices_requested(threshold_degrees);
+		}
+
+		void
+		request_snap_selected_vertices_to_plate(
+				GPlatesModel::integer_plate_id_type plate_id,
+				double threshold_degrees)
+		{
+			Q_EMIT snap_selected_vertices_to_plate_requested(plate_id, threshold_degrees);
+		}
+
+		void
 		set_vertex_selection_state(
 				unsigned int selected_vertex_count,
 				bool can_delete_selection)
@@ -96,6 +111,15 @@ namespace GPlatesCanvasTools
 
 		void
 		average_selected_vertex_positions_requested();
+
+		void
+		cluster_selected_vertices_requested(
+				double threshold_degrees);
+
+		void
+		snap_selected_vertices_to_plate_requested(
+				GPlatesModel::integer_plate_id_type plate_id,
+				double threshold_degrees);
 
 		void
 		vertex_selection_state_changed(
