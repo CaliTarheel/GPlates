@@ -175,6 +175,30 @@ namespace
 	}
 
 
+	GPlatesModel::TopLevelProperty::non_null_ptr_type
+	create_replacement_sampling_property(
+			const sample_seq_type &samples,
+			const GPlatesPropertyValues::GpmlIrregularSampling &original_sampling,
+			const GPlatesModel::TopLevelProperty &original_property)
+	{
+		using namespace GPlatesPropertyValues;
+		boost::optional<GpmlInterpolationFunction::non_null_ptr_type> interpolation_function;
+		const boost::optional<GpmlInterpolationFunction::non_null_ptr_to_const_type> original_interpolation_function =
+				original_sampling.interpolation_function();
+		if (original_interpolation_function)
+		{
+			interpolation_function = (*original_interpolation_function)->clone();
+		}
+		const GpmlIrregularSampling::non_null_ptr_type sampling = GpmlIrregularSampling::create(
+				samples, interpolation_function, original_sampling.get_value_type());
+		sampling->set_disabled(original_sampling.is_disabled());
+		return GPlatesModel::TopLevelPropertyInline::create(
+				original_property.get_property_name(),
+				sampling,
+				original_property.get_xml_attributes());
+	}
+
+
 	sequence_seq_type
 	collect_sequences(
 			const GPlatesModel::FeatureCollectionHandle::weak_ref &collection)
@@ -855,7 +879,8 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 					sequence_iter->sampling->time_samples().begin();
 					sample_iter != sequence_iter->sampling->time_samples().end(); ++sample_iter)
 			{
-				if (!sample_iter->valid_time()->get_time_position().is_real())
+				if (sample_iter->is_disabled() ||
+						!sample_iter->valid_time()->get_time_position().is_real())
 				{
 					continue;
 				}
@@ -904,7 +929,10 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 				selected_sequence->feature,
 				selected_sequence->sampling_property,
 				(*selected_sequence->sampling_property)->clone(),
-				create_sampling_property(replacement_samples),
+				create_replacement_sampling_property(
+						replacement_samples,
+						*selected_sequence->sampling,
+						**selected_sequence->sampling_property),
 				QObject::tr("copy previous rotation pole")));
 		UndoRedo::instance().get_active_undo_stack().push(command.release());
 		return Result(OPERATION_COMPLETED,
