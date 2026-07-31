@@ -202,6 +202,11 @@ GPlatesCanvasTools::MoveVertex::handle_shift_left_drag(
 		double current_proximity_inclusion_threshold,
 		const boost::optional<GPlatesMaths::PointOnSphere> &centre_of_viewport)
 {
+	Q_UNUSED(initial_proximity_inclusion_threshold);
+	Q_UNUSED(is_on_earth);
+	Q_UNUSED(current_proximity_inclusion_threshold);
+	Q_UNUSED(centre_of_viewport);
+
 	if (!was_on_earth)
 	{
 		return;
@@ -227,6 +232,11 @@ GPlatesCanvasTools::MoveVertex::handle_shift_left_release_after_drag(
 		double current_proximity_inclusion_threshold,
 		const boost::optional<GPlatesMaths::PointOnSphere> &centre_of_viewport)
 {
+	Q_UNUSED(initial_proximity_inclusion_threshold);
+	Q_UNUSED(is_on_earth);
+	Q_UNUSED(current_proximity_inclusion_threshold);
+	Q_UNUSED(centre_of_viewport);
+
 	if (!d_is_in_lasso && was_on_earth)
 	{
 		d_move_vertex_geometry_operation->begin_lasso(initial_point_on_sphere);
