@@ -205,7 +205,8 @@ namespace
 			for (GPlatesModel::RevisionedVector<GPlatesPropertyValues::GpmlTimeSample>::const_iterator sample_iter =
 					sampling->time_samples().begin(); sample_iter != sampling->time_samples().end(); ++sample_iter)
 			{
-				if (!sample_iter->valid_time()->get_time_position().is_real())
+				if (sample_iter->is_disabled() ||
+						!sample_iter->valid_time()->get_time_position().is_real())
 				{
 					continue;
 				}
@@ -296,7 +297,8 @@ namespace
 					sequence_iter->sampling->time_samples().begin();
 					sample_iter != sequence_iter->sampling->time_samples().end(); ++sample_iter)
 			{
-				if (sample_iter->valid_time()->get_time_position().is_real())
+				if (!sample_iter->is_disabled() &&
+						sample_iter->valid_time()->get_time_position().is_real())
 				{
 					const double time = sample_iter->valid_time()->get_time_position().value();
 					if (time > begin_time && time < end_time)
