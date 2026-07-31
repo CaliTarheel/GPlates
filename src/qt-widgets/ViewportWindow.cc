@@ -964,7 +964,13 @@ GPlatesQtWidgets::ViewportWindow::select_last_created_feature()
 		return;
 	}
 
-	get_view_state().get_feature_focus().set_focus(d_last_created_feature);
+	GPlatesGui::FeatureFocus &feature_focus = get_view_state().get_feature_focus();
+	feature_focus.set_focus(d_last_created_feature);
+	if (feature_focus.focused_feature() != d_last_created_feature)
+	{
+		status_message(tr("The last-created feature has no geometry and cannot be selected."));
+		return;
+	}
 	status_message(tr("Selected the last-created feature."));
 }
 
