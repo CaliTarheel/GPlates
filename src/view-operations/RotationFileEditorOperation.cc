@@ -107,6 +107,17 @@ namespace
 
 	typedef std::vector<RotationSequence> sequence_seq_type;
 	typedef std::vector<GPlatesPropertyValues::GpmlTimeSample::non_null_ptr_type> sample_seq_type;
+	const char DRIFT_CORRECTION_MARKER[] = "! Drift Correction";
+
+
+	bool
+	has_drift_correction_marker(
+			const QString &description)
+	{
+		return description.contains(
+				QString::fromLatin1(DRIFT_CORRECTION_MARKER), Qt::CaseInsensitive) ||
+				description.contains(QObject::tr("Drift Correction"), Qt::CaseInsensitive);
+	}
 
 	struct ExistingChange
 	{
@@ -718,7 +729,7 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 	const GPlatesModel::integer_plate_id_type fixed_plate =
 			mode == DISCONNECT_PLATE ? anchor_plate : parent_plate_spin->value();
 
-	if (moving_plate == fixed_plate)
+	if (mode != FINALIZE_DRIFT_CORRECTIONS && moving_plate == fixed_plate)
 	{
 		return Result(OPERATION_ERROR, QObject::tr("A plate cannot be its own parent."));
 	}
@@ -748,8 +759,8 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 						? GPlatesUtils::make_qstring_from_icu_string(
 								sample_iter->description().get()->get_value().get())
 						: QString();
-				const bool marked = at_one_ma &&
-						description.contains(QObject::tr("Drift Correction"), Qt::CaseInsensitive);
+				const bool marked = !sample_iter->is_disabled() && at_one_ma &&
+						has_drift_correction_marker(description);
 				if (marked)
 				{
 					has_marked_correction = true;
@@ -763,6 +774,7 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 
 			// A finalized correction replaces any existing present-day sample.
 			sample_seq_type replacement_samples;
+			bool finalized_sequence = false;
 			for (GPlatesModel::RevisionedVector<GPlatesPropertyValues::GpmlTimeSample>::const_iterator sample_iter =
 					sequence_iter->sampling->time_samples().begin();
 					sample_iter != sequence_iter->sampling->time_samples().end(); ++sample_iter)
@@ -773,18 +785,31 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 						? GPlatesUtils::make_qstring_from_icu_string(
 								sample_iter->description().get()->get_value().get())
 						: QString();
-				const bool marked = real_time && std::fabs(time - 1.0) < 1e-9 &&
-						description.contains(QObject::tr("Drift Correction"), Qt::CaseInsensitive);
+				const bool marked = !sample_iter->is_disabled() && real_time &&
+						std::fabs(time - 1.0) < 1e-9 && has_drift_correction_marker(description);
 				if (marked)
 				{
+					if (finalized_sequence)
+					{
+						return Result(OPERATION_ERROR,
+								QObject::tr("Plate %1 relative to plate %2 has more than one enabled 1 Ma drift correction.")
+										.arg(sequence_iter->moving_plate).arg(sequence_iter->fixed_plate));
+					}
 					const GPlatesPropertyValues::GpmlFiniteRotation *rotation =
 							dynamic_cast<const GPlatesPropertyValues::GpmlFiniteRotation *>(sample_iter->value().get());
-					if (rotation)
+					if (!rotation)
 					{
-						replacement_samples.push_back(create_rotation_sample(
-								0.0, rotation->get_finite_rotation(), QObject::tr("! Drift Correction (finalized)")));
-						++finalized_count;
+						return Result(OPERATION_ERROR,
+								QObject::tr("A marked drift correction for plate %1 relative to plate %2 is not a finite rotation.")
+										.arg(sequence_iter->moving_plate).arg(sequence_iter->fixed_plate));
 					}
+					replacement_samples.push_back(create_copied_rotation_sample(
+							0.0,
+							**sample_iter,
+							*rotation,
+							QString::fromLatin1("! Drift Correction (finalized)")));
+					finalized_sequence = true;
+					++finalized_count;
 				}
 				else if (!real_time || std::fabs(time) > 1e-9)
 				{
@@ -796,7 +821,10 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 				sequence_iter->feature,
 				sequence_iter->sampling_property,
 				(*sequence_iter->sampling_property)->clone(),
-				create_sampling_property(replacement_samples)
+				create_replacement_sampling_property(
+						replacement_samples,
+						*sequence_iter->sampling,
+						**sequence_iter->sampling_property)
 			};
 			changes.push_back(change);
 		}
@@ -828,7 +856,8 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 					sequence_iter->sampling->time_samples().begin();
 					sample_iter != sequence_iter->sampling->time_samples().end(); ++sample_iter)
 			{
-				if (!sample_iter->valid_time()->get_time_position().is_real())
+				if (sample_iter->is_disabled() ||
+						!sample_iter->valid_time()->get_time_position().is_real())
 				{
 					continue;
 				}
@@ -864,15 +893,21 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 				replacement_samples.push_back(sample_iter->clone());
 			}
 		}
-		replacement_samples.push_back(create_rotation_sample(
-				1.0, source_rotation->get_finite_rotation(), QObject::tr("! Drift Correction")));
+		replacement_samples.push_back(create_copied_rotation_sample(
+				1.0,
+				*source_sample,
+				*source_rotation,
+				QString::fromLatin1(DRIFT_CORRECTION_MARKER)));
 		std::sort(replacement_samples.begin(), replacement_samples.end(), sample_less_than);
 		std::unique_ptr<QUndoCommand> command(new SamplingReplacementUndoCommand(
 				d_model_interface,
 				selected_sequence->feature,
 				selected_sequence->sampling_property,
 				(*selected_sequence->sampling_property)->clone(),
-				create_sampling_property(replacement_samples),
+				create_replacement_sampling_property(
+						replacement_samples,
+						*selected_sequence->sampling,
+						**selected_sequence->sampling_property),
 				QObject::tr("add drift correction")));
 		UndoRedo::instance().get_active_undo_stack().push(command.release());
 		return Result(OPERATION_COMPLETED,
