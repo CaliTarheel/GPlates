@@ -37,8 +37,8 @@ set(srcs
     MovePoleOperation.h
     MoveVertexGeometryOperation.cc
     MoveVertexGeometryOperation.h
-	PlateIdReassignmentOperation.cc
-	PlateIdReassignmentOperation.h
+    PlateIdReassignmentOperation.cc
+    PlateIdReassignmentOperation.h
     QueryProximityThreshold.h
     RenderedArrowedPolyline.h
     RenderedCircleSymbol.h
