@@ -82,7 +82,8 @@ namespace
 	{
 		CONNECT_PLATE,
 		DISCONNECT_PLATE,
-		CREATE_PLATE
+		CREATE_PLATE,
+		COPY_PREVIOUS_POLE
 	};
 
 	enum TimeDirection
@@ -157,6 +158,22 @@ namespace
 	}
 
 
+	GPlatesPropertyValues::GpmlTimeSample::non_null_ptr_type
+	create_copied_rotation_sample(
+			double time,
+			const GPlatesPropertyValues::GpmlTimeSample &source_sample,
+			const GPlatesPropertyValues::GpmlFiniteRotation &source_rotation,
+			const QString &comment)
+	{
+		using namespace GPlatesPropertyValues;
+		return GpmlTimeSample::create(
+				source_rotation.clone(),
+				GmlTimeInstant::create(GeoTimeInstant(time)),
+				XsString::create(GPlatesUtils::make_icu_string_from_qstring(comment)),
+				source_sample.get_value_type());
+	}
+
+
 	GPlatesModel::TopLevelProperty::non_null_ptr_type
 	create_sampling_property(
 			const sample_seq_type &samples)
@@ -169,6 +186,30 @@ namespace
 				value_type);
 		return GPlatesModel::TopLevelPropertyInline::create(
 				GPlatesModel::PropertyName::create_gpml("totalReconstructionPole"), sampling);
+	}
+
+
+	GPlatesModel::TopLevelProperty::non_null_ptr_type
+	create_replacement_sampling_property(
+			const sample_seq_type &samples,
+			const GPlatesPropertyValues::GpmlIrregularSampling &original_sampling,
+			const GPlatesModel::TopLevelProperty &original_property)
+	{
+		using namespace GPlatesPropertyValues;
+		boost::optional<GpmlInterpolationFunction::non_null_ptr_type> interpolation_function;
+		const boost::optional<GpmlInterpolationFunction::non_null_ptr_to_const_type> original_interpolation_function =
+				original_sampling.interpolation_function();
+		if (original_interpolation_function)
+		{
+			interpolation_function = (*original_interpolation_function)->clone();
+		}
+		const GpmlIrregularSampling::non_null_ptr_type sampling = GpmlIrregularSampling::create(
+				samples, interpolation_function, original_sampling.get_value_type());
+		sampling->set_disabled(original_sampling.is_disabled());
+		return GPlatesModel::TopLevelPropertyInline::create(
+				original_property.get_property_name(),
+				sampling,
+				original_property.get_xml_attributes());
 	}
 
 
@@ -444,6 +485,56 @@ namespace
 		boost::optional<GPlatesModel::FeatureHandle::non_null_ptr_type> d_created_feature;
 		bool d_first_redo;
 	};
+
+
+	class SamplingReplacementUndoCommand :
+			public QUndoCommand
+	{
+	public:
+		SamplingReplacementUndoCommand(
+				GPlatesModel::ModelInterface model_interface,
+				const GPlatesModel::FeatureHandle::weak_ref &feature,
+				const GPlatesModel::FeatureHandle::iterator &property,
+				const GPlatesModel::TopLevelProperty::non_null_ptr_type &before,
+				const GPlatesModel::TopLevelProperty::non_null_ptr_type &after,
+				const QString &description) :
+			d_model_interface(model_interface),
+			d_feature(feature),
+			d_property(property),
+			d_before(before),
+			d_after(after)
+		{
+			setText(description);
+		}
+
+		virtual void redo()
+		{
+			apply(d_after);
+		}
+
+		virtual void undo()
+		{
+			apply(d_before);
+		}
+
+	private:
+		void apply(const GPlatesModel::TopLevelProperty::non_null_ptr_type &property)
+		{
+			if (!d_feature.is_valid() || !d_property.is_still_valid())
+			{
+				return;
+			}
+			GPlatesModel::NotificationGuard guard(*d_model_interface.access_model());
+			d_feature->set(d_property, property->clone());
+			guard.release_guard();
+		}
+
+		GPlatesModel::ModelInterface d_model_interface;
+		GPlatesModel::FeatureHandle::weak_ref d_feature;
+		GPlatesModel::FeatureHandle::iterator d_property;
+		GPlatesModel::TopLevelProperty::non_null_ptr_type d_before;
+		GPlatesModel::TopLevelProperty::non_null_ptr_type d_after;
+	};
 }
 
 
@@ -513,6 +604,7 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 	mode_combo->addItem(QObject::tr("Connect / re-parent plate"), CONNECT_PLATE);
 	mode_combo->addItem(QObject::tr("Disconnect plate (parent to anchor)"), DISCONNECT_PLATE);
 	mode_combo->addItem(QObject::tr("Create a new plate"), CREATE_PLATE);
+	mode_combo->addItem(QObject::tr("Copy previous pole to current time"), COPY_PREVIOUS_POLE);
 	QSpinBox *moving_plate_spin = new QSpinBox(&dialog);
 	QSpinBox *parent_plate_spin = new QSpinBox(&dialog);
 	moving_plate_spin->setRange(0, 99999999);
@@ -524,7 +616,7 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 	form->addRow(QObject::tr("Rotation collection:"), file_combo);
 	form->addRow(QObject::tr("Action:"), mode_combo);
 	form->addRow(QObject::tr("Plate ID:"), moving_plate_spin);
-	form->addRow(QObject::tr("Parent plate ID:"), parent_plate_spin);
+	form->addRow(QObject::tr("Parent / reference plate ID:"), parent_plate_spin);
 	form->addRow(QObject::tr("Effective interval:"), direction_combo);
 	layout->addLayout(form);
 
@@ -532,7 +624,9 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 			QObject::tr(
 					"Connect and disconnect split any overlapping old parent sequences at the current "
 					"time and add a new sequence sampled at existing pole times and at most 5 My apart. "
-					"A new plate starts coincident with and attached to its selected parent."), &dialog);
+					"A new plate starts coincident with and attached to its selected parent. "
+					"Copy Previous Pole duplicates the nearest older pole for the selected plate/reference "
+					"pair at the current reconstruction time."), &dialog);
 	note->setWordWrap(true);
 	layout->addWidget(note);
 
@@ -581,6 +675,84 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 	if (mode != CREATE_PLATE && !plate_ids.count(moving_plate))
 	{
 		return Result(OPERATION_ERROR, QObject::tr("Plate %1 does not exist in the selected rotation collection.").arg(moving_plate));
+	}
+	if (mode == COPY_PREVIOUS_POLE)
+	{
+		const RotationSequence *selected_sequence = NULL;
+		const GPlatesPropertyValues::GpmlTimeSample *source_sample = NULL;
+		double source_time = 1e100;
+		for (sequence_seq_type::const_iterator sequence_iter = sequences.begin();
+				sequence_iter != sequences.end(); ++sequence_iter)
+		{
+			if (sequence_iter->moving_plate != moving_plate || sequence_iter->fixed_plate != fixed_plate)
+			{
+				continue;
+			}
+			for (GPlatesModel::RevisionedVector<GPlatesPropertyValues::GpmlTimeSample>::const_iterator sample_iter =
+					sequence_iter->sampling->time_samples().begin();
+					sample_iter != sequence_iter->sampling->time_samples().end(); ++sample_iter)
+			{
+				if (sample_iter->is_disabled() ||
+						!sample_iter->valid_time()->get_time_position().is_real())
+				{
+					continue;
+				}
+				const double time = sample_time(**sample_iter);
+				if (time > current_time + 1e-9 && time < source_time)
+				{
+					selected_sequence = &*sequence_iter;
+					source_sample = &**sample_iter;
+					source_time = time;
+				}
+			}
+		}
+
+		if (!selected_sequence || !source_sample)
+		{
+			return Result(OPERATION_ERROR,
+					QObject::tr("No pole older than %1 Ma was found for plate %2 relative to plate %3.")
+							.arg(current_time, 0, 'f', 2).arg(moving_plate).arg(fixed_plate));
+		}
+		const GPlatesPropertyValues::GpmlFiniteRotation *source_rotation =
+				dynamic_cast<const GPlatesPropertyValues::GpmlFiniteRotation *>(source_sample->value().get());
+		if (!source_rotation)
+		{
+			return Result(OPERATION_ERROR, QObject::tr("The selected pole is not a finite rotation."));
+		}
+
+		sample_seq_type replacement_samples;
+		for (GPlatesModel::RevisionedVector<GPlatesPropertyValues::GpmlTimeSample>::const_iterator sample_iter =
+				selected_sequence->sampling->time_samples().begin();
+				sample_iter != selected_sequence->sampling->time_samples().end(); ++sample_iter)
+		{
+			if (!sample_iter->valid_time()->get_time_position().is_real() ||
+					std::fabs(sample_time(**sample_iter) - current_time) > 1e-9)
+			{
+				replacement_samples.push_back(sample_iter->clone());
+			}
+		}
+		replacement_samples.push_back(create_copied_rotation_sample(
+				current_time,
+				*source_sample,
+				*source_rotation,
+				QObject::tr("GreaterPlates: copied pole from %1 Ma").arg(source_time, 0, 'f', 2)));
+		std::sort(replacement_samples.begin(), replacement_samples.end(), sample_less_than);
+
+		std::unique_ptr<QUndoCommand> command(new SamplingReplacementUndoCommand(
+				d_model_interface,
+				selected_sequence->feature,
+				selected_sequence->sampling_property,
+				(*selected_sequence->sampling_property)->clone(),
+				create_replacement_sampling_property(
+						replacement_samples,
+						*selected_sequence->sampling,
+						**selected_sequence->sampling_property),
+				QObject::tr("copy previous rotation pole")));
+		UndoRedo::instance().get_active_undo_stack().push(command.release());
+		return Result(OPERATION_COMPLETED,
+				QObject::tr("Copied the %1 Ma pole for plate %2 relative to plate %3 to %4 Ma. Use Edit > Undo to restore the sequence.")
+						.arg(source_time, 0, 'f', 2).arg(moving_plate).arg(fixed_plate)
+						.arg(current_time, 0, 'f', 2));
 	}
 	if (direction == TOWARD_PRESENT && current_time <= 1e-9)
 	{
