@@ -1154,6 +1154,8 @@ GPlatesQtWidgets::ViewportWindow::handle_globe_feature_context_menu(
 		Qt::MouseButton button,
 		Qt::KeyboardModifiers modifiers)
 {
+	Q_UNUSED(modifiers);
+
 	if (button != Qt::RightButton || !is_on_globe)
 	{
 		return;
@@ -1171,6 +1173,8 @@ GPlatesQtWidgets::ViewportWindow::handle_map_feature_context_menu(
 		Qt::MouseButton button,
 		Qt::KeyboardModifiers modifiers)
 {
+	Q_UNUSED(modifiers);
+
 	if (button != Qt::RightButton || !is_on_surface)
 	{
 		return;
