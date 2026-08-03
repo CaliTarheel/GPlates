@@ -118,6 +118,7 @@ namespace GPlatesQtWidgets
 	class PythonConsoleDialog;
 	class ReconstructionViewWidget;
 	class SearchResultsDockWidget;
+	class ProjectDocumentsDockWidget;
 	class SmallCircleManager;
 	class TaskPanel;
 
@@ -186,6 +187,9 @@ namespace GPlatesQtWidgets
 
 		SearchResultsDockWidget &
 		search_results_dock_widget();
+
+		ProjectDocumentsDockWidget &
+		project_documents_dock_widget();
 
 		GlobeCanvas &
 		globe_canvas();
@@ -656,6 +660,9 @@ namespace GPlatesQtWidgets
 		 * A tabbed toolbar for the canvas tools.
 		 */
 		QPointer<CanvasToolBarDockWidget> d_canvas_tools_dock_ptr;
+
+		//! Associated Markdown documents, editor/preview and project metadata status.
+		QPointer<ProjectDocumentsDockWidget> d_project_documents_dock_ptr;
 
 		/**
 		 * The central widget in the main window containing everything except the menubar,
