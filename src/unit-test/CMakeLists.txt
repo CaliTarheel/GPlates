@@ -56,6 +56,8 @@ set(srcs
     NaturalizeCoastlineTest.h
     PresentationTestSuite.cc
     PresentationTestSuite.h
+    ProjectMetadataTest.cc
+    ProjectMetadataTest.h
     PropertyValuesTestSuite.cc
     PropertyValuesTestSuite.h
     RealTest.cc
