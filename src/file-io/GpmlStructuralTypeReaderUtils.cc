@@ -1247,7 +1247,6 @@ GPlatesFileIO::GpmlStructuralTypeReaderUtils::create_lon_lat_pos(
 	// NOTE: We are assuming GPML is using (lat,lon) ordering.
 	// See http://trac.gplates.org/wiki/CoordinateReferenceSystem for details.
 	const double lat = pos_2d.first;
-	// FIXME: Check is.status() here!
 	const double lon = pos_2d.second;
 
 	if ( ! (GPlatesMaths::LatLonPoint::is_valid_latitude(lat) &&
@@ -1312,7 +1311,6 @@ GPlatesFileIO::GpmlStructuralTypeReaderUtils::create_lon_lat_coordinates(
 	// NOTE: We are assuming GPML is using (lat,lon) ordering.
 	// See http://trac.gplates.org/wiki/CoordinateReferenceSystem for details.
 	const double lat = coordinates_2d.first;
-	// FIXME: Check is.status() here!
 	const double lon = coordinates_2d.second;
 
 	if ( ! (GPlatesMaths::LatLonPoint::is_valid_latitude(lat) &&
@@ -1380,12 +1378,38 @@ GPlatesFileIO::GpmlStructuralTypeReaderUtils::create_polyline(
 		double lat = 0.0;
 		double lon = 0.0;
 
-		// FIXME: What should I do if one (or both) of these are screwed?
 		// NOTE: We are assuming GPML is using (lat,lon) ordering.
 		// See http://trac.gplates.org/wiki/CoordinateReferenceSystem for details.
+		//
+		// A failed extraction leaves 'lat'/'lon' at their initialised 0.0, and (0,0) is a
+		// perfectly valid lat/lon, so the range check below cannot detect it. Without
+		// testing the stream status here a malformed coordinate list silently contributes
+		// a point off the west coast of Africa and then loses every remaining coordinate
+		// when the loop condition notices the error.
 		is >> lat;
-		// FIXME: Check is.status() here!
+		if (is.status() != QTextStream::Ok)
+		{
+			if (is.status() == QTextStream::ReadCorruptData)
+			{
+				throw GpmlReaderException(GPLATES_EXCEPTION_SOURCE,
+						elem, GPlatesFileIO::ReadErrors::InvalidLatLonPoint,
+						EXCEPTION_SOURCE);
+			}
+
+			// Read past the end - the coordinate list is simply finished. The stream can
+			// still contain trailing whitespace at this point, which is why this is not
+			// caught by the 'atEnd()' test in the loop condition.
+			break;
+		}
+
 		is >> lon;
+		if (is.status() != QTextStream::Ok)
+		{
+			// A latitude with no matching longitude - the coordinate list is malformed.
+			throw GpmlReaderException(GPLATES_EXCEPTION_SOURCE,
+					elem, GPlatesFileIO::ReadErrors::InvalidLatLonPoint,
+					EXCEPTION_SOURCE);
+		}
 
 		if ( ! (GPlatesMaths::LatLonPoint::is_valid_latitude(lat) &&
 				GPlatesMaths::LatLonPoint::is_valid_longitude(lon))) {
@@ -1456,12 +1480,38 @@ GPlatesFileIO::GpmlStructuralTypeReaderUtils::create_polygon_ring(
 		double lat = 0.0;
 		double lon = 0.0;
 
-		// FIXME: What should I do if one (or both) of these are screwed?
 		// NOTE: We are assuming GPML is using (lat,lon) ordering.
 		// See http://trac.gplates.org/wiki/CoordinateReferenceSystem for details.
+		//
+		// A failed extraction leaves 'lat'/'lon' at their initialised 0.0, and (0,0) is a
+		// perfectly valid lat/lon, so the range check below cannot detect it. Without
+		// testing the stream status here a malformed coordinate list silently contributes
+		// a point off the west coast of Africa and then loses every remaining coordinate
+		// when the loop condition notices the error.
 		is >> lat;
-		// FIXME: Check is.status() here!
+		if (is.status() != QTextStream::Ok)
+		{
+			if (is.status() == QTextStream::ReadCorruptData)
+			{
+				throw GpmlReaderException(GPLATES_EXCEPTION_SOURCE,
+						elem, GPlatesFileIO::ReadErrors::InvalidLatLonPoint,
+						EXCEPTION_SOURCE);
+			}
+
+			// Read past the end - the coordinate list is simply finished. The stream can
+			// still contain trailing whitespace at this point, which is why this is not
+			// caught by the 'atEnd()' test in the loop condition.
+			break;
+		}
+
 		is >> lon;
+		if (is.status() != QTextStream::Ok)
+		{
+			// A latitude with no matching longitude - the coordinate list is malformed.
+			throw GpmlReaderException(GPLATES_EXCEPTION_SOURCE,
+					elem, GPlatesFileIO::ReadErrors::InvalidLatLonPoint,
+					EXCEPTION_SOURCE);
+		}
 
 		if ( ! (GPlatesMaths::LatLonPoint::is_valid_latitude(lat) &&
 				GPlatesMaths::LatLonPoint::is_valid_longitude(lon))) {
