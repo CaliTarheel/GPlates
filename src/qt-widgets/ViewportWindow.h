@@ -37,6 +37,8 @@
 #include <QTimer>
 #include <QCloseEvent>
 #include <QMainWindow>
+#include <QPoint>
+#include <QPointF>
 #include <QPointer>
 #include <QString>
 #include <QStringList>
@@ -47,6 +49,8 @@
 #include "canvas-tools/CanvasTool.h"
 
 #include "gui/CanvasToolWorkflows.h"
+
+#include "model/FeatureHandle.h"
 
 
 namespace GPlatesAppLogic
@@ -82,6 +86,11 @@ namespace GPlatesGui
 	class UtilitiesMenu;
 }
 
+namespace GPlatesMaths
+{
+	class PointOnSphere;
+}
+
 namespace GPlatesPresentation
 {
 	class ViewState;
@@ -92,6 +101,12 @@ namespace GPlatesViewOperations
 {
 	class CloneOperation;
 	class DeleteFeatureOperation;
+	class NaturalizeCoastlineOperation;
+	class PlateDirectionArrowsOperation;
+	class PlateIdReassignmentOperation;
+	class RotationFileEditorOperation;
+	class SplitPlateOperation;
+	class SubductionCutterOperation;
 }
 
 namespace GPlatesQtWidgets
@@ -212,6 +227,11 @@ namespace GPlatesQtWidgets
 		GPlatesGui::UtilitiesMenu &
 		utilities_menu();
 
+		/** Shows statistics for the currently focused feature at a global screen position. */
+		void
+		show_focused_feature_context_menu(
+				const QPoint &global_position);
+
 	public Q_SLOTS:
 		
 		void
@@ -222,6 +242,13 @@ namespace GPlatesQtWidgets
 		void
 		enable_or_disable_feature_actions(
 				GPlatesGui::FeatureFocus &feature_focus);
+
+		void
+		remember_created_feature(
+				GPlatesModel::FeatureHandle::weak_ref feature);
+
+		void
+		select_last_created_feature();
 
 		void
 		handle_load_symbol_file();
@@ -322,6 +349,9 @@ namespace GPlatesQtWidgets
 		connect_tools_menu_actions();
 
 		void
+		connect_world_building_menu_actions();
+
+		void
 		connect_window_menu_actions();
 
 		void
@@ -344,6 +374,11 @@ namespace GPlatesQtWidgets
 		void
 		set_window_title(
 				boost::optional<QString> project_filename = boost::none);
+
+		void
+		show_feature_context_menu_at_point(
+				const GPlatesMaths::PointOnSphere &point_on_sphere,
+				double proximity_inclusion_threshold);
 
 	private Q_SLOTS:
 
@@ -426,6 +461,21 @@ namespace GPlatesQtWidgets
 				GPlatesGui::CanvasToolWorkflows::ToolType tool);
 
 		void
+		handle_globe_feature_context_menu(
+				const GPlatesMaths::PointOnSphere &click_position,
+				const GPlatesMaths::PointOnSphere &oriented_click_position,
+				bool is_on_globe,
+				Qt::MouseButton button,
+				Qt::KeyboardModifiers modifiers);
+
+		void
+		handle_map_feature_context_menu(
+				const QPointF &click_position,
+				bool is_on_surface,
+				Qt::MouseButton button,
+				Qt::KeyboardModifiers modifiers);
+
+		void
 		handle_changed_project_filename(
 				boost::optional<QString> project_filename);
 
@@ -474,6 +524,18 @@ namespace GPlatesQtWidgets
 		pop_up_python_console();
 
 		void
+		handle_split_plate();
+
+		void
+		handle_naturalize_coastline();
+
+		void
+		handle_subduction_cutter();
+
+		void
+		handle_rotation_file_editor();
+
+		void
 		open_dataset_webpage();
 		
 	private:
@@ -513,6 +575,23 @@ namespace GPlatesQtWidgets
 
 		//! For deleting a feature.
 		boost::scoped_ptr<GPlatesViewOperations::DeleteFeatureOperation> d_delete_feature_operation_ptr;
+
+		//! For splitting a polygon feature with a selected polyline.
+		boost::scoped_ptr<GPlatesViewOperations::SplitPlateOperation> d_split_plate_operation_ptr;
+
+		//! For roughening long coastline sections while preserving shared geometry.
+		boost::scoped_ptr<GPlatesViewOperations::NaturalizeCoastlineOperation> d_naturalize_coastline_operation_ptr;
+
+		//! For chronologically cutting subducting plate polygons beneath an overriding plate.
+		boost::scoped_ptr<GPlatesViewOperations::SubductionCutterOperation> d_subduction_cutter_operation_ptr;
+
+		//! For motion-preserving plate circuit edits in loaded rotation collections.
+		boost::scoped_ptr<GPlatesViewOperations::RotationFileEditorOperation> d_rotation_file_editor_operation_ptr;
+
+		boost::scoped_ptr<GPlatesViewOperations::PlateIdReassignmentOperation> d_plate_id_reassignment_operation_ptr;
+
+		//! For drawing direct plate-motion arrows on visible features.
+		boost::scoped_ptr<GPlatesViewOperations::PlateDirectionArrowsOperation> d_plate_direction_arrows_operation_ptr;
 
 
 		/**
@@ -593,6 +672,9 @@ namespace GPlatesQtWidgets
 		QPointer<QAction> d_undo_action_ptr;
 
 		QPointer<QAction> d_redo_action_ptr;
+
+		QPointer<QAction> d_select_last_created_feature_action;
+		GPlatesModel::FeatureHandle::weak_ref d_last_created_feature;
 
 		// To prevent infinite loops.
 		bool d_inside_update_undo_action_tooltip;

@@ -30,10 +30,13 @@ __pycache__/
 # /
 #
 /build*/
+/.conda-env/
 /INSTALL
+/install/
 /gmon.out
 /_CPack_Packages/
 /bin/
+/playtest-install/
 /install_manifest*.txt
 /.vs*
 /*.log

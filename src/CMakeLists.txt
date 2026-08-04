@@ -599,6 +599,21 @@ if (GPLATES_USE_PRECOMPILED_HEADERS)
 	set(_EXCLUDE_PCH_SOURCE_FILES
 			# HellingerThread.cc redefines BOOST_PYTHON_MAX_ARITY, so Boost headers (eg, pre-compiled header) cannot be included before that...
 			qt-widgets/HellingerThread.cc)
+
+	# OpenGL translation units deliberately include GLEW before any Qt/OpenGL
+	# headers. A forced precompiled header either reverses that order or consumes
+	# GLEW before the translation unit can establish its extension declarations,
+	# which leaves symbols such as glMapBufferRange unavailable on MSVC. Keep the
+	# project PCH for the rest of the codebase, but preserve the explicit include
+	# contract of every OpenGL source file.
+	get_target_property(_SOURCE_FILES ${SOURCE_TARGET} SOURCES)
+	foreach(_SOURCE_FILE IN LISTS _SOURCE_FILES)
+		if (_SOURCE_FILE MATCHES "/opengl/.*\\.cc$")
+			list(APPEND _EXCLUDE_PCH_SOURCE_FILES "${_SOURCE_FILE}")
+		endif()
+	endforeach()
+	unset(_SOURCE_FILES)
+
 	foreach(_SOURCE_FILE IN LISTS _EXCLUDE_PCH_SOURCE_FILES)
 		set_source_files_properties(${_SOURCE_FILE} PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 	endforeach()
@@ -618,6 +633,16 @@ target_include_directories(${SOURCE_TARGET} PUBLIC ${PROJECT_BINARY_DIR}/src)
 
 # External library include directories are treated as system include directories.
 # 'src/system-fixes' contains files copied from external libraries.
+#
+# The Python.h wrapper in this directory uses '#include_next' to reach the real
+# Python header after clearing CGAL CORE's incompatible LONG_BIT macro. MSVC does
+# not implement '#include_next', so put the real Python include directory ahead
+# of the wrapper on that compiler. The Windows LONG_BIT definition below then
+# prevents CGAL CORE from introducing the incompatible definition in the first
+# place.
+if (MSVC)
+	target_include_directories(${SOURCE_TARGET} SYSTEM BEFORE PUBLIC ${Python3_INCLUDE_DIRS})
+endif()
 target_include_directories(${SOURCE_TARGET} SYSTEM PUBLIC ${PROJECT_SOURCE_DIR}/src/system-fixes)
 
 
@@ -639,6 +664,14 @@ target_compile_definitions(${SOURCE_TARGET} PUBLIC BOOST_VARIANT_USE_RELAXED_GET
 # Temporary avoidance of warning in Boost due to bug in version 1.69 caused by using deprecated "boost/pending/integer_log2.hpp".
 # Apparently it wasn't fixed in 1.69 (only 1.70 and above).
 target_compile_definitions(${SOURCE_TARGET} PUBLIC BOOST_ALLOW_DEPRECATED_HEADERS)
+
+# CGAL CORE defines LONG_BIT using sizeof(long), which cannot be evaluated by
+# the preprocessor when a Python header later compares LONG_BIT in a #if.
+# Windows uses the LLP64 ABI, where long is always 32 bits, so provide a
+# preprocessor-compatible definition before either dependency is included.
+if (WIN32)
+	target_compile_definitions(${SOURCE_TARGET} PUBLIC LONG_BIT=32)
+endif()
 
 #
 # COMPILE_DEFINITIONS (target property) for MSVC compiler only.

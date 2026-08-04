@@ -42,6 +42,7 @@
 namespace GPlatesCanvasTools
 {
 	class GeometryOperationState;
+	class ModifyGeometryState;
 }
 
 namespace GPlatesViewOperations
@@ -64,6 +65,7 @@ namespace GPlatesQtWidgets
 		explicit
 		ModifyGeometryWidget(
 				GPlatesCanvasTools::GeometryOperationState &geometry_operation_state,
+				GPlatesCanvasTools::ModifyGeometryState &modify_geometry_state,
 				QWidget *parent_ = NULL);
 
 		~ModifyGeometryWidget();
@@ -78,6 +80,24 @@ namespace GPlatesQtWidgets
 		void
 		handle_activation();
 
+	private Q_SLOTS:
+		void
+		handle_delete_selected_vertices();
+
+		void
+		handle_average_selected_vertex_positions();
+
+		void
+		handle_cluster_selected_vertices();
+
+		void
+		handle_snap_selected_vertices_to_plate();
+
+		void
+		handle_vertex_selection_state_changed(
+				unsigned int selected_vertex_count,
+				bool can_delete_selection);
+
 	private:
 
 		QTreeWidget *
@@ -91,6 +111,8 @@ namespace GPlatesQtWidgets
 		 * and fills in the table accordingly.
 		 */
 		boost::scoped_ptr<LatLonCoordinatesTable> d_lat_lon_coordinates_table;
+
+		GPlatesCanvasTools::ModifyGeometryState &d_modify_geometry_state;
 		
 	};
 }
