@@ -25,6 +25,7 @@
 #include <QObject>
 #include <QProgressDialog>
 #include <QPushButton>
+#include <QStringList>
 #include <QSpinBox>
 #include <QUndoCommand>
 #include <QVariant>
@@ -40,6 +41,7 @@
 #include "app-logic/Layer.h"
 #include "app-logic/LayerTaskType.h"
 #include "app-logic/PartitionFeatureUtils.h"
+#include "app-logic/PlanetaryParameters.h"
 #include "app-logic/ProjectTimestampSchedule.h"
 #include "app-logic/ReconstructLayerProxy.h"
 #include "app-logic/ReconstructedFeatureGeometry.h"
@@ -723,6 +725,8 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 	unsigned int cut_events = 0;
 	unsigned int subducted_pieces = 0;
 	unsigned int checks_without_overriding_polygon = 0;
+	double retired_area_steradians = 0.0;
+	QStringList retirement_event_details;
 
 	try
 	{
@@ -834,13 +838,24 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 
 						source->changed = true;
 						++cut_events;
+						double event_area_steradians = 0.0;
 						for (polygon_seq_type::const_iterator inside_iter = cut_result.inside.begin();
 								inside_iter != cut_result.inside.end(); ++inside_iter)
 						{
+							event_area_steradians += (*inside_iter)->get_area().dval();
 							source->subducted.push_back(TimedPiece(
 									rotate_polygon(**inside_iter, rfg, true), check_time + 0.01));
 							++subducted_pieces;
 						}
+						retired_area_steradians += event_area_steradians;
+						const double radius_km = d_application_state.get_planetary_parameters().
+								effective_radius_kilometres();
+						retirement_event_details.append(QObject::tr(
+								"%1 Ma — feature %2 — %3 million km² retired")
+									.arg(check_time, 0, 'f', 2)
+									.arg(rfg.feature_handle_ptr()->feature_id().get().qstring())
+									.arg(event_area_steradians * radius_km * radius_km / 1.0e6,
+											0, 'f', 3));
 						for (polygon_seq_type::const_iterator outside_iter = cut_result.outside.begin();
 								outside_iter != cut_result.outside.end(); ++outside_iter)
 						{
@@ -890,24 +905,42 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 	}
 
 	unsigned int surviving_pieces = 0;
+	double surviving_area_steradians = 0.0;
 	for (tracked_source_seq_type::const_iterator source_iter = tracked_sources.begin();
 			source_iter != tracked_sources.end(); ++source_iter)
 	{
 		if (source_iter->changed)
 		{
 			surviving_pieces += static_cast<unsigned int>(source_iter->remaining.size());
+			for (polygon_seq_type::const_iterator piece_iter = source_iter->remaining.begin();
+					piece_iter != source_iter->remaining.end(); ++piece_iter)
+			{
+				surviving_area_steradians += (*piece_iter)->get_area().dval();
+			}
 		}
 	}
+	const double radius_km = d_application_state.get_planetary_parameters().
+			effective_radius_kilometres();
 	const QString preview_summary = QObject::tr(
 			"Preview complete.\n\n"
-			"OceanicCrust source features changed: %1\n"
-			"First-overlap cut events: %2\n"
-			"Surviving pieces: %3\n"
-			"Pieces receiving disappearance times: %4\n"
-			"Detection checks: %5\n\n"
-			"The View has been restored to %6 Ma. No feature data has changed yet.")
+			"Interval: %1 to %2 Ma in %3 checks (%4 My/check)\n"
+			"Subducting Plate %5 → overriding Plate %6\n\n"
+			"OceanicCrust source features changed: %7\n"
+			"First-overlap cut events: %8\n"
+			"Surviving pieces: %9 (%10 million km²)\n"
+			"Pieces receiving disappearance times: %11 (%12 million km²)\n\n"
+			"The View has been restored to %13 Ma. No feature data has changed yet. Expand Details to review every first-overlap event.")
+				.arg(selected_older_time, 0, 'f', 2)
+				.arg(selected_younger_time, 0, 'f', 2)
+				.arg(selected_checks)
+				.arg(time_step, 0, 'f', 2)
+				.arg(static_cast<qulonglong>(subducting_plate_id))
+				.arg(static_cast<qulonglong>(overriding_plate_id))
 				.arg(changed_features).arg(cut_events).arg(surviving_pieces)
-				.arg(subducted_pieces).arg(selected_checks).arg(original_time, 0, 'f', 2);
+				.arg(surviving_area_steradians * radius_km * radius_km / 1.0e6, 0, 'f', 3)
+				.arg(subducted_pieces)
+				.arg(retired_area_steradians * radius_km * radius_km / 1.0e6, 0, 'f', 3)
+				.arg(original_time, 0, 'f', 2);
 	d_application_state.set_reconstruction_time(original_time);
 	QMessageBox confirmation(
 			QMessageBox::Question,
@@ -916,6 +949,7 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 			QMessageBox::Ok | QMessageBox::Cancel,
 			parent_widget);
 	confirmation.button(QMessageBox::Ok)->setText(QObject::tr("Apply Retirement"));
+	confirmation.setDetailedText(retirement_event_details.join("\n"));
 	confirmation.setDefaultButton(QMessageBox::Cancel);
 	if (confirmation.exec() != QMessageBox::Ok)
 	{
