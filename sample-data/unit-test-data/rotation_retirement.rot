@@ -1,0 +1,11 @@
+702   0.0   0.0    0.0    0.0  000 ! D6 parent plate
+702 100.0  30.0   60.0   20.0  000 ! D6 parent plate
+701   0.0   0.0    0.0    0.0  000 ! D6 younger parent sequence: remove feature
+701  40.0  10.0   20.0    5.0  000 ! D6 younger parent sequence: remove feature
+701  40.0  10.0   20.0    5.0  702 ! D6 crossing sequence: remove 40 Ma
+701  75.0  20.0   40.0   10.0  702 ! D6 crossing sequence: retain; create 50 Ma boundary
+701 100.0  25.0   50.0   15.0  702 ! D6 crossing sequence: retain
+703   0.0   0.0    0.0    0.0  000 ! D6 unrelated control plate: leave unchanged
+703 100.0  15.0   30.0   10.0  000 ! D6 unrelated control plate: leave unchanged
+704  60.0   0.0    0.0    0.0  000 ! D6 older-only control sequence: leave unchanged
+704 100.0   0.0    0.0    0.0  000 ! D6 older-only control sequence: leave unchanged
