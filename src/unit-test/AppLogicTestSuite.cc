@@ -33,6 +33,7 @@
 #include "unit-test/GenerateVelocityDomainCitcomsTest.h"
 #include "unit-test/ProjectMetadataTest.h"
 #include "unit-test/ProjectTimestampScheduleTest.h"
+#include "unit-test/WorldbuildingProjectManifestTest.h"
 
 
 GPlatesUnitTest::AppLogicTestSuite::AppLogicTestSuite(
@@ -50,5 +51,6 @@ GPlatesUnitTest::AppLogicTestSuite::construct_maps()
 	ADD_TESTSUITE(GenerateVelocityDomainCitcoms);
 	ADD_TESTSUITE(ProjectMetadata);
 	ADD_TESTSUITE(ProjectTimestampSchedule);
+	ADD_TESTSUITE(WorldbuildingProjectManifest);
 }
 

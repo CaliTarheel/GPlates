@@ -1092,8 +1092,10 @@ GPlatesViewOperations::PostCollisionRiftOperation::commit(
 		GPlatesAppLogic::FeatureCollectionFileIO &file_io =
 				d_application_state.get_feature_collection_file_io();
 		FeatureGroup mor_group;
-		mor_group.collection = create_named_empty_feature_collection(
-				file_io, QObject::tr("Active Mid-Ocean Ridges")).get_file().get_feature_collection();
+		mor_group.collection = resolve_or_create_worldbuilding_feature_collection(
+				file_io, d_application_state.get_feature_collection_file_state(),
+				QString::fromLatin1("mors"),
+				QObject::tr("Active Mid-Ocean Ridges")).get_file().get_feature_collection();
 		mor_group.features.push_back(MORFeatureBuilder::create_half_stage_mor(
 				QObject::tr("%1 - %2 Post-Collision Rift").arg(left_name.trimmed(), right_name.trimmed()),
 				current_time, left_plate_id, right_plate_id,

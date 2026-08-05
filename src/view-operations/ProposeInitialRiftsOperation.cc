@@ -1232,8 +1232,10 @@ GPlatesViewOperations::ProposeInitialRiftsOperation::trigger(
 
 		std::vector<FeatureGroup> groups;
 		GPlatesAppLogic::FeatureCollectionFileState::file_reference mor_output_file =
-				create_named_empty_feature_collection(
+				resolve_or_create_worldbuilding_feature_collection(
 						d_application_state.get_feature_collection_file_io(),
+						d_application_state.get_feature_collection_file_state(),
+						QString::fromLatin1("provisional-mors"),
 						QObject::tr("Provisional Mid-Ocean Ridges"));
 		const GPlatesModel::FeatureCollectionHandle::weak_ref mor_collection =
 				mor_output_file.get_file().get_feature_collection();
@@ -1243,8 +1245,10 @@ GPlatesViewOperations::ProposeInitialRiftsOperation::trigger(
 		if (!failed_features.empty())
 		{
 			GPlatesAppLogic::FeatureCollectionFileState::file_reference failed_output_file =
-					create_named_empty_feature_collection(
+					resolve_or_create_worldbuilding_feature_collection(
 							d_application_state.get_feature_collection_file_io(),
+							d_application_state.get_feature_collection_file_state(),
+							QString::fromLatin1("failed-rifts"),
 							QObject::tr("Failed Rifts"));
 			failed_collection = failed_output_file.get_file().get_feature_collection();
 			groups.push_back(FeatureGroup(failed_collection, failed_features));

@@ -577,8 +577,10 @@ GPlatesViewOperations::GenerateMantleEventsOperation::commit()
 		std::vector<QString> names;
 
 		FeatureGroup active_lip;
-		active_lip.collection = create_named_empty_feature_collection(
-				file_io, QObject::tr("Active Large Igneous Provinces")).get_file().get_feature_collection();
+		active_lip.collection = resolve_or_create_worldbuilding_feature_collection(
+				file_io, d_application_state.get_feature_collection_file_state(),
+				QString::fromLatin1("active-lips"),
+				QObject::tr("Active Large Igneous Provinces")).get_file().get_feature_collection();
 		active_lip.features.push_back(create_lip(
 				event_name, current_time, active_end, current_time,
 				d_continent->plate_id, present_lip));
@@ -586,8 +588,10 @@ GPlatesViewOperations::GenerateMantleEventsOperation::commit()
 		names.push_back(QObject::tr("active LIP"));
 
 		FeatureGroup former_lip;
-		former_lip.collection = create_named_empty_feature_collection(
-				file_io, QObject::tr("Former Large Igneous Provinces")).get_file().get_feature_collection();
+		former_lip.collection = resolve_or_create_worldbuilding_feature_collection(
+				file_io, d_application_state.get_feature_collection_file_state(),
+				QString::fromLatin1("former-lips"),
+				QObject::tr("Former Large Igneous Provinces")).get_file().get_feature_collection();
 		former_lip.features.push_back(create_lip(
 				QObject::tr("Former %1").arg(event_name), active_end, boost::none,
 				current_time, d_continent->plate_id, present_lip));
@@ -607,8 +611,10 @@ GPlatesViewOperations::GenerateMantleEventsOperation::commit()
 					.arg(current_time, 0, 'f', 0).arg(d_continent->plate_id);
 
 			FeatureGroup hotspots;
-			hotspots.collection = create_named_empty_feature_collection(
-					file_io, QObject::tr("Hotspots")).get_file().get_feature_collection();
+			hotspots.collection = resolve_or_create_worldbuilding_feature_collection(
+					file_io, d_application_state.get_feature_collection_file_state(),
+					QString::fromLatin1("hotspots"),
+					QObject::tr("Hotspots")).get_file().get_feature_collection();
 			hotspots.features.push_back(create_hotspot(
 					hotspot_name, current_time, hotspot_end,
 					d_preview->options.mantle_plate_id, present_hotspot));
@@ -616,8 +622,10 @@ GPlatesViewOperations::GenerateMantleEventsOperation::commit()
 			names.push_back(QObject::tr("Hotspots"));
 
 			FeatureGroup trails;
-			trails.collection = create_named_empty_feature_collection(
-					file_io, QObject::tr("Hotspot Trails")).get_file().get_feature_collection();
+			trails.collection = resolve_or_create_worldbuilding_feature_collection(
+					file_io, d_application_state.get_feature_collection_file_state(),
+					QString::fromLatin1("hotspot-trails"),
+					QObject::tr("Hotspot Trails")).get_file().get_feature_collection();
 			trails.features.push_back(create_motion_path(
 					hotspot_name, current_time, hotspot_end,
 					d_preview->options.trail_step_ma,

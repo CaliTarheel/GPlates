@@ -204,7 +204,9 @@ namespace
 				GPlatesGui::FeatureFocus &feature_focus,
 				GPlatesModel::ModelInterface model_interface,
 				const GPlatesModel::FeatureCollectionHandle::weak_ref &collection,
-				const std::vector<GPlatesModel::FeatureHandle::non_null_ptr_type> &features) :
+				const std::vector<GPlatesModel::FeatureHandle::non_null_ptr_type> &features,
+				QUndoCommand *parent = NULL) :
+			QUndoCommand(parent),
 			d_feature_focus(feature_focus),
 			d_model_interface(model_interface),
 			d_collection(collection),
@@ -725,8 +727,8 @@ GPlatesViewOperations::GenerateSubductionEffectsOperation::commit()
 						get_default_reconstruction_layer_output()->get_reconstruction_tree_creator();
 		const GPlatesAppLogic::ReconstructionTree::non_null_ptr_to_const_type tree =
 				tree_creator.get_reconstruction_tree(current_time);
-		std::vector<GPlatesModel::FeatureHandle::non_null_ptr_type> features;
-		QString layer_name;
+		std::vector<GPlatesModel::FeatureHandle::non_null_ptr_type> island_arc_features;
+		std::vector<GPlatesModel::FeatureHandle::non_null_ptr_type> active_orogeny_features;
 		if (d_preview->options.effect_type == SubductionEffectsGeometry::ISLAND_ARC)
 		{
 			if (!d_preview->geometry.guide)
@@ -739,7 +741,7 @@ GPlatesViewOperations::GenerateSubductionEffectsOperation::commit()
 			const GPlatesMaths::PolylineOnSphere::non_null_ptr_to_const_type present_arc =
 					GPlatesMaths::get_reverse(overriding_rotation) *
 							*d_preview->geometry.guide;
-			features.push_back(create_island_arc(
+			island_arc_features.push_back(create_island_arc(
 					QObject::tr("Plate %1 Island Arc")
 							.arg(d_captured_subduction->overriding_plate),
 					current_time, d_captured_subduction->overriding_plate,
@@ -754,15 +756,12 @@ GPlatesViewOperations::GenerateSubductionEffectsOperation::commit()
 				const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type present_belt =
 						GPlatesMaths::get_reverse(land_rotation) *
 								d_preview->land_belts[index].polygon;
-				features.push_back(create_orogenic_belt(
+				active_orogeny_features.push_back(create_orogenic_belt(
 						QObject::tr("Plate %1 Arc-Intersection Active Orogeny %2")
 								.arg(d_preview->land_belts[index].plate_id).arg(index + 1),
 						current_time, d_preview->land_belts[index].plate_id,
 						overriding_is_left, present_belt));
 			}
-			layer_name = d_preview->land_belts.empty()
-					? QObject::tr("Island Arcs")
-					: QObject::tr("Island Arcs + Active Orogenies");
 		}
 		else
 		{
@@ -774,7 +773,7 @@ GPlatesViewOperations::GenerateSubductionEffectsOperation::commit()
 			const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type present_belt =
 					GPlatesMaths::get_reverse(overriding_rotation) *
 							d_preview->geometry.polygons.front();
-			features.push_back(create_orogenic_belt(
+			active_orogeny_features.push_back(create_orogenic_belt(
 					QObject::tr("Plate %1 %2 Active Orogeny")
 							.arg(d_captured_subduction->overriding_plate)
 							.arg(laramide ? QObject::tr("Laramide") : QObject::tr("Andean")),
@@ -782,23 +781,44 @@ GPlatesViewOperations::GenerateSubductionEffectsOperation::commit()
 					d_captured_subduction->declared_left !=
 							d_preview->options.flip_declared_polarity,
 					present_belt));
-			layer_name = QObject::tr("Active Orogenies");
 		}
 
-		GPlatesAppLogic::FeatureCollectionFileState::file_reference file =
-				create_named_empty_feature_collection(
-						d_application_state.get_feature_collection_file_io(), layer_name);
-		const GPlatesModel::FeatureCollectionHandle::weak_ref collection =
-				file.get_file().get_feature_collection();
-		std::unique_ptr<QUndoCommand> command(new CreateEffectsUndoCommand(
-				d_feature_focus, d_model_interface, collection, features));
+		GPlatesAppLogic::FeatureCollectionFileIO &file_io =
+				d_application_state.get_feature_collection_file_io();
+		std::unique_ptr<QUndoCommand> command(new QUndoCommand());
+		command->setText(QObject::tr("create reviewed subduction effects"));
+		if (!island_arc_features.empty())
+		{
+			const GPlatesModel::FeatureCollectionHandle::weak_ref collection =
+					resolve_or_create_worldbuilding_feature_collection(
+							file_io, d_application_state.get_feature_collection_file_state(),
+							QString::fromLatin1("island-arcs-terranes"),
+							QObject::tr("Island Arcs and Terranes")).get_file().get_feature_collection();
+			new CreateEffectsUndoCommand(
+					d_feature_focus, d_model_interface, collection, island_arc_features, command.get());
+			name_layer(d_application_state, d_view_state, collection,
+					QObject::tr("Island Arcs and Terranes"));
+		}
+		if (!active_orogeny_features.empty())
+		{
+			const GPlatesModel::FeatureCollectionHandle::weak_ref collection =
+					resolve_or_create_worldbuilding_feature_collection(
+							file_io, d_application_state.get_feature_collection_file_state(),
+							QString::fromLatin1("active-orogenies"),
+							QObject::tr("Active Orogenies")).get_file().get_feature_collection();
+			new CreateEffectsUndoCommand(
+					d_feature_focus, d_model_interface, collection, active_orogeny_features, command.get());
+			name_layer(d_application_state, d_view_state, collection, QObject::tr("Active Orogenies"));
+		}
 		UndoRedo::instance().get_active_undo_stack().push(command.release());
-		name_layer(d_application_state, d_view_state, collection, layer_name);
-		const unsigned int feature_count = features.size();
+		const unsigned int feature_count = island_arc_features.size() + active_orogeny_features.size();
+		const QString output_summary = !island_arc_features.empty() && !active_orogeny_features.empty()
+				? QObject::tr("Island Arc and Active Orogeny")
+				: (!island_arc_features.empty() ? QObject::tr("Island Arc") : QObject::tr("Active Orogeny"));
 		clear_preview();
 		return Result(EFFECTS_COMMITTED,
 				QObject::tr("Created %1 native, editable %2 feature(s) at %3 Ma; the island-arc line follows overriding Plate %4, while intersection mountains follow their land plates.")
-						.arg(feature_count).arg(layer_name)
+						.arg(feature_count).arg(output_summary)
 						.arg(current_time, 0, 'f', 1)
 						.arg(d_captured_subduction->overriding_plate));
 	}

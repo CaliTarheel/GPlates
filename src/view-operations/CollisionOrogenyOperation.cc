@@ -942,8 +942,10 @@ GPlatesViewOperations::CollisionOrogenyOperation::commit()
 				d_application_state.get_feature_collection_file_io();
 
 		FeatureGroup sutures;
-		sutures.collection = create_named_empty_feature_collection(
-				file_io, QObject::tr("Collision Sutures")).get_file().get_feature_collection();
+		sutures.collection = resolve_or_create_worldbuilding_feature_collection(
+				file_io, d_application_state.get_feature_collection_file_state(),
+				QString::fromLatin1("collision-sutures"),
+				QObject::tr("Collision Sutures")).get_file().get_feature_collection();
 		sutures.features.push_back(create_suture(
 				QObject::tr("Plate %1-%2 Collision Suture %3 Ma")
 						.arg(d_incoming->plate_id).arg(d_receiving->plate_id)
@@ -957,8 +959,10 @@ GPlatesViewOperations::CollisionOrogenyOperation::commit()
 		const double old_start = std::max(0.0,
 				current_time - d_preview->options.old_orogen_age_ma);
 		FeatureGroup active;
-		active.collection = create_named_empty_feature_collection(
-				file_io, QObject::tr("Active Orogenies")).get_file().get_feature_collection();
+		active.collection = resolve_or_create_worldbuilding_feature_collection(
+				file_io, d_application_state.get_feature_collection_file_state(),
+				QString::fromLatin1("active-orogenies"),
+				QObject::tr("Active Orogenies")).get_file().get_feature_collection();
 		active.features.push_back(create_orogeny(
 				QObject::tr("%1 Collision Orogeny %2 Ma").arg(type_name).arg(current_time, 0, 'f', 0),
 				current_time, active_end, current_time, d_receiving->plate_id,
@@ -969,8 +973,10 @@ GPlatesViewOperations::CollisionOrogenyOperation::commit()
 		if (active_end > 1e-9)
 		{
 			FeatureGroup former;
-			former.collection = create_named_empty_feature_collection(
-					file_io, QObject::tr("Former Orogenies")).get_file().get_feature_collection();
+			former.collection = resolve_or_create_worldbuilding_feature_collection(
+					file_io, d_application_state.get_feature_collection_file_state(),
+					QString::fromLatin1("former-orogenies"),
+					QObject::tr("Former Orogenies")).get_file().get_feature_collection();
 			former.features.push_back(create_orogeny(
 					QObject::tr("Former %1 Collision Orogeny %2 Ma")
 							.arg(type_name).arg(current_time, 0, 'f', 0),
@@ -983,8 +989,10 @@ GPlatesViewOperations::CollisionOrogenyOperation::commit()
 		if (old_start > 1e-9 && old_start + 1e-9 < active_end)
 		{
 			FeatureGroup old;
-			old.collection = create_named_empty_feature_collection(
-					file_io, QObject::tr("Old Orogenies")).get_file().get_feature_collection();
+			old.collection = resolve_or_create_worldbuilding_feature_collection(
+					file_io, d_application_state.get_feature_collection_file_state(),
+					QString::fromLatin1("old-orogenies"),
+					QObject::tr("Old Orogenies")).get_file().get_feature_collection();
 			old.features.push_back(create_orogeny(
 					QObject::tr("Old %1 Collision Orogeny %2 Ma")
 							.arg(type_name).arg(current_time, 0, 'f', 0),
