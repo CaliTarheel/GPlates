@@ -5323,7 +5323,20 @@ GPlatesQtWidgets::ViewportWindow::handle_create_pacific_plate()
 	}
 	else if (result.outcome == GPlatesViewOperations::CreatePacificPlateOperation::OPERATION_COMPLETED)
 	{
-		QMessageBox::information(this, tr("Pacific-Style Plate Created"), result.message);
+		QMessageBox follow_up(
+				QMessageBox::Information,
+				tr("Pacific-Style Plate Created"),
+				result.message,
+				QMessageBox::NoButton,
+				this);
+		QPushButton *open_rotation_editor = follow_up.addButton(
+				tr("Open Rotation File Editor"), QMessageBox::ActionRole);
+		follow_up.addButton(QMessageBox::Close);
+		follow_up.exec();
+		if (follow_up.clickedButton() == open_rotation_editor)
+		{
+			handle_rotation_file_editor();
+		}
 	}
 	else if (result.outcome == GPlatesViewOperations::CreatePacificPlateOperation::OPERATION_ERROR)
 	{

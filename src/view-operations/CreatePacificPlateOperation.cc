@@ -39,6 +39,7 @@
 #include "UndoRedo.h"
 
 #include "app-logic/ApplicationState.h"
+#include "app-logic/PlanetaryParameters.h"
 #include "app-logic/FeatureCollectionFileIO.h"
 #include "app-logic/FeatureCollectionFileState.h"
 #include "app-logic/GeometryUtils.h"
@@ -510,6 +511,10 @@ GPlatesViewOperations::CreatePacificPlateOperation::trigger(
 	older_time_spin->setToolTip(QObject::tr(
 			"Defaults to the next older Project Timestamp; otherwise uses the animation increment."));
 	form->addRow(QObject::tr("Opening interval starts:"), older_time_spin);
+	form->addRow(QObject::tr("Default source:"), new QLabel(project_older_bound
+			? QObject::tr("Next older Project Timestamp (%1 Ma)").arg(*project_older_bound, 0, 'f', 2)
+			: QObject::tr("Animation increment fallback (%1 My)").arg(fallback_increment, 0, 'f', 2),
+			&dialog));
 
 	QSpinBox *new_plate_spin = new QSpinBox(&dialog);
 	new_plate_spin->setRange(1, 99999999);
@@ -523,6 +528,11 @@ GPlatesViewOperations::CreatePacificPlateOperation::trigger(
 		parent_combo->addItem(QObject::tr("Plate %1").arg(*plate_iter), static_cast<int>(*plate_iter));
 	}
 	form->addRow(QObject::tr("Birth-time parent plate:"), parent_combo);
+	QLabel *rotation_warning = new QLabel(QObject::tr(
+			"The birth sequence is deliberately identity-relative to the selected parent. It is a valid no-jump starting point, not a finished plate-motion model; review and edit it immediately after creation."),
+			&dialog);
+	rotation_warning->setWordWrap(true);
+	form->addRow(QObject::tr("Rotation status:"), rotation_warning);
 
 	QComboBox *rotation_combo = new QComboBox(&dialog);
 	for (unsigned int file_index = 0; file_index < rotation_files.size(); ++file_index)
@@ -768,24 +778,43 @@ GPlatesViewOperations::CreatePacificPlateOperation::trigger(
 					RenderedGeometryFactory::create_rendered_polyline_on_sphere(
 							*ridge_iter, GPlatesGui::Colour::get_yellow(), 4.0f));
 		}
-		const QMessageBox::StandardButton confirmation = QMessageBox::question(
-				parent_widget,
+		double ordinary_area_steradians = 0.0;
+		for (std::vector<plate_piece_type>::const_iterator piece_iter = ordinary_pieces.begin();
+				piece_iter != ordinary_pieces.end(); ++piece_iter)
+		{
+			ordinary_area_steradians += piece_iter->second->get_area().dval();
+		}
+		const double radius_km = d_application_state.get_planetary_parameters().
+				effective_radius_kilometres();
+		const double square_radius_million_km2 = radius_km * radius_km / 1.0e6;
+		QMessageBox confirmation(
+				QMessageBox::Question,
 				QObject::tr("Confirm Pacific-Style Plate Birth"),
 				QObject::tr(
-						"Aqua is the one local uncovered component containing the clicked seed; yellow is the three-MOR naturalized boundary; grey is %5 ordinary side-crust piece(s) generated first through the shared band builder. Create Plate %1 at %2 Ma, identity-parented to Plate %3 through 0 Ma, after examining opening over %4-%2 Ma?\n\n%6 loaded OceanicCrust polygon(s) were subtracted before the ordinary fill, and both loaded and newly filled crust were subtracted from the central void%7. %8 squiggle vertices were inserted; the actual maximum MOR segment is %9 km. The three selected old MORs end at the birth time. Rotation, all crust, new MORs, and old-MOR valid-time edits commit atomically.")
-							.arg(new_plate).arg(current_time, 0, 'f', 2).arg(parent_plate)
-							.arg(older_time, 0, 'f', 2)
+						"Aqua is new Plate %1: one central OceanicCrust polygon covering %2 million km².\n"
+						"Yellow is its three-MOR naturalized boundary. Grey is %3 ordinary side-crust piece(s) covering %4 million km².\n\n"
+						"Birth time: %5 Ma; opening inspected from %6 Ma. Plate %1 receives an identity sequence relative to Plate %7 through 0 Ma. This prevents a jump but must be reviewed in the rotation tools immediately after creation.\n\n"
+						"%8 loaded OceanicCrust polygon(s) were subtracted before the ordinary fill, and both loaded and newly filled crust were subtracted from the central void%9. %10 squiggle vertices were inserted; the actual maximum MOR segment is %11 km. The three selected old MORs end at the birth time. Rotation, all crust, new MORs, and old-MOR valid-time edits commit atomically.")
+							.arg(new_plate)
+							.arg((*geometry.central_crust)->get_area().dval() * square_radius_million_km2, 0, 'f', 3)
 							.arg(static_cast<unsigned int>(ordinary_pieces.size()))
+							.arg(ordinary_area_steradians * square_radius_million_km2, 0, 'f', 3)
+							.arg(current_time, 0, 'f', 2)
+							.arg(older_time, 0, 'f', 2)
+							.arg(parent_plate)
 							.arg(static_cast<unsigned int>(existing_crust.size()))
 							.arg(geometry.existing_overlap_removed
 									? QObject::tr(" and overlap was removed")
 									: QObject::tr("; none overlapped the local void"))
 							.arg(geometry.inserted_vertex_count)
 							.arg(geometry.actual_maximum_segment_length_km, 0, 'f', 2),
-				QMessageBox::Yes | QMessageBox::No,
-				QMessageBox::Yes);
+				QMessageBox::Ok | QMessageBox::Cancel,
+				parent_widget);
+		confirmation.button(QMessageBox::Ok)->setText(QObject::tr("Create Plate and Open Rotation Review"));
+		confirmation.setDefaultButton(QMessageBox::Cancel);
+		const int confirmation_result = confirmation.exec();
 		preview_layer->clear_rendered_geometries();
-		if (confirmation != QMessageBox::Yes)
+		if (confirmation_result != QMessageBox::Ok)
 		{
 			return Result(OPERATION_CANCELLED,
 					QObject::tr("Pacific-style plate preview rejected; no data changed and the seed remains captured."));
@@ -837,7 +866,7 @@ GPlatesViewOperations::CreatePacificPlateOperation::trigger(
 		d_last_rotation_collection = rotation_collection;
 		clear_seed();
 		return Result(OPERATION_COMPLETED,
-				QObject::tr("Created Pacific-style Plate %1 at %2 Ma with %3 ordinary side-crust piece(s), one central OceanicCrust polygon, three naturalized half-stage MORs, and an identity rotation sequence relative to Plate %4. The three superseded MORs end at the birth time; the complete edit is one undo step.")
+				QObject::tr("Created Pacific-style Plate %1 at %2 Ma with %3 ordinary side-crust piece(s), one central OceanicCrust polygon, three naturalized half-stage MORs, and an identity rotation sequence relative to Plate %4. The three superseded MORs end at the birth time; the complete edit is one undo step. Next required review: replace or extend the identity sequence in the rotation tools so the new plate has intentional motion.")
 						.arg(new_plate).arg(current_time, 0, 'f', 2)
 						.arg(static_cast<unsigned int>(ordinary_pieces.size())).arg(parent_plate));
 	}
