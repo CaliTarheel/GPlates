@@ -22,6 +22,23 @@ namespace GPlatesViewOperations
 		typedef GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type polygon_ptr_type;
 		typedef std::vector<polygon_ptr_type> polygon_seq_type;
 
+		enum BooleanOperation
+		{
+			POLYGON_UNION,
+			POLYGON_DIFFERENCE,
+			POLYGON_INTERSECTION,
+			POLYGON_SYMMETRIC_DIFFERENCE
+		};
+
+		struct BooleanResult
+		{
+			BooleanResult() : success(true) {  }
+
+			bool success;
+			QString error;
+			polygon_seq_type polygons;
+		};
+
 		struct CutResult
 		{
 			CutResult() : success(true), overlap(false) {  }
@@ -44,6 +61,19 @@ namespace GPlatesViewOperations
 		cut_polygon(
 				const GPlatesMaths::PolygonOnSphere &target,
 				const polygon_seq_type &cutters);
+
+		/**
+		 * Applies a Boolean operation to @a first and the union of @a operands.
+		 *
+		 * The result can contain zero, one or several polygons. The caller owns
+		 * feature-property policy; this geometry helper deliberately knows
+		 * nothing about plate IDs or feature collections.
+		 */
+		BooleanResult
+		apply_polygon_boolean(
+				const GPlatesMaths::PolygonOnSphere &first,
+				const polygon_seq_type &operands,
+				BooleanOperation operation);
 	}
 }
 

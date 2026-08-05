@@ -110,6 +110,7 @@ namespace GPlatesPresentation
 namespace GPlatesViewOperations
 {
 	class AdvancePlateMotionOperation;
+	class BooleanPolygonOperation;
 	class CloneOperation;
 	class CollisionOrogenyOperation;
 	class CreateInitialContinentOperation;
@@ -553,6 +554,38 @@ namespace GPlatesQtWidgets
 		handle_create_initial_continent();
 
 		void
+		show_boolean_polygons_window();
+
+		void
+		handle_boolean_select_first();
+
+		void
+		handle_boolean_select_operand();
+
+		void
+		handle_boolean_remove_operand();
+
+		void
+		handle_boolean_clear_operands();
+
+		void
+		handle_boolean_focus_changed(
+				GPlatesGui::FeatureFocus &feature_focus);
+
+		void
+		handle_boolean_preview();
+
+		void
+		handle_boolean_apply();
+
+		void
+		handle_boolean_cancel();
+
+		void
+		update_boolean_palette(
+				const QString &message = QString());
+
+		void
 		handle_propose_initial_rifts();
 
 		void
@@ -784,6 +817,9 @@ namespace GPlatesQtWidgets
 		//! For cloning a feature.
 		boost::scoped_ptr<GPlatesViewOperations::CloneOperation> d_clone_operation_ptr;
 
+		//! For persistent union, subtraction, intersection and symmetric difference of polygons.
+		boost::scoped_ptr<GPlatesViewOperations::BooleanPolygonOperation> d_boolean_polygon_operation_ptr;
+
 		//! For reviewing continent collisions, sutures and collisional orogenies.
 		boost::scoped_ptr<GPlatesViewOperations::CollisionOrogenyOperation> d_collision_orogeny_operation_ptr;
 
@@ -909,6 +945,20 @@ namespace GPlatesQtWidgets
 
 		//! Floating palette for procedural worldbuilding operations.
 		QPointer<QDockWidget> d_worldbuilding_pasta_dock_ptr;
+
+		//! Persistent modeless polygon Boolean workflow.
+		QPointer<QDialog> d_boolean_polygon_dialog_ptr;
+		QPointer<QPushButton> d_boolean_select_first_button_ptr;
+		QPointer<QPushButton> d_boolean_select_operand_button_ptr;
+		QPointer<QPushButton> d_boolean_remove_operand_button_ptr;
+		QPointer<QPushButton> d_boolean_clear_operands_button_ptr;
+		QPointer<QPushButton> d_boolean_preview_button_ptr;
+		QPointer<QPushButton> d_boolean_apply_button_ptr;
+		QPointer<QPushButton> d_boolean_cancel_button_ptr;
+		QPointer<QLabel> d_boolean_first_status_label_ptr;
+		QPointer<QLabel> d_boolean_operands_status_label_ptr;
+		QPointer<QLabel> d_boolean_instruction_label_ptr;
+		QPointer<QComboBox> d_boolean_operation_combo_ptr;
 
 		//! Persistent modeless workflow window launched by the palette's Make Rift button.
 		QPointer<QDialog> d_make_rift_dialog_ptr;

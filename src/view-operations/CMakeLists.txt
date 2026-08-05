@@ -15,6 +15,8 @@ set(srcs
     AdvancePlateMotionGeometry.h
     AdvancePlateMotionOperation.cc
     AdvancePlateMotionOperation.h
+    BooleanPolygonOperation.cc
+    BooleanPolygonOperation.h
     CollisionGeometry.cc
     CollisionGeometry.h
     CollisionOrogenyOperation.cc

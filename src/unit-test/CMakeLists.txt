@@ -11,6 +11,8 @@
 set(srcs
     AdvancePlateMotionGeometryTest.cc
     AdvancePlateMotionGeometryTest.h
+    BooleanPolygonGeometryTest.cc
+    BooleanPolygonGeometryTest.h
     CollisionGeometryTest.cc
     CollisionGeometryTest.h
     PostCollisionRiftGeometryTest.cc

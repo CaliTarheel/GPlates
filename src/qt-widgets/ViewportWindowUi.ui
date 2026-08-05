@@ -195,6 +195,7 @@
     </property>
     <addaction name="action_Naturalize_Coastline"/>
     <addaction name="action_Split_Plate"/>
+    <addaction name="action_Boolean_Polygons"/>
     <addaction name="action_Subduction_Cutter"/>
     <addaction name="separator"/>
     <addaction name="action_Manage_Colouring"/>
@@ -292,6 +293,17 @@
    </property>
    <property name="statusTip">
     <string>Assign overriding and subducting plates, sample their overlap through time, and time-hide subducted pieces.</string>
+   </property>
+  </action>
+  <action name="action_Boolean_Polygons">
+   <property name="text">
+    <string>&amp;Boolean Polygons...</string>
+   </property>
+   <property name="toolTip">
+    <string>Union, subtract, intersect, or symmetric-difference selected polygons</string>
+   </property>
+   <property name="statusTip">
+    <string>Build one polygon result from a first feature and one or more selected operand polygons.</string>
    </property>
   </action>
   <action name="action_Cut">
