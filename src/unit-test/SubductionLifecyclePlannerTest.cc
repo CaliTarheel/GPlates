@@ -28,4 +28,9 @@ void GPlatesUnitTest::SubductionLifecyclePlannerTest::test_reversal_and_retireme
 	BOOST_CHECK(retirement.valid);
 	BOOST_CHECK(!retirement.creates_successor_trench);
 	BOOST_CHECK(retirement.retires_ocean_crust);
+	request.event_type = Planner::FLAT_SLAB;
+	request.duration_ma = 0;
+	BOOST_CHECK(!Planner::plan(request).valid);
+	request.duration_ma = 20;
+	BOOST_CHECK(Planner::plan(request).valid);
 }

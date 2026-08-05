@@ -83,6 +83,7 @@ namespace GPlatesViewOperations
 			SubductionLifecyclePlanner::EventType lifecycle_event;
 			GPlatesModel::integer_plate_id_type subducting_plate;
 			double migration_offset_km;
+			double lifecycle_duration_ma;
 			bool isolates_plate_fragment;
 		};
 

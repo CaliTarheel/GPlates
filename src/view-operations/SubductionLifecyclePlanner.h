@@ -29,6 +29,7 @@ namespace GPlatesViewOperations
 			bool polarity_left;
 			bool successor_polarity_left;
 			double migration_offset_km;
+			double duration_ma;
 			bool isolates_plate_fragment;
 		};
 		struct Plan

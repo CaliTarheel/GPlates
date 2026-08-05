@@ -327,6 +327,7 @@ GPlatesViewOperations::GenerateSubductionEffectsOperation::Options::Options() :
 	lifecycle_event(SubductionLifecyclePlanner::CONTINUE_SUBDUCTION),
 	subducting_plate(0),
 	migration_offset_km(0),
+	lifecycle_duration_ma(0),
 	isolates_plate_fragment(false)
 {  }
 
@@ -626,12 +627,23 @@ GPlatesViewOperations::GenerateSubductionEffectsOperation::preview(const Options
 	lifecycle_request.successor_polarity_left =
 			d_captured_subduction->declared_left != options.flip_declared_polarity;
 	lifecycle_request.migration_offset_km = options.migration_offset_km;
+	lifecycle_request.duration_ma = options.lifecycle_duration_ma;
 	lifecycle_request.isolates_plate_fragment = options.isolates_plate_fragment;
 	const SubductionLifecyclePlanner::Plan lifecycle_plan =
 			SubductionLifecyclePlanner::plan(lifecycle_request);
 	if (!lifecycle_plan.valid)
 		return Result(OPERATION_ERROR, QObject::tr("Lifecycle plan is not valid:\n%1")
 				.arg(lifecycle_plan.errors.join("\n")));
+	QString lifecycle_review = QObject::tr("\nLifecycle transaction review:");
+	for (QStringList::const_iterator warning = lifecycle_plan.warnings.begin();
+			warning != lifecycle_plan.warnings.end(); ++warning)
+		lifecycle_review += QObject::tr("\nWARNING: %1").arg(*warning);
+	for (QStringList::const_iterator step = lifecycle_plan.atomic_steps.begin();
+			step != lifecycle_plan.atomic_steps.end(); ++step)
+		lifecycle_review += QObject::tr("\n- %1").arg(*step);
+	if (options.lifecycle_event != SubductionLifecyclePlanner::CONTINUE_SUBDUCTION)
+		lifecycle_review += QObject::tr(
+				"\nPLAN ONLY: this PR audits the transition but does not yet compose trench versioning, crust retirement, topology repair, or plate birth. Commit is disabled for this event.");
 
 	try
 	{
@@ -721,15 +733,16 @@ GPlatesViewOperations::GenerateSubductionEffectsOperation::preview(const Options
 		if (options.effect_type == SubductionEffectsGeometry::ISLAND_ARC)
 		{
 			return Result(PREVIEW_READY,
-					QObject::tr("Previewed one editable island-arc line over %1 km on the %2/overriding side, plus %3 land-intersection mountain belt(s). Lifecycle: %4 (%5 atomic step(s)). Aqua is arc notation; orange is mountain-building confined to visible ContinentalCrust/terranes.")
+					QObject::tr("Previewed one editable island-arc line over %1 km on the %2/overriding side, plus %3 land-intersection mountain belt(s). Lifecycle: %4 (%5 atomic step(s)). Aqua is arc notation; orange is mountain-building confined to visible ContinentalCrust/terranes.%6")
 							.arg(geometry.metrics.selected_length_km, 0, 'f', 0)
 							.arg(side)
 							.arg(land_belts.size())
 							.arg(lifecycle_plan.event_name)
-							.arg(lifecycle_plan.atomic_steps.size()));
+							.arg(lifecycle_plan.atomic_steps.size())
+							.arg(lifecycle_review));
 		}
 		return Result(PREVIEW_READY,
-				QObject::tr("Previewed a contained %1 km-wide %2 belt over %3 km on the %4/overriding side. Crust-side agreement is %5%. Lifecycle: %6 (%7 atomic step(s)).")
+				QObject::tr("Previewed a contained %1 km-wide %2 belt over %3 km on the %4/overriding side. Crust-side agreement is %5%. Lifecycle: %6 (%7 atomic step(s)).%8")
 						.arg(options.belt_width_km, 0, 'f', 0)
 						.arg(options.effect_type == SubductionEffectsGeometry::LARAMIDE_OROGENY
 								? QObject::tr("Laramide") : QObject::tr("Andean"))
@@ -737,7 +750,8 @@ GPlatesViewOperations::GenerateSubductionEffectsOperation::preview(const Options
 						.arg(side)
 						.arg(100.0 * geometry.metrics.overriding_containment_fraction, 0, 'f', 0)
 						.arg(lifecycle_plan.event_name)
-						.arg(lifecycle_plan.atomic_steps.size()));
+						.arg(lifecycle_plan.atomic_steps.size())
+						.arg(lifecycle_review));
 	}
 	catch (const std::exception &exception)
 	{
@@ -755,6 +769,11 @@ GPlatesViewOperations::GenerateSubductionEffectsOperation::commit()
 	{
 		return Result(OPERATION_ERROR,
 				QObject::tr("Create and review a preview before committing subduction effects."));
+	}
+	if (d_preview->options.lifecycle_event != SubductionLifecyclePlanner::CONTINUE_SUBDUCTION)
+	{
+		return Result(OPERATION_ERROR, QObject::tr(
+				"This lifecycle transition is a reviewed plan only. No features were changed. Return to Continued subduction to commit ordinary arc/orogeny effects, or use the delegated crust-retirement, topology, collision, and plate-birth tools named in the plan."));
 	}
 	const double current_time =
 			d_application_state.get_current_reconstruction().get_reconstruction_time();

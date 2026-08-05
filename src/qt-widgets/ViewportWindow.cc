@@ -1947,7 +1947,15 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	d_subduction_migration_offset_spin_ptr = new QDoubleSpinBox(d_subduction_effects_dialog_ptr);
 	d_subduction_migration_offset_spin_ptr->setRange(0, 3000);
 	d_subduction_migration_offset_spin_ptr->setSuffix(tr(" km"));
-	subduction_effects_form->addRow(tr("Lifecycle migration:"), d_subduction_migration_offset_spin_ptr);
+	d_subduction_migration_offset_spin_ptr->setToolTip(tr(
+			"Required for trench extension, rollback, trench jump, and plate invasion; ignored for ordinary continuation."));
+	subduction_effects_form->addRow(tr("Extension / migration distance:"), d_subduction_migration_offset_spin_ptr);
+	d_subduction_lifecycle_duration_spin_ptr = new QDoubleSpinBox(d_subduction_effects_dialog_ptr);
+	d_subduction_lifecycle_duration_spin_ptr->setRange(0, 500);
+	d_subduction_lifecycle_duration_spin_ptr->setSuffix(tr(" Ma"));
+	d_subduction_lifecycle_duration_spin_ptr->setToolTip(tr(
+			"Required only for a flat-slab interval."));
+	subduction_effects_form->addRow(tr("Lifecycle duration:"), d_subduction_lifecycle_duration_spin_ptr);
 	d_subduction_isolates_fragment_check_ptr = new QCheckBox(
 			tr("Event isolates a plate fragment (delegate plate birth)"), d_subduction_effects_dialog_ptr);
 	subduction_effects_form->addRow(QString(), d_subduction_isolates_fragment_check_ptr);
@@ -2743,6 +2751,8 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	QObject::connect(d_subduction_subducting_plate_spin_ptr,
 			SIGNAL(valueChanged(int)), this, SLOT(handle_subduction_effects_controls_changed()));
 	QObject::connect(d_subduction_migration_offset_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_subduction_effects_controls_changed()));
+	QObject::connect(d_subduction_lifecycle_duration_spin_ptr,
 			SIGNAL(valueChanged(double)), this, SLOT(handle_subduction_effects_controls_changed()));
 	QObject::connect(d_subduction_isolates_fragment_check_ptr,
 			SIGNAL(toggled(bool)), this, SLOT(handle_subduction_effects_controls_changed()));
@@ -5289,6 +5299,7 @@ GPlatesQtWidgets::ViewportWindow::handle_subduction_effects_preview()
 			d_subduction_lifecycle_combo_ptr->currentIndex());
 	options.subducting_plate = d_subduction_subducting_plate_spin_ptr->value();
 	options.migration_offset_km = d_subduction_migration_offset_spin_ptr->value();
+	options.lifecycle_duration_ma = d_subduction_lifecycle_duration_spin_ptr->value();
 	options.isolates_plate_fragment = d_subduction_isolates_fragment_check_ptr->isChecked();
 
 	const GPlatesViewOperations::GenerateSubductionEffectsOperation::Result result =
@@ -5379,7 +5390,22 @@ GPlatesQtWidgets::ViewportWindow::update_subduction_effects_palette(
 			d_generate_subduction_effects_operation_ptr->has_subduction() &&
 			(!needs_continent || d_generate_subduction_effects_operation_ptr->has_continent()));
 	d_subduction_effects_commit_button_ptr->setEnabled(
-			d_generate_subduction_effects_operation_ptr->has_preview());
+			d_generate_subduction_effects_operation_ptr->has_preview() &&
+			d_subduction_lifecycle_combo_ptr->currentIndex() ==
+					GPlatesViewOperations::SubductionLifecyclePlanner::CONTINUE_SUBDUCTION);
+	d_subduction_effects_commit_button_ptr->setText(
+			d_subduction_lifecycle_combo_ptr->currentIndex() ==
+					GPlatesViewOperations::SubductionLifecyclePlanner::CONTINUE_SUBDUCTION
+				? tr("4. Commit Reviewed Features")
+				: tr("4. Plan Only - Commit Disabled"));
+	const int lifecycle_event = d_subduction_lifecycle_combo_ptr->currentIndex();
+	d_subduction_migration_offset_spin_ptr->setEnabled(
+			lifecycle_event == GPlatesViewOperations::SubductionLifecyclePlanner::TRENCH_EXTENSION ||
+			lifecycle_event == GPlatesViewOperations::SubductionLifecyclePlanner::ROLLBACK ||
+			lifecycle_event == GPlatesViewOperations::SubductionLifecyclePlanner::TRENCH_JUMP ||
+			lifecycle_event == GPlatesViewOperations::SubductionLifecyclePlanner::PLATE_INVASION);
+	d_subduction_lifecycle_duration_spin_ptr->setEnabled(
+			lifecycle_event == GPlatesViewOperations::SubductionLifecyclePlanner::FLAT_SLAB);
 	d_subduction_effects_instruction_label_ptr->setText(
 			message.isEmpty()
 					? tr("Aqua is the proposed island-arc notation line on the overriding plate; orange polygons are land-only active mountain belts. Yellow teeth point toward the selected overriding side. Use Flip polarity if that side is wrong.")
