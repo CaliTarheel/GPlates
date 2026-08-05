@@ -35,12 +35,14 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QSaveFile>
 
 #include "ExportAnimationDialog.h"
 
 #include "app-logic/ApplicationState.h"
+#include "app-logic/PlanetaryParameters.h"
 #include "app-logic/ProjectTimestampSchedule.h"
 #include "app-logic/UserPreferences.h"
 #include "app-logic/WorldbuildingExportProfile.h"
@@ -118,34 +120,40 @@ GPlatesQtWidgets::ExportAnimationDialog::ExportAnimationDialog(
 {
 	setupUi(this);
 
-	QGroupBox *worldbuilding_profile_group = new QGroupBox(tr("Worldbuilding Export Profile"), groupbox_range);
+	QGroupBox *worldbuilding_profile_group = new QGroupBox(tr("Worldbuilding Schedule + Portable Manifest"), groupbox_range);
 	QGridLayout *worldbuilding_profile_layout = new QGridLayout(worldbuilding_profile_group);
+	QLabel *worldbuilding_profile_note = new QLabel(tr(
+			"Exact Project Timestamps control this export. The named profile is downstream manifest metadata only; it does not change live layer visibility, projection, image size, DPI, or individual exporter settings."),
+			worldbuilding_profile_group);
+	worldbuilding_profile_note->setWordWrap(true);
+	worldbuilding_profile_layout->addWidget(worldbuilding_profile_note, 0, 0, 1, 2);
 	d_project_timestamps_checkbox = new QCheckBox(tr("Use exact Project Timestamps"), worldbuilding_profile_group);
 	d_project_timestamps_checkbox->setToolTip(tr(
 			"Use only the authoritative non-uniform timestamps in the Primary Project Document that fall inside this range."));
-	worldbuilding_profile_layout->addWidget(d_project_timestamps_checkbox, 0, 0, 1, 2);
+	worldbuilding_profile_layout->addWidget(d_project_timestamps_checkbox, 1, 0, 1, 2);
 	d_worldbuilding_profile_combo = new QComboBox(worldbuilding_profile_group);
 	const std::vector<GPlatesAppLogic::WorldbuildingExportProfile::Profile> profiles =
 			GPlatesAppLogic::WorldbuildingExportProfile::default_profiles();
 	for (std::vector<GPlatesAppLogic::WorldbuildingExportProfile::Profile>::const_iterator profile = profiles.begin();
 			profile != profiles.end(); ++profile)
 		d_worldbuilding_profile_combo->addItem(tr("%1 — %2").arg(profile->name, profile->variant));
-	worldbuilding_profile_layout->addWidget(new QLabel(tr("Profile / variant:"), worldbuilding_profile_group), 1, 0);
-	worldbuilding_profile_layout->addWidget(d_worldbuilding_profile_combo, 1, 1);
+	worldbuilding_profile_layout->addWidget(new QLabel(tr("Manifest profile / variant:"), worldbuilding_profile_group), 2, 0);
+	worldbuilding_profile_layout->addWidget(d_worldbuilding_profile_combo, 2, 1);
 	d_planet_radius_spinbox = new QDoubleSpinBox(worldbuilding_profile_group);
 	d_planet_radius_spinbox->setDecimals(3);
 	d_planet_radius_spinbox->setRange(0, 1000000000.0);
-	d_planet_radius_spinbox->setValue(6371.0);
+	d_planet_radius_spinbox->setValue(view_state_.get_application_state().
+			get_planetary_parameters().effective_radius_kilometres());
 	d_planet_radius_spinbox->setSuffix(tr(" km"));
-	worldbuilding_profile_layout->addWidget(new QLabel(tr("Planet radius:"), worldbuilding_profile_group), 2, 0);
-	worldbuilding_profile_layout->addWidget(d_planet_radius_spinbox, 2, 1);
+	worldbuilding_profile_layout->addWidget(new QLabel(tr("Planet radius:"), worldbuilding_profile_group), 3, 0);
+	worldbuilding_profile_layout->addWidget(d_planet_radius_spinbox, 3, 1);
 	d_project_revision_line_edit = new QLineEdit(QString::fromLatin1("unrecorded"), worldbuilding_profile_group);
-	worldbuilding_profile_layout->addWidget(new QLabel(tr("Project revision:"), worldbuilding_profile_group), 3, 0);
-	worldbuilding_profile_layout->addWidget(d_project_revision_line_edit, 3, 1);
+	worldbuilding_profile_layout->addWidget(new QLabel(tr("Project revision:"), worldbuilding_profile_group), 4, 0);
+	worldbuilding_profile_layout->addWidget(d_project_revision_line_edit, 4, 1);
 	d_save_export_manifest_button = new QPushButton(tr("Save Portable Manifest..."), worldbuilding_profile_group);
 	d_save_export_manifest_button->setToolTip(tr(
 			"Write downstream-only profile, radius, revision, exact times, planned frame names, and warnings as JSON."));
-	worldbuilding_profile_layout->addWidget(d_save_export_manifest_button, 4, 0, 1, 2);
+	worldbuilding_profile_layout->addWidget(d_save_export_manifest_button, 5, 0, 1, 2);
 	groupbox_range->layout()->addWidget(worldbuilding_profile_group);
 
 	stackedWidget->setCurrentIndex(0);
@@ -499,6 +507,35 @@ GPlatesQtWidgets::ExportAnimationDialog::save_worldbuilding_export_manifest()
 			plan.reconstruction_times.empty())
 		plan.warnings.append(d_export_animation_context_ptr->view_state().get_application_state()
 				.get_project_timestamp_schedule().diagnostic());
+
+	QStringList exact_times;
+	for (std::vector<double>::const_iterator time = plan.reconstruction_times.begin();
+			time != plan.reconstruction_times.end(); ++time)
+		exact_times.append(QString::number(*time, 'g', 12));
+	QMessageBox review(this);
+	review.setWindowTitle(tr("Review Portable Export Manifest"));
+	review.setIcon(plan.reconstruction_times.empty() ? QMessageBox::Warning : QMessageBox::Information);
+	review.setText(tr("Profile metadata: %1 — %2\nPlanned frames: %3\nSchedule: %4")
+			.arg(request.profile.name, request.profile.variant)
+			.arg(plan.reconstruction_times.size())
+			.arg(GPlatesAppLogic::WorldbuildingExportProfile::schedule_mode_name(request.schedule_mode)));
+	review.setInformativeText(plan.warnings.isEmpty()
+			? tr("This saves a downstream-only manifest and does not start or reconfigure the export.")
+			: tr("Warnings:\n- %1").arg(plan.warnings.join(QString::fromLatin1("\n- "))));
+	review.setDetailedText(tr("Exact frame times (Ma):\n%1\n\nPlanned frame stems:\n%2")
+			.arg(exact_times.join(QString::fromLatin1(", ")))
+			.arg([&plan]()
+			{
+				QStringList stems;
+				for (std::vector<GPlatesAppLogic::WorldbuildingExportProfile::PlannedFile>::const_iterator file =
+						plan.files.begin(); file != plan.files.end(); ++file)
+					stems.append(file->file_name);
+				return stems.join(QString::fromLatin1("\n"));
+			}()));
+	review.setStandardButtons(QMessageBox::Save | QMessageBox::Cancel);
+	review.setDefaultButton(QMessageBox::Cancel);
+	if (review.exec() != QMessageBox::Save)
+		return;
 
 	const QString file_name = QFileDialog::getSaveFileName(this,
 			tr("Save Worldbuilding Export Manifest"),

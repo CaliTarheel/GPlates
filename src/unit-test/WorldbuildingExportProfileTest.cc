@@ -36,6 +36,11 @@ void GPlatesUnitTest::WorldbuildingExportProfileTest::test_exact_project_schedul
 	BOOST_CHECK(json.contains(QString::fromLatin1("downstream_only")));
 	BOOST_CHECK(json.contains(QString::fromLatin1("planet_radius_km")));
 	BOOST_CHECK(json.contains(QString::fromLatin1("r12")));
+	BOOST_CHECK(json.contains(QString::fromLatin1("planned_stem")));
+	const std::vector<Profile::Profile> profiles = Profile::default_profiles();
+	BOOST_REQUIRE_GE(profiles.size(), 2u);
+	BOOST_CHECK(profiles[1].layer_roles.contains(QString::fromLatin1("active-lips")));
+	BOOST_CHECK(!profiles[1].layer_roles.contains(QString::fromLatin1("lips")));
 }
 
 void GPlatesUnitTest::WorldbuildingExportProfileTest::test_explicit_filename_times()

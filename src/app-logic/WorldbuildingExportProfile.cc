@@ -78,7 +78,8 @@ GPlatesAppLogic::WorldbuildingExportProfile::default_profiles()
 			QStringList(), "Worldbuilding tectonics", "Orthographic", 2400, 2400, 150, false));
 	profiles.push_back(make_profile("Geology", "events",
 			QStringList() << "continental-crust" << "island-arcs-terranes" << "active-orogenies"
-					<< "former-orogenies" << "lips" << "hotspots" << "motion-paths",
+					<< "former-orogenies" << "old-orogenies" << "active-lips" << "former-lips"
+					<< "hotspots" << "hotspot-trails",
 			QStringList() << "age-grid" << "relief", "Worldbuilding geology", "Robinson", 3200, 1800, 180, false));
 	profiles.push_back(make_profile("Presentation", "clean-map",
 			QStringList() << "continental-crust" << "oceanic-crust" << "mors" << "trenches",
@@ -139,6 +140,10 @@ GPlatesAppLogic::WorldbuildingExportProfile::build(const Request &request)
 		plan.warnings.append(QString::fromLatin1("Planet radius is missing or invalid."));
 	if (!request.profile.downstream_only)
 		plan.warnings.append(QString::fromLatin1("Profile must be downstream-only; project mutation is not supported."));
+	plan.warnings.append(QString::fromLatin1(
+			"Profile layers, draw style, projection, dimensions, and DPI are portable downstream metadata; this profile does not change the live GPlates workspace or configured exporter settings."));
+	plan.warnings.append(QString::fromLatin1(
+			"Planned filenames are portable frame stems; each configured exporter still controls its own extension and filename template."));
 
 	std::set<QString> unique_names;
 	for (std::vector<double>::const_iterator time = plan.reconstruction_times.begin();
@@ -193,6 +198,7 @@ GPlatesAppLogic::WorldbuildingExportProfile::Plan::to_json() const
 		QJsonObject object;
 		object["time_ma"] = file->reconstruction_time;
 		object["file"] = file->file_name;
+		object["planned_stem"] = file->file_name;
 		file_array.append(object);
 	}
 	root["files"] = file_array;
