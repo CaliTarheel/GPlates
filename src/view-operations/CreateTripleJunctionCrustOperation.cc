@@ -37,6 +37,7 @@
 #include "UndoRedo.h"
 
 #include "app-logic/ApplicationState.h"
+#include "app-logic/PlanetaryParameters.h"
 #include "app-logic/FeatureCollectionFileIO.h"
 #include "app-logic/FeatureCollectionFileState.h"
 #include "app-logic/GeometryUtils.h"
@@ -300,6 +301,7 @@ GPlatesViewOperations::CreateTripleJunctionCrustOperation::trigger(
 	std::set< std::pair<GPlatesModel::integer_plate_id_type,
 			GPlatesModel::integer_plate_id_type> > plate_pairs;
 	QStringList pair_descriptions;
+	QStringList ridge_descriptions;
 	for (std::vector<GPlatesModel::FeatureHandle::weak_ref>::const_iterator feature_iter =
 		selected_mors.begin(); feature_iter != selected_mors.end(); ++feature_iter)
 	{
@@ -344,12 +346,21 @@ GPlatesViewOperations::CreateTripleJunctionCrustOperation::trigger(
 		plate_ids.insert(right_id);
 		plate_pairs.insert(ordered_pair(left_id, right_id));
 		pair_descriptions.append(QObject::tr("%1-%2").arg(left_id).arg(right_id));
+		ridge_descriptions.append(QObject::tr("MOR %1: left Plate %2 / right Plate %3")
+				.arg((*feature_iter)->feature_id().get().qstring())
+				.arg(left_id).arg(right_id));
 	}
 	if (plate_ids.size() != 3 || plate_pairs.size() != 3)
 	{
 		return Result(OPERATION_ERROR,
 				QObject::tr("The three MORs must describe the three unique plate pairs of one RRR junction. Selected pairs: %1.")
 						.arg(pair_descriptions.join(", ")));
+	}
+	QStringList plate_id_descriptions;
+	for (std::set<GPlatesModel::integer_plate_id_type>::const_iterator plate_iter = plate_ids.begin();
+			plate_iter != plate_ids.end(); ++plate_iter)
+	{
+		plate_id_descriptions.append(QString::number(*plate_iter));
 	}
 
 	QDialog dialog(parent_widget);
@@ -362,8 +373,9 @@ GPlatesViewOperations::CreateTripleJunctionCrustOperation::trigger(
 	intro->setWordWrap(true);
 	layout->addWidget(intro);
 	QFormLayout *form = new QFormLayout();
-	form->addRow(QObject::tr("Selected plate graph:"),
-			new QLabel(pair_descriptions.join(", "), &dialog));
+	QLabel *selected_graph_label = new QLabel(ridge_descriptions.join("\n"), &dialog);
+	selected_graph_label->setWordWrap(true);
+	form->addRow(QObject::tr("Selected MOR graph:"), selected_graph_label);
 	form->addRow(QObject::tr("Young ridge edge:"),
 			new QLabel(QObject::tr("%1 Ma").arg(current_time, 0, 'f', 2), &dialog));
 	QDoubleSpinBox *older_time_spin = new QDoubleSpinBox(&dialog);
@@ -378,6 +390,10 @@ GPlatesViewOperations::CreateTripleJunctionCrustOperation::trigger(
 	older_time_spin->setToolTip(QObject::tr(
 			"Defaults to the next older Project Timestamp; otherwise uses the animation increment."));
 	form->addRow(QObject::tr("Older ridge edge:"), older_time_spin);
+	form->addRow(QObject::tr("Default source:"), new QLabel(project_older_bound
+			? QObject::tr("Next older Project Timestamp (%1 Ma)").arg(*project_older_bound, 0, 'f', 2)
+			: QObject::tr("Animation increment fallback (%1 My)").arg(fallback_increment, 0, 'f', 2),
+			&dialog));
 	QDoubleSpinBox *extension_spin = new QDoubleSpinBox(&dialog);
 	extension_spin->setDecimals(3);
 	extension_spin->setRange(0.0, 10.0);
@@ -589,27 +605,41 @@ GPlatesViewOperations::CreateTripleJunctionCrustOperation::trigger(
 			GPlatesGui::Colour(1.0f, 0.55f, 0.0f),
 			GPlatesGui::Colour(0.75f, 0.35f, 1.0f)
 		};
+		const QString colour_names[3] =
+		{
+			QObject::tr("aqua"), QObject::tr("orange"), QObject::tr("purple")
+		};
+		const double radius_km = d_application_state.get_planetary_parameters().
+				effective_radius_kilometres();
+		QStringList plate_legend;
 		unsigned int colour_index = 0;
 		for (std::map<GPlatesModel::integer_plate_id_type, polygon_seq_type>::const_iterator plate_iter =
 			plate_bands.begin(); plate_iter != plate_bands.end(); ++plate_iter, ++colour_index)
 		{
+			double plate_area_steradians = 0.0;
 			for (polygon_seq_type::const_iterator piece_iter = plate_iter->second.begin();
 				piece_iter != plate_iter->second.end(); ++piece_iter)
 			{
+				plate_area_steradians += (*piece_iter)->get_area().dval();
 				preview_layer->add_rendered_geometry(
 						RenderedGeometryFactory::create_rendered_polygon_on_sphere(
 								*piece_iter, colours[colour_index % 3], 3.0f, true,
 								GPlatesGui::Colour(0.12f, 0.18f, 0.24f)));
 			}
+			plate_legend.append(QObject::tr("%1: Plate %2 — %3 component(s), %4 million km²")
+					.arg(colour_names[colour_index % 3])
+					.arg(plate_iter->first)
+					.arg(static_cast<unsigned int>(plate_iter->second.size()))
+					.arg(plate_area_steradians * radius_km * radius_km / 1.0e6, 0, 'f', 3));
 		}
 
-		const QMessageBox::StandardButton confirmation = QMessageBox::question(
-				parent_widget,
+		QMessageBox confirmation(
+				QMessageBox::Question,
 				QObject::tr("Confirm RRR Triple-Junction Fill"),
 				QObject::tr(
-						"Yellow shows the three proposed MOR extensions to one junction. The plate-coloured preview contains %1 OceanicCrust polygon(s) for Plates %2 over %3-%4 Ma. The closest endpoint moved %5 degrees; branch angles are %6-%7 degrees. %8 existing OceanicCrust polygon(s) were checked%9.\n\nCommit the three MOR edits and all crust polygons as one undoable operation?")
+						"Yellow shows the three proposed MOR extensions to one junction. The preview contains %1 OceanicCrust polygon(s) for Plates %2 over %3-%4 Ma. The farthest endpoint moved %5 degrees; branch angles are %6-%7 degrees. %8 existing OceanicCrust polygon(s) were checked%9.\n\n%10\n\nCommit the three MOR edits and all crust polygons as one undoable operation?")
 						.arg(polygon_count)
-						.arg(QStringList(pair_descriptions).join(", "))
+						.arg(plate_id_descriptions.join(", "))
 						.arg(older_time, 0, 'f', 2).arg(current_time, 0, 'f', 2)
 						.arg(resolved.maximum_extension_degrees, 0, 'f', 3)
 						.arg(resolved.minimum_branch_angle_degrees, 0, 'f', 2)
@@ -617,11 +647,16 @@ GPlatesViewOperations::CreateTripleJunctionCrustOperation::trigger(
 						.arg(static_cast<unsigned int>(existing_ocean_crust.size()))
 						.arg(overlap_removed
 								? QObject::tr(" and overlapping area was removed")
-								: QObject::tr("; no overlap was found")),
-				QMessageBox::Yes | QMessageBox::No,
-				QMessageBox::Yes);
+								: QObject::tr("; no overlap was found"))
+						.arg(plate_legend.join("\n")),
+				QMessageBox::Ok | QMessageBox::Cancel,
+				parent_widget);
+		confirmation.button(QMessageBox::Ok)->setText(QObject::tr("Commit RRR Fill"));
+		confirmation.setDefaultButton(QMessageBox::Cancel);
+		confirmation.setDetailedText(ridge_descriptions.join("\n"));
+		const int confirmation_result = confirmation.exec();
 		preview_layer->clear_rendered_geometries();
-		if (confirmation != QMessageBox::Yes)
+		if (confirmation_result != QMessageBox::Ok)
 		{
 			return Result(OPERATION_CANCELLED,
 					QObject::tr("RRR triple-junction preview rejected; no data changed."));
