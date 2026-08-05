@@ -54,6 +54,8 @@ set(srcs
     MultiThreadTest.h
     PresentationTestSuite.cc
     PresentationTestSuite.h
+    ProjectTimestampScheduleTest.cc
+    ProjectTimestampScheduleTest.h
     PropertyValuesTestSuite.cc
     PropertyValuesTestSuite.h
     RealTest.cc

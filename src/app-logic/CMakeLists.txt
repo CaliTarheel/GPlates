@@ -95,6 +95,8 @@ set(srcs
     PlateVelocityUtils.h
     PropertyExtractors.cc
     PropertyExtractors.h
+    ProjectTimestampSchedule.cc
+    ProjectTimestampSchedule.h
     RasterLayerParams.cc
     RasterLayerParams.h
     RasterLayerProxy.cc
