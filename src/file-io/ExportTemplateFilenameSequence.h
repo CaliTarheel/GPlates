@@ -28,6 +28,7 @@
 
 #include <cstddef>
 #include <iterator>  // std::forward_iterator_tag
+#include <vector>
 #include <boost/operators.hpp>
 #include <boost/shared_ptr.hpp>
 #include <QDateTime>
@@ -180,6 +181,13 @@ namespace GPlatesFileIO
 				const GPlatesMaths::real_t &end_reconstruction_time,
 				const GPlatesMaths::real_t &reconstruction_time_increment,
 				const bool include_trailing_frame_in_sequence);
+
+		/** Construct a filename sequence for an explicit, non-uniform time list. */
+		ExportTemplateFilenameSequence(
+				const QString &filename_template,
+				const GPlatesModel::integer_plate_id_type &reconstruction_anchor_plate_id,
+				const QString &default_recon_tree_layer_name,
+				const std::vector<double> &reconstruction_times);
 
 		/**
 		 * Returns the length of the sequence.

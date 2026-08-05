@@ -24,14 +24,26 @@
  */
  
 #include <QAbstractItemModel>
+#include <algorithm>
+#include <QCheckBox>
+#include <QComboBox>
 #include <QDebug>
 #include <QDir>
+#include <QDoubleSpinBox>
+#include <QFileDialog>
+#include <QGridLayout>
 #include <QHeaderView>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QSaveFile>
 
 #include "ExportAnimationDialog.h"
 
 #include "app-logic/ApplicationState.h"
+#include "app-logic/ProjectTimestampSchedule.h"
 #include "app-logic/UserPreferences.h"
+#include "app-logic/WorldbuildingExportProfile.h"
 
 #include "gui/AnimationController.h"
 #include "gui/ExportAnimationStrategy.h"
@@ -97,9 +109,45 @@ GPlatesQtWidgets::ExportAnimationDialog::ExportAnimationDialog(
 			this,
 			tr("Select Path"),
 			view_state_),
-	d_is_single_frame(false)
+	d_is_single_frame(false),
+	d_project_timestamps_checkbox(NULL),
+	d_worldbuilding_profile_combo(NULL),
+	d_planet_radius_spinbox(NULL),
+	d_project_revision_line_edit(NULL),
+	d_save_export_manifest_button(NULL)
 {
 	setupUi(this);
+
+	QGroupBox *worldbuilding_profile_group = new QGroupBox(tr("Worldbuilding Export Profile"), groupbox_range);
+	QGridLayout *worldbuilding_profile_layout = new QGridLayout(worldbuilding_profile_group);
+	d_project_timestamps_checkbox = new QCheckBox(tr("Use exact Project Timestamps"), worldbuilding_profile_group);
+	d_project_timestamps_checkbox->setToolTip(tr(
+			"Use only the authoritative non-uniform timestamps in the Primary Project Document that fall inside this range."));
+	worldbuilding_profile_layout->addWidget(d_project_timestamps_checkbox, 0, 0, 1, 2);
+	d_worldbuilding_profile_combo = new QComboBox(worldbuilding_profile_group);
+	const std::vector<GPlatesAppLogic::WorldbuildingExportProfile::Profile> profiles =
+			GPlatesAppLogic::WorldbuildingExportProfile::default_profiles();
+	for (std::vector<GPlatesAppLogic::WorldbuildingExportProfile::Profile>::const_iterator profile = profiles.begin();
+			profile != profiles.end(); ++profile)
+		d_worldbuilding_profile_combo->addItem(tr("%1 — %2").arg(profile->name, profile->variant));
+	worldbuilding_profile_layout->addWidget(new QLabel(tr("Profile / variant:"), worldbuilding_profile_group), 1, 0);
+	worldbuilding_profile_layout->addWidget(d_worldbuilding_profile_combo, 1, 1);
+	d_planet_radius_spinbox = new QDoubleSpinBox(worldbuilding_profile_group);
+	d_planet_radius_spinbox->setDecimals(3);
+	d_planet_radius_spinbox->setRange(0, 1000000000.0);
+	d_planet_radius_spinbox->setValue(6371.0);
+	d_planet_radius_spinbox->setSuffix(tr(" km"));
+	worldbuilding_profile_layout->addWidget(new QLabel(tr("Planet radius:"), worldbuilding_profile_group), 2, 0);
+	worldbuilding_profile_layout->addWidget(d_planet_radius_spinbox, 2, 1);
+	d_project_revision_line_edit = new QLineEdit(QString::fromLatin1("unrecorded"), worldbuilding_profile_group);
+	worldbuilding_profile_layout->addWidget(new QLabel(tr("Project revision:"), worldbuilding_profile_group), 3, 0);
+	worldbuilding_profile_layout->addWidget(d_project_revision_line_edit, 3, 1);
+	d_save_export_manifest_button = new QPushButton(tr("Save Portable Manifest..."), worldbuilding_profile_group);
+	d_save_export_manifest_button->setToolTip(tr(
+			"Write downstream-only profile, radius, revision, exact times, planned frame names, and warnings as JSON."));
+	worldbuilding_profile_layout->addWidget(d_save_export_manifest_button, 4, 0, 1, 2);
+	groupbox_range->layout()->addWidget(worldbuilding_profile_group);
+
 	stackedWidget->setCurrentIndex(0);
 	tableWidget_range->setFocus();
 	
@@ -150,6 +198,10 @@ GPlatesQtWidgets::ExportAnimationDialog::ExportAnimationDialog(
 
 	QObject::connect(checkbox_finish_exactly_on_end_time, SIGNAL(clicked(bool)),
 			d_animation_controller_ptr, SLOT(set_should_finish_exactly_on_end_time(bool)));
+	QObject::connect(d_project_timestamps_checkbox, SIGNAL(toggled(bool)),
+			this, SLOT(handle_project_timestamps_toggled(bool)));
+	QObject::connect(d_save_export_manifest_button, SIGNAL(clicked()),
+			this, SLOT(save_worldbuilding_export_manifest()));
 
 	QObject::connect(button_export, SIGNAL(clicked()),
 			this, SLOT(react_export_button_clicked()));
@@ -388,6 +440,84 @@ GPlatesQtWidgets::ExportAnimationDialog::handle_options_changed()
 	recalculate_progress_bar();
 }
 
+std::vector<double>
+GPlatesQtWidgets::ExportAnimationDialog::project_export_times() const
+{
+	std::vector<double> times;
+	const std::vector<double> &project_times = d_export_animation_context_ptr->view_state()
+			.get_application_state().get_project_timestamp_schedule().timestamps_older_to_younger();
+	const double start = widget_start_time->value();
+	const double end = widget_end_time->value();
+	const double younger = std::min(start, end);
+	const double older = std::max(start, end);
+	for (std::vector<double>::const_iterator time = project_times.begin(); time != project_times.end(); ++time)
+		if (*time + 1e-9 >= younger && *time - 1e-9 <= older)
+			times.push_back(*time);
+	if (start < end)
+		std::reverse(times.begin(), times.end());
+	return times;
+}
+
+void
+GPlatesQtWidgets::ExportAnimationDialog::handle_project_timestamps_toggled(bool enabled)
+{
+	widget_time_increment->setDisabled(enabled);
+	checkbox_finish_exactly_on_end_time->setDisabled(enabled);
+	label_increment_is_per_frame->setDisabled(enabled);
+	recalculate_progress_bar();
+}
+
+void
+GPlatesQtWidgets::ExportAnimationDialog::save_worldbuilding_export_manifest()
+{
+	const std::vector<GPlatesAppLogic::WorldbuildingExportProfile::Profile> profiles =
+			GPlatesAppLogic::WorldbuildingExportProfile::default_profiles();
+	if (profiles.empty())
+		return;
+	const int selected_index = std::max(0, std::min(d_worldbuilding_profile_combo->currentIndex(),
+			static_cast<int>(profiles.size()) - 1));
+
+	GPlatesAppLogic::WorldbuildingExportProfile::Request request;
+	request.profile = profiles[selected_index];
+	request.schedule_mode = d_is_single_frame
+			? GPlatesAppLogic::WorldbuildingExportProfile::SINGLE_TIME
+			: (d_project_timestamps_checkbox->isChecked()
+					? GPlatesAppLogic::WorldbuildingExportProfile::PROJECT_TIMESTAMPS
+					: GPlatesAppLogic::WorldbuildingExportProfile::UNIFORM_INTERVAL);
+	request.current_time = widget_snapshot_time->value();
+	request.start_time = widget_start_time->value();
+	request.end_time = widget_end_time->value();
+	request.uniform_step = widget_time_increment->value();
+	request.project_timestamps_older_to_younger = d_export_animation_context_ptr->view_state()
+			.get_application_state().get_project_timestamp_schedule().timestamps_older_to_younger();
+	request.planet_radius_km = d_planet_radius_spinbox->value();
+	request.project_revision = d_project_revision_line_edit->text().trimmed();
+
+	GPlatesAppLogic::WorldbuildingExportProfile::Plan plan =
+			GPlatesAppLogic::WorldbuildingExportProfile::build(request);
+	if (request.schedule_mode == GPlatesAppLogic::WorldbuildingExportProfile::PROJECT_TIMESTAMPS &&
+			plan.reconstruction_times.empty())
+		plan.warnings.append(d_export_animation_context_ptr->view_state().get_application_state()
+				.get_project_timestamp_schedule().diagnostic());
+
+	const QString file_name = QFileDialog::getSaveFileName(this,
+			tr("Save Worldbuilding Export Manifest"),
+			QDir(d_is_single_frame ? d_single_path : d_range_path)
+					.filePath(QString::fromLatin1("worldbuilding-export-manifest.json")),
+			tr("JSON (*.json)"));
+	if (file_name.isEmpty())
+		return;
+	QSaveFile file(file_name);
+	if (!file.open(QIODevice::WriteOnly) || file.write(plan.to_json().toUtf8()) < 0 || !file.commit())
+	{
+		update_status_message(tr("Could not save export manifest: %1").arg(file.errorString()), true);
+		return;
+	}
+	update_status_message(plan.warnings.isEmpty()
+			? tr("Portable export manifest saved.")
+			: tr("Portable export manifest saved with %1 warning(s).").arg(plan.warnings.size()));
+}
+
 void
 GPlatesQtWidgets::ExportAnimationDialog::set_export_parameters()
 {
@@ -414,6 +544,8 @@ GPlatesQtWidgets::ExportAnimationDialog::set_export_parameters()
 	// It is important we do this BEFORE adding export animation strategies as they will initialise
 	// ExportTemplateFilenameSequences based on the range we set here.
 	d_export_animation_context_ptr->set_sequence(seq);
+	if (!radioButton_single->isChecked() && d_project_timestamps_checkbox->isChecked())
+		d_export_animation_context_ptr->set_explicit_reconstruction_times(project_export_times());
 	
 
 	for (int row = 0; row < table_widget->rowCount(); ++row)
@@ -465,6 +597,13 @@ GPlatesQtWidgets::ExportAnimationDialog::react_export_button_clicked()
 	if(!update_target_directory(path))
 	{
 		//target directory invalid, do nothing
+		return;
+	}
+	if (!d_is_single_frame && d_project_timestamps_checkbox->isChecked() && project_export_times().empty())
+	{
+		update_status_message(
+				d_export_animation_context_ptr->view_state().get_application_state()
+						.get_project_timestamp_schedule().diagnostic(), true);
 		return;
 	}
 	update_status_message(tr("Exporting..."));
@@ -721,12 +860,20 @@ GPlatesQtWidgets::ExportAnimationDialog::recalculate_progress_bar()
 	// Ask AnimationController how many frames it thinks we're
 	// going to be writing out.
 	std::size_t length = d_animation_controller_ptr->duration_in_frames();
+	std::vector<double> exact_project_times;
+	if (!d_is_single_frame && d_project_timestamps_checkbox && d_project_timestamps_checkbox->isChecked())
+	{
+		exact_project_times = project_export_times();
+		length = exact_project_times.size();
+	}
 	
 	// Update labels indicating the true start and end times.
-	label_starting_frame_time->setText(tr("%L1 Ma")
-			.arg(d_animation_controller_ptr->starting_frame_time(), 0, 'f', 2));
-	label_ending_frame_time->setText(tr("%L1 Ma")
-			.arg(d_animation_controller_ptr->ending_frame_time(), 0, 'f', 2));
+	label_starting_frame_time->setText(tr("%L1 Ma").arg(
+			exact_project_times.empty() ? d_animation_controller_ptr->starting_frame_time()
+					: exact_project_times.front(), 0, 'f', 2));
+	label_ending_frame_time->setText(tr("%L1 Ma").arg(
+			exact_project_times.empty() ? d_animation_controller_ptr->ending_frame_time()
+					: exact_project_times.back(), 0, 'f', 2));
 	
 	// Update progress bar to show total number of frames that will be written.
 	progress_bar->setRange(0, static_cast<int>(length));

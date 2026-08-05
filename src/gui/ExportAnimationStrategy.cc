@@ -79,14 +79,27 @@ GPlatesGui::ExportAnimationStrategy::set_template_filename(
 	// Create the export template filename sequence.
 	//
 
-	d_filename_sequence_opt = GPlatesFileIO::ExportTemplateFilenameSequence(
-			filename,
-			application_state.get_current_anchored_plate_id(),
-			default_recon_tree_layer_name,
-			d_export_animation_context_ptr->get_sequence().actual_start_time,
-			d_export_animation_context_ptr->get_sequence().actual_end_time,
-			d_export_animation_context_ptr->get_sequence().raw_time_increment,
-			d_export_animation_context_ptr->get_sequence().should_finish_exactly_on_end_time);
+	const std::vector<double> &explicit_times =
+			d_export_animation_context_ptr->get_explicit_reconstruction_times();
+	if (!explicit_times.empty())
+	{
+		d_filename_sequence_opt = GPlatesFileIO::ExportTemplateFilenameSequence(
+				filename,
+				application_state.get_current_anchored_plate_id(),
+				default_recon_tree_layer_name,
+				explicit_times);
+	}
+	else
+	{
+		d_filename_sequence_opt = GPlatesFileIO::ExportTemplateFilenameSequence(
+				filename,
+				application_state.get_current_anchored_plate_id(),
+				default_recon_tree_layer_name,
+				d_export_animation_context_ptr->get_sequence().actual_start_time,
+				d_export_animation_context_ptr->get_sequence().actual_end_time,
+				d_export_animation_context_ptr->get_sequence().raw_time_increment,
+				d_export_animation_context_ptr->get_sequence().should_finish_exactly_on_end_time);
+	}
 	d_filename_iterator_opt = d_filename_sequence_opt->begin();
 }
 

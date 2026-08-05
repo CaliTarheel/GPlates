@@ -84,6 +84,12 @@ namespace GPlatesFileIO
 				const double &reconstruction_time_increment,
 				const GPlatesUtils::AnimationSequence::SequenceInfo sequence_info);
 
+		ExportTemplateFilenameSequenceImpl(
+				const QString &filename_template,
+				const GPlatesModel::integer_plate_id_type &reconstruction_anchor_plate_id,
+				const QString &default_recon_tree_layer_name,
+				const std::vector<double> &reconstruction_times);
+
 		
 		//! Returns number of filenames in the sequence.
 		std::size_t
@@ -117,6 +123,7 @@ namespace GPlatesFileIO
 		const double d_begin_reconstruction_time;
 		const double d_reconstruction_time_increment;
 		GPlatesUtils::AnimationSequence::SequenceInfo d_sequence_info;
+		std::vector<double> d_explicit_reconstruction_times;
 
 		format_seq_type d_format_seq;
 

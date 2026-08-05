@@ -103,6 +103,8 @@ set(srcs
     PropertyExtractors.h
     ProjectTimestampSchedule.cc
     ProjectTimestampSchedule.h
+    WorldbuildingExportProfile.cc
+    WorldbuildingExportProfile.h
     WorldbuildingProjectManifest.cc
     WorldbuildingProjectManifest.h
     RasterLayerParams.cc
