@@ -150,6 +150,8 @@ set(srcs
     RotationFileEditorOperation.h
     RotationMotionPlanner.cc
     RotationMotionPlanner.h
+    BoundarySectionGraph.cc
+    BoundarySectionGraph.h
     RotationPlateCreation.cc
     RotationPlateCreation.h
     RenderedSubductionTeethPolyline.h

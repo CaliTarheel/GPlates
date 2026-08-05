@@ -44,6 +44,10 @@ namespace GPlatesViewOperations
 		void
 		trigger();
 
+	Q_SIGNALS:
+		void
+		open_topology_tools_requested();
+
 	private:
 		GPlatesAppLogic::ApplicationState &d_application_state;
 		GPlatesPresentation::ViewState &d_view_state;

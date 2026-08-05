@@ -2903,6 +2903,16 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	QObject::connect(
 			manage_flowlines_action, SIGNAL(triggered()),
 			flowline_manager_operation, SLOT(trigger()));
+	QObject::connect(
+			flowline_manager_operation,
+			&GPlatesViewOperations::FlowlineManagerOperation::open_topology_tools_requested,
+			this,
+			[this]()
+			{
+				d_task_panel_ptr->choose_topology_tools_tab();
+				status_message(tr(
+						"Topology Tools opened for the reviewed boundary-audit handoff; the audit did not change any live topology."));
+			});
 	QAction *generate_craters_action = world_building_menu->addAction(tr("Generate Impact Craters..."));
 	GPlatesViewOperations::CraterGeneratorOperation *crater_generator_operation =
 			new GPlatesViewOperations::CraterGeneratorOperation(get_application_state(), this);
