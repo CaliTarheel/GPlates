@@ -8,20 +8,48 @@
 #include "OceanCrustBandBuilder.h"
 
 #include <exception>
+#include <set>
 #include <stdexcept>
 #include <vector>
 
 #include "SubductionCutterGeometry.h"
 
+#include "app-logic/ApplicationState.h"
+#include "app-logic/GeometryUtils.h"
+#include "app-logic/ReconstructLayerProxy.h"
+#include "app-logic/ReconstructedFeatureGeometry.h"
+#include "app-logic/Reconstruction.h"
 #include "app-logic/ReconstructUtils.h"
 #include "app-logic/ReconstructionTree.h"
 
 #include "maths/PointOnSphere.h"
 #include "maths/PolylineOnSphere.h"
 
+#include "model/ModelUtils.h"
+#include "model/PropertyName.h"
+
+#include "property-values/GeoTimeInstant.h"
+#include "property-values/GpmlPlateId.h"
+#include "property-values/XsString.h"
+
+#include "utils/UnicodeStringUtils.h"
+
 
 namespace
 {
+	void
+	set_required_property(
+			const GPlatesModel::FeatureHandle::weak_ref &feature,
+			const GPlatesModel::PropertyName &property_name,
+			const GPlatesModel::PropertyValue::non_null_ptr_type &value)
+	{
+		if (!GPlatesModel::ModelUtils::set_property(feature, property_name, value))
+		{
+			throw std::runtime_error(QString("Unable to set required property '%1'.")
+					.arg(property_name.get_name().qstring()).toStdString());
+		}
+	}
+
 	GPlatesViewOperations::OceanCrustBandBuilder::polygon_ptr_type
 	create_candidate_band(
 			const GPlatesMaths::PolylineOnSphere &current_ridge,
@@ -162,4 +190,76 @@ GPlatesViewOperations::OceanCrustBandBuilder::reverse_reconstruct_polygon(
 	return GPlatesMaths::PolygonOnSphere::create(
 			stored_ring.begin(), stored_ring.end(),
 			stored_interior_rings.begin(), stored_interior_rings.end(), true);
+}
+
+
+GPlatesViewOperations::OceanCrustBandBuilder::polygon_seq_type
+GPlatesViewOperations::OceanCrustBandBuilder::get_existing_ocean_crust(
+		GPlatesAppLogic::ApplicationState &application_state)
+{
+	static const GPlatesModel::FeatureType OCEANIC_CRUST =
+			GPlatesModel::FeatureType::create_gpml("OceanicCrust");
+	polygon_seq_type polygons;
+	std::set<const GPlatesModel::TopLevelProperty *> seen_properties;
+	std::vector<GPlatesAppLogic::ReconstructLayerProxy::non_null_ptr_type> layers;
+	application_state.get_current_reconstruction().get_active_layer_outputs<
+			GPlatesAppLogic::ReconstructLayerProxy>(layers);
+	for (std::vector<GPlatesAppLogic::ReconstructLayerProxy::non_null_ptr_type>::const_iterator
+			layer_iter = layers.begin(); layer_iter != layers.end(); ++layer_iter)
+	{
+		std::vector<GPlatesAppLogic::ReconstructedFeatureGeometry::non_null_ptr_type> geometries;
+		(*layer_iter)->get_reconstructed_feature_geometries(geometries);
+		for (std::vector<GPlatesAppLogic::ReconstructedFeatureGeometry::non_null_ptr_type>::const_iterator
+				geometry_iter = geometries.begin(); geometry_iter != geometries.end(); ++geometry_iter)
+		{
+			const GPlatesAppLogic::ReconstructedFeatureGeometry &rfg = **geometry_iter;
+			if (!rfg.is_valid() || !rfg.property().is_still_valid() ||
+					!rfg.get_feature_ref().is_valid() ||
+					rfg.get_feature_ref()->feature_type() != OCEANIC_CRUST ||
+					!seen_properties.insert((*rfg.property()).get()).second)
+			{
+				continue;
+			}
+			const GPlatesMaths::PolygonOnSphere *polygon =
+					dynamic_cast<const GPlatesMaths::PolygonOnSphere *>(
+						rfg.reconstructed_geometry().get());
+			if (polygon)
+			{
+				polygons.push_back(polygon_ptr_type(polygon));
+			}
+		}
+	}
+	return polygons;
+}
+
+
+GPlatesModel::FeatureHandle::non_null_ptr_type
+GPlatesViewOperations::OceanCrustBandBuilder::create_oceanic_crust_feature(
+		const QString &name,
+		double appearance_time,
+		double geometry_import_time,
+		GPlatesModel::integer_plate_id_type plate_id,
+		const polygon_ptr_type &stored_polygon)
+{
+	GPlatesModel::FeatureHandle::non_null_ptr_type feature =
+			GPlatesModel::FeatureHandle::create(
+					GPlatesModel::FeatureType::create_gpml("OceanicCrust"));
+	const GPlatesModel::FeatureHandle::weak_ref feature_ref = feature->reference();
+	set_required_property(feature_ref, GPlatesModel::PropertyName::create_gml("name"),
+			GPlatesPropertyValues::XsString::create(
+					GPlatesUtils::make_icu_string_from_qstring(name)));
+	set_required_property(feature_ref, GPlatesModel::PropertyName::create_gml("validTime"),
+			GPlatesModel::ModelUtils::create_gml_time_period(
+					GPlatesPropertyValues::GeoTimeInstant(appearance_time),
+					GPlatesPropertyValues::GeoTimeInstant::create_distant_future()));
+	set_required_property(feature_ref,
+			GPlatesModel::PropertyName::create_gpml("reconstructionPlateId"),
+			GPlatesPropertyValues::GpmlPlateId::create(plate_id));
+	set_required_property(feature_ref,
+			GPlatesModel::PropertyName::create_gpml("geometryImportTime"),
+			GPlatesModel::ModelUtils::create_gml_time_instant(
+					GPlatesPropertyValues::GeoTimeInstant(geometry_import_time)));
+	set_required_property(feature_ref, GPlatesModel::PropertyName::create_gpml("outlineOf"),
+			GPlatesAppLogic::GeometryUtils::create_polygon_geometry_property_value(stored_polygon));
+	return feature;
 }

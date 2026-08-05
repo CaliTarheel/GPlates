@@ -2,18 +2,16 @@
 
 /**
  * \file
- * Creates one turn of oceanic crust on both sides of a half-stage MOR.
+ * Extends three selected half-stage MORs and creates their RRR crust bands.
  */
 
-#ifndef GPLATES_VIEWOPERATIONS_CREATEOCEANCRUSTOPERATION_H
-#define GPLATES_VIEWOPERATIONS_CREATEOCEANCRUSTOPERATION_H
+#ifndef GPLATES_VIEWOPERATIONS_CREATETRIPLEJUNCTIONCRUSTOPERATION_H
+#define GPLATES_VIEWOPERATIONS_CREATETRIPLEJUNCTIONCRUSTOPERATION_H
 
 #include <boost/noncopyable.hpp>
 #include <QString>
-#include <vector>
 
 #include "model/FeatureCollectionHandle.h"
-#include "model/FeatureHandle.h"
 #include "model/ModelInterface.h"
 
 
@@ -36,7 +34,9 @@ namespace GPlatesPresentation
 
 namespace GPlatesViewOperations
 {
-	class CreateOceanCrustOperation :
+	class CreateOceanCrustOperation;
+
+	class CreateTripleJunctionCrustOperation :
 			private boost::noncopyable
 	{
 	public:
@@ -57,7 +57,8 @@ namespace GPlatesViewOperations
 			QString message;
 		};
 
-		CreateOceanCrustOperation(
+		CreateTripleJunctionCrustOperation(
+				CreateOceanCrustOperation &mor_selection,
 				GPlatesGui::FeatureFocus &feature_focus,
 				GPlatesAppLogic::ApplicationState &application_state,
 				GPlatesPresentation::ViewState &view_state);
@@ -65,33 +66,14 @@ namespace GPlatesViewOperations
 		Result
 		trigger(QWidget *parent_widget);
 
-		/**
-		 * Handles a Shift-click after the ordinary Click Geometry tool has focused
-		 * a feature. Returns true only when the click selected a supported MOR.
-		 */
-		bool
-		select_focused_mor(
-				QString &message);
-
-		const std::vector<GPlatesModel::FeatureHandle::weak_ref> &
-		selected_mors() const
-		{
-			return d_selected_mors;
-		}
-
-		/** Shared invariant used by every ocean-crust generation mode. */
-		static bool
-		is_supported_mor(
-				const GPlatesModel::FeatureHandle::weak_ref &feature);
-
 	private:
+		CreateOceanCrustOperation &d_mor_selection;
 		GPlatesGui::FeatureFocus &d_feature_focus;
 		GPlatesAppLogic::ApplicationState &d_application_state;
 		GPlatesPresentation::ViewState &d_view_state;
 		GPlatesModel::ModelInterface d_model_interface;
-		std::vector<GPlatesModel::FeatureHandle::weak_ref> d_selected_mors;
 		GPlatesModel::FeatureCollectionHandle::weak_ref d_last_output_collection;
 	};
 }
 
-#endif // GPLATES_VIEWOPERATIONS_CREATEOCEANCRUSTOPERATION_H
+#endif // GPLATES_VIEWOPERATIONS_CREATETRIPLEJUNCTIONCRUSTOPERATION_H

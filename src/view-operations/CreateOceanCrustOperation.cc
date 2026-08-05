@@ -9,7 +9,6 @@
 
 #include <algorithm>
 #include <memory>
-#include <set>
 #include <stdexcept>
 #include <vector>
 
@@ -39,13 +38,10 @@
 #include "app-logic/LayerTaskType.h"
 #include "app-logic/ProjectTimestampSchedule.h"
 #include "app-logic/ReconstructGraph.h"
-#include "app-logic/ReconstructLayerProxy.h"
-#include "app-logic/ReconstructedFeatureGeometry.h"
 #include "app-logic/ReconstructionFeatureProperties.h"
 #include "app-logic/ReconstructMethodRegistry.h"
 #include "app-logic/ReconstructParams.h"
 #include "app-logic/Reconstruction.h"
-#include "app-logic/ReconstructionGeometryUtils.h"
 #include "app-logic/ReconstructionLayerProxy.h"
 #include "app-logic/ReconstructionTree.h"
 #include "app-logic/ReconstructionTreeCreator.h"
@@ -63,7 +59,6 @@
 
 #include "model/FeatureCollectionHandle.h"
 #include "model/FeatureHandle.h"
-#include "model/ModelUtils.h"
 #include "model/NotificationGuard.h"
 #include "model/PropertyName.h"
 
@@ -72,39 +67,13 @@
 #include "presentation/VisualLayers.h"
 
 #include "property-values/Enumeration.h"
-#include "property-values/GeoTimeInstant.h"
 #include "property-values/GpmlPlateId.h"
-#include "property-values/XsString.h"
 
 #include "qt-widgets/ChooseFeatureCollectionWidget.h"
-
-#include "utils/UnicodeStringUtils.h"
-
 
 namespace
 {
 	const double TIME_EPSILON = 1e-9;
-
-	bool
-	is_half_stage_mor(
-			const GPlatesModel::FeatureHandle::weak_ref &feature)
-	{
-		static const GPlatesModel::FeatureType MID_OCEAN_RIDGE =
-				GPlatesModel::FeatureType::create_gpml("MidOceanRidge");
-		if (!feature.is_valid() || feature->feature_type() != MID_OCEAN_RIDGE)
-		{
-			return false;
-		}
-
-		const boost::optional<GPlatesPropertyValues::Enumeration::non_null_ptr_to_const_type>
-				reconstruction_method =
-					GPlatesFeatureVisitors::get_property_value<GPlatesPropertyValues::Enumeration>(
-							feature,
-							GPlatesModel::PropertyName::create_gpml("reconstructionMethod"));
-		return reconstruction_method &&
-				(*reconstruction_method)->get_value() ==
-						GPlatesPropertyValues::EnumerationContent("HalfStageRotationVersion3");
-	}
 
 	boost::optional<GPlatesMaths::GeometryOnSphere::non_null_ptr_to_const_type>
 	get_single_active_geometry(
@@ -136,90 +105,6 @@ namespace
 					.arg(reconstruction_time, 0, 'f', 2);
 		}
 		return geometry;
-	}
-
-	GPlatesViewOperations::OceanCrustBandBuilder::polygon_seq_type
-	get_existing_ocean_crust(
-			GPlatesAppLogic::ApplicationState &application_state)
-	{
-		static const GPlatesModel::FeatureType OCEANIC_CRUST =
-				GPlatesModel::FeatureType::create_gpml("OceanicCrust");
-		GPlatesViewOperations::OceanCrustBandBuilder::polygon_seq_type polygons;
-		std::set<const GPlatesModel::TopLevelProperty *> seen_properties;
-		std::vector<GPlatesAppLogic::ReconstructLayerProxy::non_null_ptr_type> layers;
-		application_state.get_current_reconstruction().get_active_layer_outputs<
-				GPlatesAppLogic::ReconstructLayerProxy>(layers);
-		for (std::vector<GPlatesAppLogic::ReconstructLayerProxy::non_null_ptr_type>::const_iterator
-				layer_iter = layers.begin(); layer_iter != layers.end(); ++layer_iter)
-		{
-			std::vector<GPlatesAppLogic::ReconstructedFeatureGeometry::non_null_ptr_type> geometries;
-			(*layer_iter)->get_reconstructed_feature_geometries(geometries);
-			for (std::vector<GPlatesAppLogic::ReconstructedFeatureGeometry::non_null_ptr_type>::const_iterator
-					geometry_iter = geometries.begin(); geometry_iter != geometries.end(); ++geometry_iter)
-			{
-				const GPlatesAppLogic::ReconstructedFeatureGeometry &rfg = **geometry_iter;
-				if (!rfg.is_valid() || !rfg.property().is_still_valid() ||
-						!rfg.get_feature_ref().is_valid() ||
-						rfg.get_feature_ref()->feature_type() != OCEANIC_CRUST ||
-						!seen_properties.insert((*rfg.property()).get()).second)
-				{
-					continue;
-				}
-				const GPlatesMaths::PolygonOnSphere *polygon =
-						dynamic_cast<const GPlatesMaths::PolygonOnSphere *>(
-							rfg.reconstructed_geometry().get());
-				if (polygon)
-				{
-					polygons.push_back(
-							GPlatesViewOperations::OceanCrustBandBuilder::polygon_ptr_type(polygon));
-				}
-			}
-		}
-		return polygons;
-	}
-
-	void
-	set_required_property(
-			const GPlatesModel::FeatureHandle::weak_ref &feature,
-			const GPlatesModel::PropertyName &property_name,
-			const GPlatesModel::PropertyValue::non_null_ptr_type &value)
-	{
-		if (!GPlatesModel::ModelUtils::set_property(feature, property_name, value))
-		{
-			throw std::runtime_error(QString("Unable to set required property '%1'.")
-					.arg(property_name.get_name().qstring()).toStdString());
-		}
-	}
-
-	GPlatesModel::FeatureHandle::non_null_ptr_type
-	create_oceanic_crust_feature(
-			const QString &name,
-			double appearance_time,
-			double geometry_import_time,
-			GPlatesModel::integer_plate_id_type plate_id,
-			const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type &stored_polygon)
-	{
-		GPlatesModel::FeatureHandle::non_null_ptr_type feature =
-				GPlatesModel::FeatureHandle::create(
-						GPlatesModel::FeatureType::create_gpml("OceanicCrust"));
-		const GPlatesModel::FeatureHandle::weak_ref feature_ref = feature->reference();
-		set_required_property(feature_ref, GPlatesModel::PropertyName::create_gml("name"),
-				GPlatesPropertyValues::XsString::create(
-						GPlatesUtils::make_icu_string_from_qstring(name)));
-		set_required_property(feature_ref, GPlatesModel::PropertyName::create_gml("validTime"),
-				GPlatesModel::ModelUtils::create_gml_time_period(
-						GPlatesPropertyValues::GeoTimeInstant(appearance_time),
-						GPlatesPropertyValues::GeoTimeInstant::create_distant_future()));
-		set_required_property(feature_ref,
-				GPlatesModel::PropertyName::create_gpml("reconstructionPlateId"),
-				GPlatesPropertyValues::GpmlPlateId::create(plate_id));
-		set_required_property(feature_ref,
-				GPlatesModel::PropertyName::create_gpml("geometryImportTime"),
-				GPlatesModel::ModelUtils::create_gml_time_instant(
-						GPlatesPropertyValues::GeoTimeInstant(geometry_import_time)));
-		set_required_property(feature_ref, GPlatesModel::PropertyName::create_gpml("outlineOf"),
-				GPlatesAppLogic::GeometryUtils::create_polygon_geometry_property_value(stored_polygon));
-		return feature;
 	}
 
 	class CreateOceanCrustUndoCommand : public QUndoCommand
@@ -346,28 +231,61 @@ GPlatesViewOperations::CreateOceanCrustOperation::CreateOceanCrustOperation(
 
 
 bool
+GPlatesViewOperations::CreateOceanCrustOperation::is_supported_mor(
+		const GPlatesModel::FeatureHandle::weak_ref &feature)
+{
+	static const GPlatesModel::FeatureType MID_OCEAN_RIDGE =
+			GPlatesModel::FeatureType::create_gpml("MidOceanRidge");
+	if (!feature.is_valid() || feature->feature_type() != MID_OCEAN_RIDGE)
+	{
+		return false;
+	}
+
+	const boost::optional<GPlatesPropertyValues::Enumeration::non_null_ptr_to_const_type>
+			reconstruction_method =
+				GPlatesFeatureVisitors::get_property_value<GPlatesPropertyValues::Enumeration>(
+						feature,
+						GPlatesModel::PropertyName::create_gpml("reconstructionMethod"));
+	return reconstruction_method &&
+			(*reconstruction_method)->get_value() ==
+					GPlatesPropertyValues::EnumerationContent("HalfStageRotationVersion3");
+}
+
+
+bool
 GPlatesViewOperations::CreateOceanCrustOperation::select_focused_mor(
 		QString &message)
 {
 	const GPlatesModel::FeatureHandle::weak_ref focused_feature =
 			d_feature_focus.focused_feature();
-	if (!is_half_stage_mor(focused_feature))
+	if (!is_supported_mor(focused_feature))
 	{
 		return false;
 	}
 
-	if (d_selected_mor.is_valid() && d_selected_mor == focused_feature)
+	for (std::vector<GPlatesModel::FeatureHandle::weak_ref>::iterator selection_iter =
+			d_selected_mors.begin(); selection_iter != d_selected_mors.end(); ++selection_iter)
 	{
-		d_selected_mor = GPlatesModel::FeatureHandle::weak_ref();
+		if (selection_iter->is_valid() && *selection_iter == focused_feature)
+		{
+			d_selected_mors.erase(selection_iter);
+			message = QObject::tr(
+					"Removed the half-stage MOR from the shared crust-generation selection (%1 selected).")
+						.arg(static_cast<unsigned int>(d_selected_mors.size()));
+			return true;
+		}
+	}
+	if (d_selected_mors.size() >= 3)
+	{
 		message = QObject::tr(
-				"Removed the half-stage MOR from the ocean-crust selection. Shift-click it again to reselect it.");
+				"Three half-stage MORs are already selected. Shift-click one of them to remove it before adding another.");
 		return true;
 	}
-
-	d_selected_mor = focused_feature;
+	d_selected_mors.push_back(focused_feature);
 	message = QObject::tr(
-			"Selected half-stage MOR %1 for ocean-crust generation. The selection persists while you inspect other features; Shift-click it again to clear it.")
-				.arg(focused_feature->feature_id().get().qstring());
+			"Selected half-stage MOR %1 for crust generation (%2 selected). One MOR runs the basic workflow; three MORs run the RRR workflow. Shift-click a selected MOR to remove it.")
+				.arg(focused_feature->feature_id().get().qstring())
+				.arg(static_cast<unsigned int>(d_selected_mors.size()));
 	return true;
 }
 
@@ -376,16 +294,35 @@ GPlatesViewOperations::CreateOceanCrustOperation::Result
 GPlatesViewOperations::CreateOceanCrustOperation::trigger(
 		QWidget *parent_widget)
 {
-	GPlatesModel::FeatureHandle::weak_ref selected_mor = d_selected_mor;
-	if (!selected_mor.is_valid() && is_half_stage_mor(d_feature_focus.focused_feature()))
+	for (std::vector<GPlatesModel::FeatureHandle::weak_ref>::iterator selection_iter =
+			d_selected_mors.begin(); selection_iter != d_selected_mors.end();)
 	{
-		selected_mor = d_feature_focus.focused_feature();
-		d_selected_mor = selected_mor;
+		if (!selection_iter->is_valid())
+		{
+			selection_iter = d_selected_mors.erase(selection_iter);
+		}
+		else
+		{
+			++selection_iter;
+		}
 	}
-	if (!selected_mor.is_valid() || !is_half_stage_mor(selected_mor) || !selected_mor->parent_ptr())
+	if (d_selected_mors.empty() && is_supported_mor(d_feature_focus.focused_feature()))
+	{
+		d_selected_mors.push_back(d_feature_focus.focused_feature());
+	}
+	if (d_selected_mors.size() != 1)
 	{
 		return Result(SELECTION_REQUIRED,
-				QObject::tr("Shift-click a HalfStageRotationVersion3 MidOceanRidge, then run Generate Ocean Crust from MOR again."));
+				d_selected_mors.empty()
+						? QObject::tr("Shift-click one HalfStageRotationVersion3 MidOceanRidge, then run Generate Ocean Crust from MOR again.")
+						: QObject::tr("The basic workflow requires exactly one selected MOR; %1 are selected. Shift-click selected MORs to remove them or run Generate Triple-Junction Crust.")
+								.arg(static_cast<unsigned int>(d_selected_mors.size())));
+	}
+	const GPlatesModel::FeatureHandle::weak_ref selected_mor = d_selected_mors.front();
+	if (!is_supported_mor(selected_mor) || !selected_mor->parent_ptr())
+	{
+		return Result(SELECTION_REQUIRED,
+				QObject::tr("The selected MOR is no longer available in a loaded collection."));
 	}
 
 	const boost::optional<GPlatesPropertyValues::GpmlPlateId::non_null_ptr_to_const_type> left_plate =
@@ -526,7 +463,7 @@ GPlatesViewOperations::CreateOceanCrustOperation::trigger(
 		const GPlatesModel::integer_plate_id_type left_plate_id = (*left_plate)->get_value();
 		const GPlatesModel::integer_plate_id_type right_plate_id = (*right_plate)->get_value();
 		const OceanCrustBandBuilder::polygon_seq_type existing_ocean_crust =
-				get_existing_ocean_crust(d_application_state);
+				OceanCrustBandBuilder::get_existing_ocean_crust(d_application_state);
 		const OceanCrustBandBuilder::Result left_band =
 				OceanCrustBandBuilder::build_side_band(
 						*current_ridge, *older_ridge, left_plate_id,
@@ -639,7 +576,7 @@ GPlatesViewOperations::CreateOceanCrustOperation::trigger(
 				{
 					name += QObject::tr(" (part %1)").arg(piece_index + 1);
 				}
-				features.push_back(create_oceanic_crust_feature(
+				features.push_back(OceanCrustBandBuilder::create_oceanic_crust_feature(
 						name, current_time, current_time,
 						side_plate_ids[side_index], stored_polygon));
 			}

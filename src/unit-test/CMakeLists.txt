@@ -99,6 +99,8 @@ set(srcs
     TestSuiteFilterTest.h
     TranscribeTest.cc
     TranscribeTest.h
+    TripleJunctionGeometryTest.cc
+    TripleJunctionGeometryTest.h
     UnitTestTestSuite.cc
     UnitTestTestSuite.h
     UtilsTestSuite.cc

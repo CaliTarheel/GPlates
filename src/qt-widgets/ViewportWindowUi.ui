@@ -197,6 +197,7 @@
     <addaction name="action_Split_Plate"/>
     <addaction name="action_Boolean_Polygons"/>
     <addaction name="action_Create_Ocean_Crust"/>
+    <addaction name="action_Create_Triple_Junction_Crust"/>
     <addaction name="action_Subduction_Cutter"/>
     <addaction name="separator"/>
     <addaction name="action_Manage_Colouring"/>
@@ -316,6 +317,17 @@
    </property>
    <property name="statusTip">
     <string>Build both side-plate age bands for one interval and subtract existing OceanicCrust before saving.</string>
+   </property>
+  </action>
+  <action name="action_Create_Triple_Junction_Crust">
+   <property name="text">
+    <string>Generate &amp;RRR Triple-Junction Crust...</string>
+   </property>
+   <property name="toolTip">
+    <string>Extend three connected half-stage MORs and fill the adjoining ocean-crust sectors</string>
+   </property>
+   <property name="statusTip">
+    <string>Use the shared MOR selection and crust-band builder to preview and commit one RRR junction as an atomic edit.</string>
    </property>
   </action>
   <action name="action_Cut">
