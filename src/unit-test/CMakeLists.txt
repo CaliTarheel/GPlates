@@ -76,6 +76,8 @@ set(srcs
     PresentationTestSuite.h
     ProjectMetadataTest.cc
     ProjectMetadataTest.h
+    ProjectTimestampScheduleTest.cc
+    ProjectTimestampScheduleTest.h
     PropertyValuesTestSuite.cc
     PropertyValuesTestSuite.h
     RealTest.cc

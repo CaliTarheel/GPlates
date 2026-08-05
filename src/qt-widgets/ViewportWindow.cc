@@ -63,6 +63,7 @@
 #include <QMessageBox>
 #include <QMenu>
 #include <QMimeData>
+#include <QMenu>
 #include <QProcess>
 #include <QProgressBar>
 #include <QPushButton>
@@ -191,6 +192,8 @@
 #include "view-operations/PlateIdReassignmentOperation.h"
 #include "view-operations/PostCollisionRiftOperation.h"
 #include "view-operations/ProposeInitialRiftsOperation.h"
+#include "view-operations/CraterGeneratorOperation.h"
+#include "view-operations/FlowlineManagerOperation.h"
 #include "view-operations/RenderedGeometryCollection.h"
 #include "view-operations/RenderedGeometryParameters.h"
 #include "view-operations/RotationFileEditorOperation.h"
@@ -1980,6 +1983,25 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	// Connect all the Signal/Slot relationships of ViewportWindow's
 	// toolbar buttons and menu items.
 	connect_menu_actions();
+
+	// World-building operations are kept in a dedicated menu so experimental,
+	// recipe-driven generators do not crowd the core reconstruction menu.
+	QMenu *world_building_menu = menuBar()->addMenu(tr("&World Building"));
+	QAction *manage_flowlines_action = world_building_menu->addAction(tr("Manage Flowlines..."));
+	GPlatesViewOperations::FlowlineManagerOperation *flowline_manager_operation =
+			new GPlatesViewOperations::FlowlineManagerOperation(
+					get_application_state(), get_view_state(), this);
+	flowline_manager_operation->setParent(this);
+	QObject::connect(
+			manage_flowlines_action, SIGNAL(triggered()),
+			flowline_manager_operation, SLOT(trigger()));
+	QAction *generate_craters_action = world_building_menu->addAction(tr("Generate Impact Craters..."));
+	GPlatesViewOperations::CraterGeneratorOperation *crater_generator_operation =
+			new GPlatesViewOperations::CraterGeneratorOperation(get_application_state(), this);
+	crater_generator_operation->setParent(this);
+	QObject::connect(
+			generate_craters_action, SIGNAL(triggered()),
+			crater_generator_operation, SLOT(trigger()));
 
 	// Duplicate the menu structure for the full-screen-mode GMenu.
 	populate_gmenu_from_menubar();

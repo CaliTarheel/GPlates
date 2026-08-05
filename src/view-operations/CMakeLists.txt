@@ -39,12 +39,16 @@ set(srcs
     CreateOceanCrustOperation.h
     CratonPlateIdLabels.cc
     CratonPlateIdLabels.h
+    CraterGeneratorOperation.cc
+    CraterGeneratorOperation.h
     DeleteFeatureOperation.cc
     DeleteFeatureOperation.h
     DeleteVertexGeometryOperation.cc
     DeleteVertexGeometryOperation.h
     FocusedFeatureGeometryManipulator.cc
     FocusedFeatureGeometryManipulator.h
+    FlowlineManagerOperation.cc
+    FlowlineManagerOperation.h
     GeometryBuilder.cc
     GeometryBuilder.h
     GeometryBuilderUndoCommands.cc
