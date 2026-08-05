@@ -68,6 +68,7 @@ GPlatesUnitTest::ProjectMetadataTest::test_front_matter_parsing()
 	BOOST_CHECK(!no_front_matter.has_front_matter);
 	BOOST_CHECK(no_front_matter.is_valid);
 	BOOST_CHECK(!no_front_matter.planet_radius_metres);
+	BOOST_CHECK(!no_front_matter.required_timestamps_ma);
 
 	const GPlatesAppLogic::ProjectMetadata delimiter_not_on_first_line =
 			GPlatesAppLogic::ProjectMetadataParser::parse("# Notes\n---\ngplates:\n  planet:\n    radius_m: 1\n---\n");
@@ -156,6 +157,44 @@ GPlatesUnitTest::ProjectMetadataTest::test_front_matter_parsing()
 	BOOST_CHECK(no_resolution.is_valid);
 	BOOST_CHECK(!no_resolution.default_resolution_km);
 	BOOST_CHECK(no_resolution.resolution_km_by_feature_type.isEmpty());
+
+	// Required project timestamps. Radius is still mandatory - this document supplies both,
+	// since a radius-less document is covered separately by test_invalid_front_matter().
+	const GPlatesAppLogic::ProjectMetadata timestamps =
+			GPlatesAppLogic::ProjectMetadataParser::parse(
+					"---\n"
+					"gplates:\n"
+					"  schema_version: 1\n"
+					"  planet:\n"
+					"    radius_km: 6371\n"
+					"  reconstruction:\n"
+					"    required_timestamps_ma: \"1000, 950, 900, 850, 800, 750, 700, 650, 600, 560, 520, 480, 440, 400, 370, 340, 310, 280, 250, 225, 200, 180, 160, 140, 120, 100, 80, 60, 40, 20, 10, 0\"\n"
+					"---\n");
+	BOOST_CHECK(timestamps.is_valid);
+	BOOST_REQUIRE(timestamps.planet_radius_metres);
+	BOOST_REQUIRE(timestamps.required_timestamps_ma);
+	BOOST_REQUIRE_EQUAL(timestamps.required_timestamps_ma->size(), 32);
+	BOOST_CHECK_EQUAL(timestamps.required_timestamps_ma->front(), 1000.0);
+	BOOST_CHECK_EQUAL(timestamps.required_timestamps_ma->back(), 0.0);
+
+	// A malformed schedule must not disturb an otherwise-good radius: the two are validated
+	// independently, since they are unrelated concerns that happen to share a document.
+	const GPlatesAppLogic::ProjectMetadata independent_fields =
+			GPlatesAppLogic::ProjectMetadataParser::parse(
+					"---\n"
+					"gplates:\n"
+					"  schema_version: 1\n"
+					"  planet:\n"
+					"    radius_km: 6371\n"
+					"  reconstruction:\n"
+					"    required_timestamps_ma: \"100, 50, 50, 0\"\n"
+					"---\n");
+	BOOST_CHECK(!independent_fields.is_valid);
+	BOOST_CHECK(independent_fields.planet_radius_is_valid);
+	BOOST_REQUIRE(independent_fields.planet_radius_metres);
+	BOOST_CHECK_CLOSE(independent_fields.planet_radius_metres.get(), 6371000.0, 1e-10);
+	BOOST_CHECK(!independent_fields.required_timestamps_are_valid);
+	BOOST_CHECK(!independent_fields.required_timestamps_diagnostic.isEmpty());
 }
 
 
@@ -172,7 +211,6 @@ GPlatesUnitTest::ProjectMetadataTest::test_invalid_front_matter()
 			<< "---\ngplates:\n  planet:\n    radius_m: [1]\n---\n"
 			<< "---\ngplates:\n  planet:\n    radius_m: .inf\n---\n"
 			<< "---\ngplates:\n  planet:\n    radius_m: nan\n---\n"
-			<< "---\nradius: 6900000\n---\n"
 			<< "---\ngplates:\n  planet:\n    radius_m: 1\n    radius_m: 2\n---\n"
 			<< "---\ngplates:\n  planet:\n    radius_m: 1\n";
 

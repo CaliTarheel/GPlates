@@ -490,6 +490,14 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			this,
 			SLOT(handle_map_feature_context_menu(
 					const QPointF &, bool, Qt::MouseButton, Qt::KeyboardModifiers)));
+	QObject::connect(
+			&get_view_state().get_animation_controller(),
+			&GPlatesGui::AnimationController::project_timestamp_navigation_message,
+			this,
+			[this](const QString &message)
+			{
+				status_message(message);
+			});
 
 	// Connect all the Signal/Slot relationships of ViewportWindow's
 	// toolbar buttons and menu items.
