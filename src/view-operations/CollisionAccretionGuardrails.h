@@ -35,6 +35,7 @@ namespace GPlatesViewOperations
 		{
 			bool valid;
 			QStringList errors;
+			QStringList warnings;
 			QStringList confirmations;
 		};
 		static Report validate(const Request &request);

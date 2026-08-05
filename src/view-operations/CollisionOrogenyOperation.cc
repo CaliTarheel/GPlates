@@ -833,16 +833,21 @@ GPlatesViewOperations::CollisionOrogenyOperation::preview(const Options &options
 				? QObject::tr(" Incoming Plate %1 will retire into Plate %2 without a reconstruction jump; its older .rot history is preserved.")
 						.arg(d_incoming->plate_id).arg(d_receiving->plate_id)
 				: QString();
+		const QString guardrail_text = QObject::tr("\nGuardrail confirmations:\n- %1%2")
+				.arg(guard_report.confirmations.join(QString::fromLatin1("\n- ")))
+				.arg(guard_report.warnings.isEmpty()
+						? QString()
+						: QObject::tr("\nWarnings:\n- %1").arg(
+								guard_report.warnings.join(QString::fromLatin1("\n- "))));
 		return Result(PREVIEW_READY,
-				QObject::tr("Previewed a %1 collision: %2 km suture, %3 km belt, %4 km present gap, relative closing speed %5. Incoming area is %6% of the receiver. %7 collision/accretion guardrails confirmed. Aqua is the suture; orange is the active orogeny.%8%9")
+				QObject::tr("Previewed a %1 collision: %2 km suture, %3 km belt, %4 km present gap, relative closing speed %5. Incoming area is %6% of the receiver. Aqua is the suture; orange is the active orogeny.%7%8%9")
 						.arg(collision_type_name(collision_type))
 						.arg(geometry.metrics.contact_length_km, 0, 'f', 0)
 						.arg(belt_width_km, 0, 'f', 0)
 						.arg(geometry.metrics.minimum_gap_km, 0, 'f', 0)
 						.arg(speed_text)
 						.arg(100.0 * geometry.metrics.incoming_to_receiving_area_ratio, 0, 'f', 0)
-						.arg(guard_report.confirmations.size())
-						.arg(deformation_text).arg(retirement_text));
+						.arg(deformation_text).arg(retirement_text).arg(guardrail_text));
 	}
 	catch (const std::exception &exception)
 	{

@@ -1108,9 +1108,14 @@ GPlatesViewOperations::PostCollisionRiftOperation::commit(
 		const unsigned int rotation_count = rotations.features.size();
 		clear_preview();
 		return Result(RERIFT_COMMITTED,
-				QObject::tr("Committed the reviewed post-collision rerift at %1 Ma: %2 crossed crustal feature(s) were split, %3 whole feature(s) were assigned by side, one HalfStageRotationVersion3 MOR was created, and %4 independent Plate-0 no-jump rotation branch(es) were added to the loaded .rot collection. Older source slices remain intact; everything is one undo step.")
+				QObject::tr("Committed the reviewed post-collision rerift at %1 Ma: %2 crossed crustal feature(s) were split, %3 whole feature(s) were assigned by side, one HalfStageRotationVersion3 MOR was created, and %4 independent Plate-0 no-jump rotation branch(es) were added to the loaded .rot collection. Older source slices remain intact; everything is one undo step.\n\nGuardrail confirmations:\n- %5%6")
 						.arg(current_time, 0, 'f', 1)
-						.arg(split_feature_count).arg(assigned_feature_count).arg(rotation_count));
+						.arg(split_feature_count).arg(assigned_feature_count).arg(rotation_count)
+						.arg(guard_report.confirmations.join(QString::fromLatin1("\n- ")))
+						.arg(guard_report.warnings.isEmpty()
+								? QString()
+								: QObject::tr("\nWarnings:\n- %1").arg(
+										guard_report.warnings.join(QString::fromLatin1("\n- ")))));
 	}
 	catch (const std::exception &exception)
 	{

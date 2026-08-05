@@ -31,7 +31,8 @@ GPlatesViewOperations::CollisionAccretionGuardrails::validate(const Request &req
 	if (request.event_time < 0)
 		report.errors.append("Event time cannot be younger than 0 Ma.");
 	if (request.project_schedule_available && !request.event_is_project_timestamp)
-		report.errors.append("Event time is not an authoritative Project Timestamp.");
+		report.warnings.append(
+				"Event time is not a required Project Timestamp. It is permitted only as a local tectonic keyframe and does not alter the authoritative schedule.");
 	if (request.incoming_plate == 0 || request.receiving_plate == 0)
 		report.errors.append("Both source Plate IDs must be explicit.");
 	if (request.incoming_plate == request.receiving_plate && request.survivor != KEEP_BOTH)

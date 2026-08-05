@@ -25,7 +25,8 @@ void GPlatesUnitTest::CollisionAccretionGuardrailsTest::test_explicit_survivor_a
 	request.craton_geometry_protected = true;
 	request.lineage_will_be_recorded = true;
 	request.no_rotation_jump = true;
-	BOOST_CHECK(!Guard::validate(request).valid);
+	BOOST_CHECK(Guard::validate(request).valid);
+	BOOST_CHECK_EQUAL(Guard::validate(request).warnings.size(), 1u);
 	request.event_is_project_timestamp = true;
 	BOOST_CHECK(Guard::validate(request).valid);
 	BOOST_CHECK(Guard::is_project_timestamp(100, std::vector<double>{200, 100, 0}));

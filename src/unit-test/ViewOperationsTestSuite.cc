@@ -31,6 +31,7 @@
 #include "unit-test/AdvancePlateMotionGeometryTest.h"
 #include "unit-test/BoundarySectionGraphTest.h"
 #include "unit-test/BooleanPolygonGeometryTest.h"
+#include "unit-test/CollisionAccretionGuardrailsTest.h"
 #include "unit-test/CollisionGeometryTest.h"
 #include "unit-test/PostCollisionRiftGeometryTest.h"
 #include "unit-test/MantleEventGeometryTest.h"
@@ -59,6 +60,7 @@ GPlatesUnitTest::ViewOperationsTestSuite::construct_maps()
 	ADD_TESTSUITE(AdvancePlateMotionGeometry);
 	ADD_TESTSUITE(BoundarySectionGraph);
 	ADD_TESTSUITE(BooleanPolygonGeometry);
+	ADD_TESTSUITE(CollisionAccretionGuardrails);
 	ADD_TESTSUITE(CollisionGeometry);
 	ADD_TESTSUITE(PostCollisionRiftGeometry);
 	ADD_TESTSUITE(MantleEventGeometry);
