@@ -104,6 +104,22 @@ namespace GPlatesFileIO
 
 
 		/**
+		 * Construct an unsaved FileInfo with a human-readable display name.
+		 *
+		 * The empty QFileInfo deliberately preserves Save As behaviour while the
+		 * display name lets generated, unsaved collections be distinguished in the UI.
+		 */
+		FileInfo(
+				const QString &file_name,
+				const QString &unsaved_display_name) :
+			d_file_info(file_name),
+			d_unsaved_display_name(unsaved_display_name)
+		{
+			d_file_info.setCaching(false);
+		}
+
+
+		/**
 		 * Construct an empty FileInfo.
 		 *
 		 * This may seem a little weird, but is necessary to enable the user to create a
@@ -149,6 +165,7 @@ namespace GPlatesFileIO
 
 	private:
 		QFileInfo d_file_info;
+		QString d_unsaved_display_name;
 	};
 
 

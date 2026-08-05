@@ -152,7 +152,7 @@ GPlatesQtWidgets::GenerateDeformingMeshPointsDialog::GenerateDeformingMeshPoints
 	d_view_state(view_state),
 	d_feature_focus(view_state.get_feature_focus()),
 	d_plate_id_widget(new EditPlateIdWidget(this)),
-	d_time_period_widget(new EditTimePeriodWidget(this)),
+	d_time_period_widget(new EditTimePeriodWidget(this, &d_application_state)),
 	d_name_widget(new EditStringWidget(this)),
 	d_choose_feature_collection_widget(
 			new ChooseFeatureCollectionWidget(

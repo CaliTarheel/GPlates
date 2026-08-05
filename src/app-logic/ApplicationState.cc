@@ -24,6 +24,7 @@
  */
 
 #include <boost/foreach.hpp>
+#include <algorithm>
 #include <QThread>
 
 #include "ApplicationState.h"
@@ -57,6 +58,9 @@
 
 namespace
 {
+	const char *DEFAULT_VIEW_RANGE_START_KEY = "view/animation/default_time_range_start";
+	const char *DEFAULT_VIEW_RANGE_END_KEY = "view/animation/default_time_range_end";
+
 	bool
 	has_reconstruction_time_changed(
 			const double &old_reconstruction_time,
@@ -114,6 +118,19 @@ GPlatesAppLogic::ApplicationState::ApplicationState() :
 
 	mediate_signal_slot_connections();
 
+	// Keep the displayed time valid immediately when either preference endpoint changes.
+	QObject::connect(
+			d_user_preferences_ptr.get(),
+			&GPlatesAppLogic::UserPreferences::key_value_updated,
+			this,
+			[this](const QString &key)
+			{
+				if (key == DEFAULT_VIEW_RANGE_START_KEY || key == DEFAULT_VIEW_RANGE_END_KEY)
+				{
+					set_reconstruction_time(d_reconstruction_time);
+				}
+			});
+
 	// Register a model callback so we can reconstruct whenever the feature store is modified.
 	d_callback_feature_store.attach_callback(new FeatureStoreIsModified(*this));
 }
@@ -166,16 +183,34 @@ GPlatesAppLogic::ApplicationState::get_planetary_parameters() const
 }
 
 
+double
+GPlatesAppLogic::ApplicationState::clamp_reconstruction_time_to_default_view_range(
+		double reconstruction_time) const
+{
+	const double first_endpoint =
+			d_user_preferences_ptr->get_value(DEFAULT_VIEW_RANGE_START_KEY).toDouble();
+	const double second_endpoint =
+			d_user_preferences_ptr->get_value(DEFAULT_VIEW_RANGE_END_KEY).toDouble();
+	const double youngest_time = std::min(first_endpoint, second_endpoint);
+	const double oldest_time = std::max(first_endpoint, second_endpoint);
+
+	return std::max(youngest_time, std::min(reconstruction_time, oldest_time));
+}
+
+
 void
 GPlatesAppLogic::ApplicationState::set_reconstruction_time(
 		const double &new_reconstruction_time)
 {
-	if (!has_reconstruction_time_changed(d_reconstruction_time, new_reconstruction_time))
+	const double clamped_reconstruction_time =
+			clamp_reconstruction_time_to_default_view_range(new_reconstruction_time);
+
+	if (!has_reconstruction_time_changed(d_reconstruction_time, clamped_reconstruction_time))
 	{
 		return;
 	}
 
-	d_reconstruction_time = new_reconstruction_time;
+	d_reconstruction_time = clamped_reconstruction_time;
 	reconstruct();
 
 	Q_EMIT reconstruction_time_changed(*this, d_reconstruction_time);

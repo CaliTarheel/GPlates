@@ -28,7 +28,7 @@
          </font>
         </property>
         <property name="text">
-         <string>On GPlates startup, the initial time range of the View slider and Animation / Export settings are:-</string>
+         <string>Sets the startup range for the View slider and Animation / Export settings. Displayed reconstruction times are also limited to this range; values outside it are clamped to the nearest end.</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>

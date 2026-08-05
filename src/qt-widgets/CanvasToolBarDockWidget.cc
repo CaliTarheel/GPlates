@@ -23,20 +23,27 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#include <algorithm>
 #include <deque>
 #include <utility>
 #include <boost/foreach.hpp>
 #include <Qt>
 #include <QtGlobal>
+#include <QApplication>
 #include <QIcon>
 #include <QKeySequence>
 #include <QList>
 #include <QPixmap>
+#include <QPainter>
 #include <QTransform>
 #include <QVariant>
 #include <QVector>
 
 #include "CanvasToolBarDockWidget.h"
+
+#include "ViewportWindow.h"
+
+#include "app-logic/ApplicationState.h"
 
 #include "global/AssertionFailureException.h"
 #include "global/GPlatesAssert.h"
@@ -213,6 +220,10 @@ GPlatesQtWidgets::CanvasToolBarDockWidget::CanvasToolBarDockWidget(
 	// Use empty string for dock title so it doesn't display in the title bar...
 	DockWidget("", dock_state, main_window, QString("canvas_toolbar")),
 	d_canvas_tool_workflows(canvas_tool_workflows),
+	d_main_window(main_window),
+	d_step_older_tab_index(-1),
+	d_step_younger_tab_index(-1),
+	d_last_workflow_tab_index(0),
 	d_tool_icon_regular_size(tool_icon_size)
 {
 	setupUi(this);
@@ -268,6 +279,49 @@ GPlatesQtWidgets::CanvasToolBarDockWidget::CanvasToolBarDockWidget(
 
 	// When the workflow tab is directly changed by the user we need to select that workflow's current tool.
 	connect_to_workflow_tab_changed();
+
+	// These are deliberately tabs rather than controls in a workflow page: this places
+	// them immediately beneath the Hellinger 7 tab in the narrow vertical tool strip.
+	set_up_reconstruction_time_step_tabs();
+}
+
+
+void
+GPlatesQtWidgets::CanvasToolBarDockWidget::set_up_reconstruction_time_step_tabs()
+{
+	auto create_time_step_icon = [this](bool points_into_past)
+	{
+		QPixmap pixmap(tab_widget_canvas_tools->iconSize());
+		pixmap.fill(Qt::transparent);
+		QPainter painter(&pixmap);
+		QFont font = painter.font();
+		font.setBold(true);
+		font.setPointSize(9);
+		painter.setFont(font);
+		painter.setPen(palette().color(QPalette::WindowText));
+		const QString text = points_into_past
+				? QString(QChar(0x2190)) + "50"
+				: "50" + QString(QChar(0x2192));
+		painter.drawText(pixmap.rect(), Qt::AlignCenter, text);
+		painter.end();
+
+		// West-positioned QTabWidget icons are rotated by Qt. Counter-rotate so
+		// the arrows and labels remain horizontal, as we already do for workflow icons.
+		QTransform rotate_90_degree_clockwise;
+		rotate_90_degree_clockwise.rotate(90);
+		return QIcon(pixmap.transformed(rotate_90_degree_clockwise));
+	};
+
+	d_step_older_tab_index = tab_widget_canvas_tools->addTab(
+			new QWidget(tab_widget_canvas_tools), create_time_step_icon(true), QString());
+	tab_widget_canvas_tools->setTabToolTip(
+			d_step_older_tab_index,
+			tr("50 Ma into the past (left). Shift-click to move 5 Ma."));
+	d_step_younger_tab_index = tab_widget_canvas_tools->addTab(
+			new QWidget(tab_widget_canvas_tools), create_time_step_icon(false), QString());
+	tab_widget_canvas_tools->setTabToolTip(
+			d_step_younger_tab_index,
+			tr("50 Ma into the future (right, toward the present). Shift-click to move 5 Ma."));
 }
 
 
@@ -931,6 +985,35 @@ void
 GPlatesQtWidgets::CanvasToolBarDockWidget::handle_workflow_tab_changed(
 		int workflow_tab_index)
 {
+	if (workflow_tab_index == d_step_older_tab_index ||
+			workflow_tab_index == d_step_younger_tab_index)
+	{
+		GPlatesAppLogic::ApplicationState &application_state =
+				d_main_window.get_application_state();
+		const double current_time = application_state.get_current_reconstruction().get_reconstruction_time();
+		const double time_step = QApplication::keyboardModifiers() & Qt::ShiftModifier
+				? 5.0
+				: 50.0;
+		const double new_time = workflow_tab_index == d_step_older_tab_index
+				? current_time + time_step
+				: std::max(0.0, current_time - time_step);
+		application_state.set_reconstruction_time(new_time);
+		d_main_window.status_message(
+				tr("Reconstruction time: %1 Ma (%2 Ma %3 step)")
+						.arg(new_time, 0, 'f', 1)
+						.arg(time_step, 0, 'f', 0)
+						.arg(workflow_tab_index == d_step_older_tab_index
+								? tr("past")
+								: tr("future")));
+
+		// A time-step tab is a momentary button. Return to the active canvas
+		// workflow so the user's drawing/selection tool does not change.
+		connect_to_workflow_tab_changed(false);
+		tab_widget_canvas_tools->setCurrentIndex(d_last_workflow_tab_index);
+		connect_to_workflow_tab_changed(true);
+		return;
+	}
+
 	// Find the workflow given the workflow tab index in the QTabWidget.
 	Workflow *workflow = NULL;
 	// Search all workflows.
@@ -947,6 +1030,7 @@ GPlatesQtWidgets::CanvasToolBarDockWidget::handle_workflow_tab_changed(
 	GPlatesGlobal::Assert<GPlatesGlobal::AssertionFailureException>(
 			workflow,
 			GPLATES_ASSERTION_SOURCE);
+	d_last_workflow_tab_index = workflow_tab_index;
 
 	// Select the new canvas tool (the current tool in the new workflow).
 	// This was caused by a tab change by the user (versus an automatic tool conversion
@@ -1003,6 +1087,7 @@ GPlatesQtWidgets::CanvasToolBarDockWidget::handle_canvas_tool_activated(
 	// the canvas tool may have been activated automatically by GPlates (and not explicitly by the user).
 	connect_to_workflow_tab_changed(false);
 	tab_widget_canvas_tools->setCurrentIndex(d_workflows[workflow].tab_index);
+	d_last_workflow_tab_index = d_workflows[workflow].tab_index;
 	connect_to_workflow_tab_changed(true);
 
 	// We no longer copy the icon of the selected canvas tool to the workflow tab.

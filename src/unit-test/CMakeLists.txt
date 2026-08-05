@@ -9,6 +9,14 @@
 # so the build is unaware of the change.
 #
 set(srcs
+    AdvancePlateMotionGeometryTest.cc
+    AdvancePlateMotionGeometryTest.h
+    CollisionGeometryTest.cc
+    CollisionGeometryTest.h
+    PostCollisionRiftGeometryTest.cc
+    PostCollisionRiftGeometryTest.h
+    MantleEventGeometryTest.cc
+    MantleEventGeometryTest.h
     ApplicationStateTest.cc
     ApplicationStateTest.h
     AppLogicTestSuite.cc
@@ -42,6 +50,16 @@ set(srcs
     GPlatesTestSuite.h
     GuiTestSuite.cc
     GuiTestSuite.h
+    InitialContinentGeometryTest.cc
+    InitialContinentGeometryTest.h
+    InitialRiftGeometryTest.cc
+    InitialRiftGeometryTest.h
+    InitialRotationFileTest.cc
+    InitialRotationFileTest.h
+    InitialSubductionGeometryTest.cc
+    InitialSubductionGeometryTest.h
+    SubductionEffectsGeometryTest.cc
+    SubductionEffectsGeometryTest.h
     MainTestSuite.cc
     MainTestSuite.h
     MathsTestSuite.cc

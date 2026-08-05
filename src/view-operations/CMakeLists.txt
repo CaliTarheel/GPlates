@@ -11,10 +11,34 @@
 set(srcs
     AddPointGeometryOperation.cc
     AddPointGeometryOperation.h
+    AdvancePlateMotionGeometry.cc
+    AdvancePlateMotionGeometry.h
+    AdvancePlateMotionOperation.cc
+    AdvancePlateMotionOperation.h
+    CollisionGeometry.cc
+    CollisionGeometry.h
+    CollisionOrogenyOperation.cc
+    CollisionOrogenyOperation.h
+    PostCollisionRiftGeometry.cc
+    PostCollisionRiftGeometry.h
+    PostCollisionRiftOperation.cc
+    PostCollisionRiftOperation.h
+    MantleEventGeometry.cc
+    MantleEventGeometry.h
+    GenerateMantleEventsOperation.cc
+    GenerateMantleEventsOperation.h
     ChangeLightDirectionOperation.cc
     ChangeLightDirectionOperation.h
     CloneOperation.cc
     CloneOperation.h
+    CreateInitialContinentOperation.cc
+    CreateInitialContinentOperation.h
+    CreateInitialRotationFileOperation.cc
+    CreateInitialRotationFileOperation.h
+    CreateOceanCrustOperation.cc
+    CreateOceanCrustOperation.h
+    CratonPlateIdLabels.cc
+    CratonPlateIdLabels.h
     DeleteFeatureOperation.cc
     DeleteFeatureOperation.h
     DeleteVertexGeometryOperation.cc
@@ -29,10 +53,24 @@ set(srcs
     GeometryOperation.h
     GeometryOperationUndo.cc
     GeometryOperationUndo.h
+    GenerateInitialSubductionOperation.cc
+    GenerateInitialSubductionOperation.h
+    GenerateSubductionEffectsOperation.cc
+    GenerateSubductionEffectsOperation.h
     InsertVertexGeometryOperation.cc
     InsertVertexGeometryOperation.h
     InternalGeometryBuilder.cc
     InternalGeometryBuilder.h
+    InitialContinentGeometry.cc
+    InitialContinentGeometry.h
+    InitialRiftGeometry.cc
+    InitialRiftGeometry.h
+    InitialRotationFile.cc
+    InitialRotationFile.h
+    InitialSubductionGeometry.cc
+    InitialSubductionGeometry.h
+    MakeRiftOperation.cc
+    MakeRiftOperation.h
     MovePoleOperation.cc
     MovePoleOperation.h
     MoveVertexGeometryOperation.cc
@@ -43,6 +81,8 @@ set(srcs
     NaturalizeCoastlineOperation.h
     PlateIdReassignmentOperation.cc
     PlateIdReassignmentOperation.h
+    ProposeInitialRiftsOperation.cc
+    ProposeInitialRiftsOperation.h
     PlateDirectionArrowsOperation.cc
     PlateDirectionArrowsOperation.h
     QueryProximityThreshold.h
@@ -103,6 +143,8 @@ set(srcs
     SubductionCutterGeometry.h
     SubductionCutterOperation.cc
     SubductionCutterOperation.h
+    SubductionEffectsGeometry.cc
+    SubductionEffectsGeometry.h
     UndoRedo.cc
     UndoRedo.h
     VisibleReconstructionGeometryExport.cc

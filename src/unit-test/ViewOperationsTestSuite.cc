@@ -28,7 +28,16 @@
 
 #include "unit-test/ViewOperationsTestSuite.h"
 #include "unit-test/TestSuiteFilter.h"
+#include "unit-test/AdvancePlateMotionGeometryTest.h"
+#include "unit-test/CollisionGeometryTest.h"
+#include "unit-test/PostCollisionRiftGeometryTest.h"
+#include "unit-test/MantleEventGeometryTest.h"
+#include "unit-test/InitialContinentGeometryTest.h"
+#include "unit-test/InitialRiftGeometryTest.h"
+#include "unit-test/InitialRotationFileTest.h"
+#include "unit-test/InitialSubductionGeometryTest.h"
 #include "unit-test/NaturalizeCoastlineTest.h"
+#include "unit-test/SubductionEffectsGeometryTest.h"
 
 GPlatesUnitTest::ViewOperationsTestSuite::ViewOperationsTestSuite(
 		unsigned level) : 
@@ -41,7 +50,16 @@ GPlatesUnitTest::ViewOperationsTestSuite::ViewOperationsTestSuite(
 void 
 GPlatesUnitTest::ViewOperationsTestSuite::construct_maps()
 {
+	ADD_TESTSUITE(AdvancePlateMotionGeometry);
+	ADD_TESTSUITE(CollisionGeometry);
+	ADD_TESTSUITE(PostCollisionRiftGeometry);
+	ADD_TESTSUITE(MantleEventGeometry);
+	ADD_TESTSUITE(InitialContinentGeometry);
+	ADD_TESTSUITE(InitialRiftGeometry);
+	ADD_TESTSUITE(InitialRotationFile);
+	ADD_TESTSUITE(InitialSubductionGeometry);
 	ADD_TESTSUITE(NaturalizeCoastline);
+	ADD_TESTSUITE(SubductionEffectsGeometry);
 }
 
 
