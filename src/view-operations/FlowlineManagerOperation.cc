@@ -36,6 +36,7 @@
 #include "app-logic/FeatureCollectionFileState.h"
 #include "app-logic/GeometryUtils.h"
 #include "app-logic/Layer.h"
+#include "app-logic/ProjectTimestampSchedule.h"
 #include "app-logic/ReconstructMethodRegistry.h"
 #include "app-logic/Reconstruction.h"
 #include "app-logic/ReconstructionFeatureProperties.h"
@@ -336,22 +337,6 @@ namespace
 	}
 
 
-	std::vector<double>
-	build_times(
-			double youngest,
-			double oldest,
-			double step)
-	{
-		std::vector<double> times;
-		for (double time = youngest; time < oldest - 1e-9; time += step)
-		{
-			times.push_back(time);
-		}
-		times.push_back(oldest);
-		return times;
-	}
-
-
 	GPlatesModel::PropertyValue::non_null_ptr_type
 	create_times_value(
 			const std::vector<double> &times)
@@ -445,7 +430,8 @@ namespace
 		add_property(
 				feature->reference(),
 				GPlatesModel::PropertyName::create_gpml("times"),
-				create_times_value(build_times(youngest, oldest, step)));
+				create_times_value(GPlatesAppLogic::ProjectTimestampSchedule::build(
+						youngest, oldest, step)));
 
 		const GPlatesMaths::MultiPointOnSphere::non_null_ptr_to_const_type reconstruction_time_seeds =
 				GPlatesAppLogic::GeometryUtils::convert_geometry_to_multi_point(*source.geometry, false);

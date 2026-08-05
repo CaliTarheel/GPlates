@@ -134,6 +134,7 @@
 #include "utils/Profile.h"
 
 #include "view-operations/CloneOperation.h"
+#include "view-operations/CraterGeneratorOperation.h"
 #include "view-operations/DeleteFeatureOperation.h"
 #include "view-operations/FlowlineManagerOperation.h"
 #include "view-operations/RenderedGeometryCollection.h"
@@ -347,6 +348,13 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	QObject::connect(
 			manage_flowlines_action, SIGNAL(triggered()),
 			flowline_manager_operation, SLOT(trigger()));
+	QAction *generate_craters_action = world_building_menu->addAction(tr("Generate Impact Craters..."));
+	GPlatesViewOperations::CraterGeneratorOperation *crater_generator_operation =
+			new GPlatesViewOperations::CraterGeneratorOperation(get_application_state(), this);
+	crater_generator_operation->setParent(this);
+	QObject::connect(
+			generate_craters_action, SIGNAL(triggered()),
+			crater_generator_operation, SLOT(trigger()));
 
 	// Duplicate the menu structure for the full-screen-mode GMenu.
 	populate_gmenu_from_menubar();
