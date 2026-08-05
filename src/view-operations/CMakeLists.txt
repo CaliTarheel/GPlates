@@ -85,6 +85,8 @@ set(srcs
     NaturalizeCoastlineGeometry.h
     NaturalizeCoastlineOperation.cc
     NaturalizeCoastlineOperation.h
+    OceanCrustBandBuilder.cc
+    OceanCrustBandBuilder.h
     PlateIdReassignmentOperation.cc
     PlateIdReassignmentOperation.h
     ProposeInitialRiftsOperation.cc

@@ -196,6 +196,7 @@
     <addaction name="action_Naturalize_Coastline"/>
     <addaction name="action_Split_Plate"/>
     <addaction name="action_Boolean_Polygons"/>
+    <addaction name="action_Create_Ocean_Crust"/>
     <addaction name="action_Subduction_Cutter"/>
     <addaction name="separator"/>
     <addaction name="action_Manage_Colouring"/>
@@ -304,6 +305,17 @@
    </property>
    <property name="statusTip">
     <string>Build one polygon result from a first feature and one or more selected operand polygons.</string>
+   </property>
+  </action>
+  <action name="action_Create_Ocean_Crust">
+   <property name="text">
+    <string>Generate Oceanic Crust from &amp;MOR...</string>
+   </property>
+   <property name="toolTip">
+    <string>Fill open ocean space from a Shift-clicked half-stage MidOceanRidge</string>
+   </property>
+   <property name="statusTip">
+    <string>Build both side-plate age bands for one interval and subtract existing OceanicCrust before saving.</string>
    </property>
   </action>
   <action name="action_Cut">

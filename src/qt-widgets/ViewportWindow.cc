@@ -1175,9 +1175,9 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			"Use .rot history, normalized MOR push and normalized subduction pull to propose the next younger rotation poles."));
 	active_margin_layout->addWidget(advance_plate_motion_button);
 	QPushButton *create_ocean_crust_button = new QPushButton(
-			tr("3.3  Create Ocean Crust..."), active_margin_group);
+			tr("3.3  Generate Ocean Crust from MOR..."), active_margin_group);
 	create_ocean_crust_button->setToolTip(tr(
-			"Select a half-stage MOR, then use the recorded .rot motion to preview and create one editable ocean-crust age band on each side."));
+			"Shift-click a half-stage MOR, use the Project Timeline interval and recorded .rot motion, then fill only open ocean space on each side."));
 	active_margin_layout->addWidget(create_ocean_crust_button);
 	QPushButton *retire_ocean_crust_button = new QPushButton(
 			tr("3.4  Retire Subducted Oceanic Crust..."), active_margin_group);
@@ -2970,6 +2970,11 @@ GPlatesQtWidgets::ViewportWindow::connect_world_building_menu_actions()
 			this,
 			SLOT(show_boolean_polygons_window()));
 	QObject::connect(
+			action_Create_Ocean_Crust,
+			SIGNAL(triggered()),
+			this,
+			SLOT(handle_create_ocean_crust()));
+	QObject::connect(
 			action_Naturalize_Coastline,
 			SIGNAL(triggered()),
 			this,
@@ -3293,6 +3298,23 @@ GPlatesPresentation::ViewState &
 GPlatesQtWidgets::ViewportWindow::get_view_state()
 {
 	return d_view_state;
+}
+
+
+bool
+GPlatesQtWidgets::ViewportWindow::try_select_worldbuilding_mor()
+{
+	if (!d_create_ocean_crust_operation_ptr)
+	{
+		return false;
+	}
+	QString message;
+	const bool handled = d_create_ocean_crust_operation_ptr->select_focused_mor(message);
+	if (handled)
+	{
+		status_message(message);
+	}
+	return handled;
 }
 
 
@@ -4399,15 +4421,15 @@ GPlatesQtWidgets::ViewportWindow::handle_create_ocean_crust()
 	if (result.outcome == GPlatesViewOperations::CreateOceanCrustOperation::SELECTION_REQUIRED)
 	{
 		activate_choose_feature_tool(canvas_tool_workflows());
-		QMessageBox::information(this, tr("Select Half-Stage MOR"), result.message);
+		QMessageBox::information(this, tr("Shift-Click Half-Stage MOR"), result.message);
 	}
 	else if (result.outcome == GPlatesViewOperations::CreateOceanCrustOperation::OPERATION_COMPLETED)
 	{
-		QMessageBox::information(this, tr("Ocean Crust Created"), result.message);
+		QMessageBox::information(this, tr("Oceanic Crust Generated"), result.message);
 	}
 	else if (result.outcome == GPlatesViewOperations::CreateOceanCrustOperation::OPERATION_ERROR)
 	{
-		QMessageBox::warning(this, tr("Create Ocean Crust"), result.message);
+		QMessageBox::warning(this, tr("Generate Oceanic Crust from MOR"), result.message);
 	}
 }
 

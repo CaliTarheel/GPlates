@@ -38,6 +38,7 @@
 #include "unit-test/InitialRotationFileTest.h"
 #include "unit-test/InitialSubductionGeometryTest.h"
 #include "unit-test/NaturalizeCoastlineTest.h"
+#include "unit-test/OceanCrustBandBuilderTest.h"
 #include "unit-test/SubductionEffectsGeometryTest.h"
 
 GPlatesUnitTest::ViewOperationsTestSuite::ViewOperationsTestSuite(
@@ -61,6 +62,7 @@ GPlatesUnitTest::ViewOperationsTestSuite::construct_maps()
 	ADD_TESTSUITE(InitialRotationFile);
 	ADD_TESTSUITE(InitialSubductionGeometry);
 	ADD_TESTSUITE(NaturalizeCoastline);
+	ADD_TESTSUITE(OceanCrustBandBuilder);
 	ADD_TESTSUITE(SubductionEffectsGeometry);
 }
 
