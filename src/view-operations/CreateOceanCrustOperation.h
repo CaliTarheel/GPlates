@@ -11,6 +11,8 @@
 #include <boost/noncopyable.hpp>
 #include <QString>
 
+#include "model/FeatureCollectionHandle.h"
+#include "model/FeatureHandle.h"
 #include "model/ModelInterface.h"
 
 
@@ -62,11 +64,21 @@ namespace GPlatesViewOperations
 		Result
 		trigger(QWidget *parent_widget);
 
+		/**
+		 * Handles a Shift-click after the ordinary Click Geometry tool has focused
+		 * a feature. Returns true only when the click selected a supported MOR.
+		 */
+		bool
+		select_focused_mor(
+				QString &message);
+
 	private:
 		GPlatesGui::FeatureFocus &d_feature_focus;
 		GPlatesAppLogic::ApplicationState &d_application_state;
 		GPlatesPresentation::ViewState &d_view_state;
 		GPlatesModel::ModelInterface d_model_interface;
+		GPlatesModel::FeatureHandle::weak_ref d_selected_mor;
+		GPlatesModel::FeatureCollectionHandle::weak_ref d_last_output_collection;
 	};
 }
 

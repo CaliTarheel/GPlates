@@ -199,6 +199,14 @@ namespace GPlatesQtWidgets
 		GPlatesPresentation::ViewState &
 		get_view_state();
 
+		/**
+		 * Gives the Worldbuilding Pasta MOR selection first refusal on a
+		 * Shift-click. Returns false so other Shift-click behaviour can continue
+		 * when the focused feature is not a supported half-stage MOR.
+		 */
+		bool
+		try_select_worldbuilding_mor();
+
 		ReconstructionViewWidget &
 		reconstruction_view_widget();
 

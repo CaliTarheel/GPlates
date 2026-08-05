@@ -74,6 +74,8 @@ set(srcs
     MultiThreadTest.h
     NaturalizeCoastlineTest.cc
     NaturalizeCoastlineTest.h
+    OceanCrustBandBuilderTest.cc
+    OceanCrustBandBuilderTest.h
     PresentationTestSuite.cc
     PresentationTestSuite.h
     ProjectMetadataTest.cc
