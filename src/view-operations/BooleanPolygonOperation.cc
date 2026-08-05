@@ -14,9 +14,11 @@
 #include <vector>
 
 #include <QObject>
+#include <QStringList>
 #include <QUndoCommand>
 
 #include "RenderedGeometryCollection.h"
+#include "RenderedGeometryFactory.h"
 #include "UndoRedo.h"
 
 #include "app-logic/ApplicationState.h"
@@ -27,12 +29,16 @@
 #include "feature-visitors/GeometrySetter.h"
 
 #include "gui/FeatureFocus.h"
+#include "gui/Colour.h"
 
+#include "maths/MathsUtils.h"
 #include "maths/PointOnSphere.h"
 
 #include "model/FeatureCollectionHandle.h"
 #include "model/NotificationGuard.h"
 #include "model/TopLevelProperty.h"
+
+#include "presentation/ViewState.h"
 
 
 namespace
@@ -268,17 +274,27 @@ namespace
 
 GPlatesViewOperations::BooleanPolygonOperation::BooleanPolygonOperation(
 		GPlatesGui::FeatureFocus &feature_focus,
-		GPlatesAppLogic::ApplicationState &application_state) :
+		GPlatesAppLogic::ApplicationState &application_state,
+		GPlatesPresentation::ViewState &view_state) :
 	d_feature_focus(feature_focus),
 	d_application_state(application_state),
 	d_model_interface(application_state.get_model_interface()),
-	d_selection_mode(NOT_SELECTING)
-{  }
+	d_preview_layer(
+			view_state.get_rendered_geometry_collection().
+					create_child_rendered_layer_and_transfer_ownership(
+							RenderedGeometryCollection::RECONSTRUCTION_LAYER)),
+	d_selection_mode(NOT_SELECTING),
+	d_preview_ready(false),
+	d_preview_operation(SubductionCutterGeometry::POLYGON_UNION)
+{
+	d_preview_layer->set_active(true);
+}
 
 
 GPlatesViewOperations::BooleanPolygonOperation::Result
 GPlatesViewOperations::BooleanPolygonOperation::arm_first_selection()
 {
+	clear_preview();
 	d_selection_mode = SELECTING_FIRST;
 	return Result(SELECTION_ARMED,
 			QObject::tr("Select the first polygon on the globe or map. Its feature properties will be kept."));
@@ -292,6 +308,7 @@ GPlatesViewOperations::BooleanPolygonOperation::arm_operand_selection()
 	{
 		return Result(OPERATION_ERROR, QObject::tr("Select the first polygon before adding operands."));
 	}
+	clear_preview();
 	d_selection_mode = SELECTING_OPERAND;
 	return Result(SELECTION_ARMED,
 			QObject::tr("Select an operand polygon. Repeat this button to add more polygons."));
@@ -375,6 +392,7 @@ GPlatesViewOperations::BooleanPolygonOperation::capture_armed_selection()
 
 	if (d_selection_mode == SELECTING_FIRST)
 	{
+		clear_preview();
 		d_first = *selected;
 		d_operands.clear();
 		d_selection_mode = NOT_SELECTING;
@@ -395,6 +413,7 @@ GPlatesViewOperations::BooleanPolygonOperation::capture_armed_selection()
 	}
 
 	d_operands.push_back(*selected);
+	clear_preview();
 	d_selection_mode = NOT_SELECTING;
 	return Result(OPERAND_CAPTURED,
 			QObject::tr("Operand %1 captured. Add another operand or apply the operation.")
@@ -402,29 +421,30 @@ GPlatesViewOperations::BooleanPolygonOperation::capture_armed_selection()
 }
 
 
-GPlatesViewOperations::BooleanPolygonOperation::Result
-GPlatesViewOperations::BooleanPolygonOperation::apply(
-		SubductionCutterGeometry::BooleanOperation operation)
+bool
+GPlatesViewOperations::BooleanPolygonOperation::calculate_boolean(
+		SubductionCutterGeometry::BooleanOperation operation,
+		SubductionCutterGeometry::BooleanResult &boolean_result,
+		QString &error) const
 {
 	if (!d_first || d_operands.empty())
 	{
-		return Result(OPERATION_ERROR,
-				QObject::tr("Select a first polygon and at least one operand before applying the operation."));
+		error = QObject::tr("Select a first polygon and at least one operand before previewing the operation.");
+		return false;
 	}
 	if (!d_first->feature.is_valid() || !d_first->geometry_property.is_still_valid() ||
 			!d_first->feature->parent_ptr())
 	{
-		reset();
-		return Result(OPERATION_ERROR,
-				QObject::tr("The first polygon is no longer editable. The Boolean selection was reset."));
+		error = QObject::tr("The first polygon is no longer editable. Select it again.");
+		return false;
 	}
 	const double current_time =
 			d_application_state.get_current_reconstruction().get_reconstruction_time();
 	if (std::fabs(current_time - d_first->reconstruction_time) > 1e-9)
 	{
-		return Result(OPERATION_ERROR,
-				QObject::tr("Return to %1 Ma before applying, or select the polygons again at the current time.")
-						.arg(d_first->reconstruction_time, 0, 'f', 2));
+		error = QObject::tr("Return to %1 Ma before previewing, or select the polygons again at the current time.")
+				.arg(d_first->reconstruction_time, 0, 'f', 2);
+		return false;
 	}
 
 	polygon_seq_type operands;
@@ -433,13 +453,12 @@ GPlatesViewOperations::BooleanPolygonOperation::apply(
 	{
 		if (!operand_iter->feature.is_valid() || !operand_iter->geometry_property.is_still_valid())
 		{
-			return Result(OPERATION_ERROR,
-					QObject::tr("An operand is no longer available. Clear the operands and select them again."));
+			error = QObject::tr("An operand is no longer available. Remove or reselect the operands.");
+			return false;
 		}
 		operands.push_back(operand_iter->polygon);
 	}
 
-	SubductionCutterGeometry::BooleanResult boolean_result;
 	try
 	{
 		boolean_result = SubductionCutterGeometry::apply_polygon_boolean(
@@ -447,20 +466,81 @@ GPlatesViewOperations::BooleanPolygonOperation::apply(
 	}
 	catch (const std::exception &exception)
 	{
-		return Result(OPERATION_ERROR,
-				QObject::tr("The polygon Boolean operation failed: %1").arg(exception.what()));
+		error = QObject::tr("The polygon Boolean operation failed: %1").arg(exception.what());
+		return false;
 	}
 	catch (...)
 	{
-		return Result(OPERATION_ERROR,
-				QObject::tr("The polygon Boolean operation failed on invalid geometry."));
+		error = QObject::tr("The polygon Boolean operation failed on invalid geometry.");
+		return false;
 	}
 	if (!boolean_result.success)
 	{
-		return Result(OPERATION_ERROR, boolean_result.error);
+		error = boolean_result.error;
+		return false;
+	}
+	std::sort(boolean_result.polygons.begin(), boolean_result.polygons.end(), LargerPolygon());
+	return true;
+}
+
+
+GPlatesViewOperations::BooleanPolygonOperation::Result
+GPlatesViewOperations::BooleanPolygonOperation::preview(
+		SubductionCutterGeometry::BooleanOperation operation)
+{
+	clear_preview();
+	SubductionCutterGeometry::BooleanResult boolean_result;
+	QString error;
+	if (!calculate_boolean(operation, boolean_result, error))
+	{
+		return Result(OPERATION_ERROR, error);
 	}
 
-	std::sort(boolean_result.polygons.begin(), boolean_result.polygons.end(), LargerPolygon());
+	double total_area_steradians = 0.0;
+	for (polygon_seq_type::const_iterator polygon_iter = boolean_result.polygons.begin();
+			polygon_iter != boolean_result.polygons.end(); ++polygon_iter)
+	{
+		total_area_steradians += (*polygon_iter)->get_area().dval();
+		d_preview_layer->add_rendered_geometry(
+				RenderedGeometryFactory::create_rendered_polygon_on_sphere(
+						*polygon_iter,
+						GPlatesGui::Colour::get_green(),
+						3.0f,
+						true,
+						GPlatesGui::Colour(0.0f, 0.35f, 0.10f)));
+	}
+	d_preview_ready = true;
+	d_preview_operation = operation;
+	const double sphere_percent =
+			100.0 * total_area_steradians / (4.0 * GPlatesMaths::PI);
+	return Result(PREVIEW_READY,
+			boolean_result.polygons.empty()
+					? QObject::tr("Preview is empty: applying will remove the first feature geometry. Operand features will remain unchanged.")
+					: QObject::tr("Green preview: %1 output component(s), covering %2% of the sphere. The first feature supplies output properties; operands remain unchanged.")
+							.arg(boolean_result.polygons.size())
+							.arg(sphere_percent, 0, 'f', 3));
+}
+
+
+GPlatesViewOperations::BooleanPolygonOperation::Result
+GPlatesViewOperations::BooleanPolygonOperation::apply(
+		SubductionCutterGeometry::BooleanOperation operation)
+{
+	if (!d_preview_ready || d_preview_operation != operation)
+	{
+		return Result(OPERATION_ERROR,
+				QObject::tr("Preview the currently selected operation before applying it."));
+	}
+
+	SubductionCutterGeometry::BooleanResult boolean_result;
+	QString error;
+	if (!calculate_boolean(operation, boolean_result, error))
+	{
+		clear_preview();
+		return Result(OPERATION_ERROR,
+				error + QObject::tr(" Preview invalidated; review the inputs and preview again."));
+	}
+
 	polygon_seq_type stored_polygons;
 	for (polygon_seq_type::const_iterator polygon_iter = boolean_result.polygons.begin();
 			polygon_iter != boolean_result.polygons.end(); ++polygon_iter)
@@ -502,16 +582,38 @@ GPlatesViewOperations::BooleanPolygonOperation::apply(
 
 
 void
+GPlatesViewOperations::BooleanPolygonOperation::remove_last_operand()
+{
+	if (!d_operands.empty())
+	{
+		d_operands.pop_back();
+	}
+	d_selection_mode = NOT_SELECTING;
+	clear_preview();
+}
+
+
+void
 GPlatesViewOperations::BooleanPolygonOperation::clear_operands()
 {
 	d_operands.clear();
 	d_selection_mode = NOT_SELECTING;
+	clear_preview();
+}
+
+
+void
+GPlatesViewOperations::BooleanPolygonOperation::clear_preview()
+{
+	d_preview_layer->clear_rendered_geometries();
+	d_preview_ready = false;
 }
 
 
 void
 GPlatesViewOperations::BooleanPolygonOperation::reset()
 {
+	clear_preview();
 	d_selection_mode = NOT_SELECTING;
 	d_first = boost::none;
 	d_operands.clear();
@@ -534,8 +636,17 @@ GPlatesViewOperations::BooleanPolygonOperation::first_status() const
 QString
 GPlatesViewOperations::BooleanPolygonOperation::operands_status() const
 {
-	return d_operands.empty()
-			? QObject::tr("No operand polygons selected.")
-			: QObject::tr("%1 operand polygon(s) selected; operands remain unchanged.")
-					.arg(d_operands.size());
+	if (d_operands.empty())
+	{
+		return QObject::tr("No operand polygons selected.");
+	}
+	QStringList lines;
+	for (std::vector<CapturedPolygon>::const_iterator operand_iter = d_operands.begin();
+			operand_iter != d_operands.end(); ++operand_iter)
+	{
+		lines.append(QObject::tr("%1. %2")
+				.arg(lines.size() + 1)
+				.arg(operand_iter->feature->feature_id().get().qstring()));
+	}
+	return QObject::tr("Operands remain unchanged:\n%1").arg(lines.join("\n"));
 }

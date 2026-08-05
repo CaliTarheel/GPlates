@@ -653,7 +653,8 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	d_boolean_polygon_operation_ptr(
 			new GPlatesViewOperations::BooleanPolygonOperation(
 					get_view_state().get_feature_focus(),
-					get_application_state())),
+					get_application_state(),
+					get_view_state())),
 	d_collision_orogeny_operation_ptr(
 			new GPlatesViewOperations::CollisionOrogenyOperation(
 					get_view_state().get_feature_focus(),
@@ -1243,7 +1244,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	d_boolean_polygon_dialog_ptr->setWindowTitle(tr("World Building - Boolean Polygons"));
 	d_boolean_polygon_dialog_ptr->setModal(false);
 	d_boolean_polygon_dialog_ptr->setAttribute(Qt::WA_DeleteOnClose, false);
-	QVBoxLayout *boolean_layout = new QVBoxLayout(d_boolean_polygon_dialog_ptr);
+	QVBoxLayout *boolean_layout = create_scrollable_dialog_layout(d_boolean_polygon_dialog_ptr);
 	QLabel *boolean_description = new QLabel(tr(
 			"Keep this window open while selecting polygons on the globe or map. The first polygon supplies every output feature property. Operand features are read-only inputs."),
 			d_boolean_polygon_dialog_ptr);
@@ -1274,7 +1275,10 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	d_boolean_select_operand_button_ptr->setCheckable(true);
 	d_boolean_clear_operands_button_ptr = new QPushButton(
 			tr("Clear Operands"), d_boolean_polygon_dialog_ptr);
+	d_boolean_remove_operand_button_ptr = new QPushButton(
+			tr("Remove Last"), d_boolean_polygon_dialog_ptr);
 	boolean_operand_buttons->addWidget(d_boolean_select_operand_button_ptr);
+	boolean_operand_buttons->addWidget(d_boolean_remove_operand_button_ptr);
 	boolean_operand_buttons->addWidget(d_boolean_clear_operands_button_ptr);
 	d_boolean_operands_status_label_ptr = new QLabel(d_boolean_polygon_dialog_ptr);
 	d_boolean_operands_status_label_ptr->setWordWrap(true);
@@ -1285,11 +1289,14 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	d_boolean_instruction_label_ptr->setWordWrap(true);
 	boolean_layout->addWidget(d_boolean_instruction_label_ptr);
 	QHBoxLayout *boolean_finish_buttons = new QHBoxLayout();
+	d_boolean_preview_button_ptr = new QPushButton(
+			tr("3. Preview Result"), d_boolean_polygon_dialog_ptr);
 	d_boolean_apply_button_ptr = new QPushButton(
-			tr("Apply and Finish"), d_boolean_polygon_dialog_ptr);
+			tr("4. Apply and Finish"), d_boolean_polygon_dialog_ptr);
 	d_boolean_cancel_button_ptr = new QPushButton(
 			tr("Cancel"), d_boolean_polygon_dialog_ptr);
 	boolean_finish_buttons->addStretch();
+	boolean_finish_buttons->addWidget(d_boolean_preview_button_ptr);
 	boolean_finish_buttons->addWidget(d_boolean_apply_button_ptr);
 	boolean_finish_buttons->addWidget(d_boolean_cancel_button_ptr);
 	boolean_layout->addLayout(boolean_finish_buttons);
@@ -1976,10 +1983,20 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			this,
 			SLOT(handle_boolean_select_operand()));
 	QObject::connect(
+			d_boolean_remove_operand_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_boolean_remove_operand()));
+	QObject::connect(
 			d_boolean_clear_operands_button_ptr,
 			SIGNAL(clicked()),
 			this,
 			SLOT(handle_boolean_clear_operands()));
+	QObject::connect(
+			d_boolean_preview_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_boolean_preview()));
 	QObject::connect(
 			d_boolean_apply_button_ptr,
 			SIGNAL(clicked()),
@@ -1991,6 +2008,15 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			this,
 			SLOT(handle_boolean_cancel()));
 	QObject::connect(
+			d_boolean_operation_combo_ptr,
+			QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this,
+			[this](int)
+			{
+				d_boolean_polygon_operation_ptr->clear_preview();
+				update_boolean_palette(tr("Operation changed; preview the new result before applying."));
+			});
+	QObject::connect(
 			d_boolean_polygon_dialog_ptr,
 			SIGNAL(rejected()),
 			this,
@@ -2000,6 +2026,19 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			SIGNAL(focus_changed(GPlatesGui::FeatureFocus &)),
 			this,
 			SLOT(handle_boolean_focus_changed(GPlatesGui::FeatureFocus &)));
+	QObject::connect(
+			&get_view_state().get_animation_controller(),
+			&GPlatesGui::AnimationController::view_time_changed,
+			this,
+			[this](double)
+			{
+				d_boolean_polygon_operation_ptr->reset();
+				if (d_boolean_polygon_dialog_ptr->isVisible())
+				{
+					update_boolean_palette(tr(
+							"View time changed; Boolean selections and preview were cleared."));
+				}
+			});
 	update_boolean_palette();
 	QObject::connect(
 			d_make_rift_select_continent_button_ptr,
@@ -5172,12 +5211,48 @@ GPlatesQtWidgets::ViewportWindow::handle_boolean_select_operand()
 
 
 void
+GPlatesQtWidgets::ViewportWindow::handle_boolean_remove_operand()
+{
+	d_boolean_polygon_operation_ptr->remove_last_operand();
+	const QString message = tr("Removed the most recently selected operand; preview invalidated.");
+	status_message(message);
+	update_boolean_palette(message);
+}
+
+
+void
 GPlatesQtWidgets::ViewportWindow::handle_boolean_clear_operands()
 {
 	d_boolean_polygon_operation_ptr->clear_operands();
 	const QString message = tr("Operand selection cleared; the first polygon is unchanged.");
 	status_message(message);
 	update_boolean_palette(message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_boolean_preview()
+{
+	GPlatesViewOperations::SubductionCutterGeometry::BooleanOperation operation =
+			GPlatesViewOperations::SubductionCutterGeometry::POLYGON_UNION;
+	switch (d_boolean_operation_combo_ptr->currentIndex())
+	{
+	case 1:
+		operation = GPlatesViewOperations::SubductionCutterGeometry::POLYGON_DIFFERENCE;
+		break;
+	case 2:
+		operation = GPlatesViewOperations::SubductionCutterGeometry::POLYGON_INTERSECTION;
+		break;
+	case 3:
+		operation = GPlatesViewOperations::SubductionCutterGeometry::POLYGON_SYMMETRIC_DIFFERENCE;
+		break;
+	default:
+		break;
+	}
+	const GPlatesViewOperations::BooleanPolygonOperation::Result result =
+			d_boolean_polygon_operation_ptr->preview(operation);
+	status_message(result.message);
+	update_boolean_palette(result.message);
 }
 
 
@@ -5265,11 +5340,15 @@ GPlatesQtWidgets::ViewportWindow::update_boolean_palette(
 			d_boolean_polygon_operation_ptr->has_first());
 	d_boolean_clear_operands_button_ptr->setEnabled(
 			d_boolean_polygon_operation_ptr->operand_count() > 0);
-	d_boolean_apply_button_ptr->setEnabled(
+	d_boolean_remove_operand_button_ptr->setEnabled(
+			d_boolean_polygon_operation_ptr->operand_count() > 0);
+	d_boolean_preview_button_ptr->setEnabled(
 			d_boolean_polygon_operation_ptr->has_first() &&
 			d_boolean_polygon_operation_ptr->operand_count() > 0);
+	d_boolean_apply_button_ptr->setEnabled(
+			d_boolean_polygon_operation_ptr->preview_ready());
 	d_boolean_instruction_label_ptr->setText(message.isEmpty()
-			? tr("Select the first polygon, add one or more operands, choose the operation, then click Apply and Finish. The dialog closes only after a successful edit or Cancel.")
+			? tr("Select the first polygon, add one or more operands, choose the operation, and review the green non-destructive preview. Apply and Finish becomes available only for that reviewed result.")
 			: message);
 }
 

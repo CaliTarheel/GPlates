@@ -16,6 +16,7 @@
 #include <QString>
 
 #include "SubductionCutterGeometry.h"
+#include "RenderedGeometryCollection.h"
 
 #include "app-logic/ReconstructedFeatureGeometry.h"
 
@@ -33,6 +34,11 @@ namespace GPlatesAppLogic
 namespace GPlatesGui
 {
 	class FeatureFocus;
+}
+
+namespace GPlatesPresentation
+{
+	class ViewState;
 }
 
 namespace GPlatesViewOperations
@@ -56,6 +62,7 @@ namespace GPlatesViewOperations
 			SELECTION_ARMED,
 			FIRST_CAPTURED,
 			OPERAND_CAPTURED,
+			PREVIEW_READY,
 			BOOLEAN_COMPLETED,
 			OPERATION_CANCELLED,
 			OPERATION_ERROR
@@ -73,14 +80,18 @@ namespace GPlatesViewOperations
 
 		BooleanPolygonOperation(
 				GPlatesGui::FeatureFocus &feature_focus,
-				GPlatesAppLogic::ApplicationState &application_state);
+				GPlatesAppLogic::ApplicationState &application_state,
+				GPlatesPresentation::ViewState &view_state);
 
 		Result arm_first_selection();
 		Result arm_operand_selection();
 		Result capture_armed_selection();
+		Result preview(SubductionCutterGeometry::BooleanOperation operation);
 		Result apply(SubductionCutterGeometry::BooleanOperation operation);
 
+		void remove_last_operand();
 		void clear_operands();
+		void clear_preview();
 		void reset();
 
 		SelectionMode selection_mode() const { return d_selection_mode; }
@@ -89,6 +100,7 @@ namespace GPlatesViewOperations
 		{
 			return static_cast<unsigned int>(d_operands.size());
 		}
+		bool preview_ready() const { return d_preview_ready; }
 		QString first_status() const;
 		QString operands_status() const;
 
@@ -117,13 +129,20 @@ namespace GPlatesViewOperations
 
 		boost::optional<CapturedPolygon> focused_polygon(QString &error) const;
 		bool already_captured(const CapturedPolygon &candidate) const;
+		bool calculate_boolean(
+				SubductionCutterGeometry::BooleanOperation operation,
+				SubductionCutterGeometry::BooleanResult &result,
+				QString &error) const;
 
 		GPlatesGui::FeatureFocus &d_feature_focus;
 		GPlatesAppLogic::ApplicationState &d_application_state;
 		GPlatesModel::ModelInterface d_model_interface;
+		RenderedGeometryCollection::child_layer_owner_ptr_type d_preview_layer;
 		SelectionMode d_selection_mode;
 		boost::optional<CapturedPolygon> d_first;
 		std::vector<CapturedPolygon> d_operands;
+		bool d_preview_ready;
+		SubductionCutterGeometry::BooleanOperation d_preview_operation;
 	};
 }
 

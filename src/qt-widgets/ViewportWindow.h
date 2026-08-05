@@ -563,11 +563,17 @@ namespace GPlatesQtWidgets
 		handle_boolean_select_operand();
 
 		void
+		handle_boolean_remove_operand();
+
+		void
 		handle_boolean_clear_operands();
 
 		void
 		handle_boolean_focus_changed(
 				GPlatesGui::FeatureFocus &feature_focus);
+
+		void
+		handle_boolean_preview();
 
 		void
 		handle_boolean_apply();
@@ -944,7 +950,9 @@ namespace GPlatesQtWidgets
 		QPointer<QDialog> d_boolean_polygon_dialog_ptr;
 		QPointer<QPushButton> d_boolean_select_first_button_ptr;
 		QPointer<QPushButton> d_boolean_select_operand_button_ptr;
+		QPointer<QPushButton> d_boolean_remove_operand_button_ptr;
 		QPointer<QPushButton> d_boolean_clear_operands_button_ptr;
+		QPointer<QPushButton> d_boolean_preview_button_ptr;
 		QPointer<QPushButton> d_boolean_apply_button_ptr;
 		QPointer<QPushButton> d_boolean_cancel_button_ptr;
 		QPointer<QLabel> d_boolean_first_status_label_ptr;
