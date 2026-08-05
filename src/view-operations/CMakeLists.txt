@@ -154,6 +154,8 @@ set(srcs
     BoundarySectionGraph.h
     SubductionLifecyclePlanner.cc
     SubductionLifecyclePlanner.h
+    CollisionAccretionGuardrails.cc
+    CollisionAccretionGuardrails.h
     RotationPlateCreation.cc
     RotationPlateCreation.h
     RenderedSubductionTeethPolyline.h
