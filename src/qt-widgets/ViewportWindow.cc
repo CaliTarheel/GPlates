@@ -270,6 +270,18 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			d_plate_id_reassignment_operation_ptr.get(),
 			SLOT(trigger()));
 
+	QAction *bulk_plate_id_action = new QAction(
+			tr("Bulk Plate ID Operations..."), this);
+	bulk_plate_id_action->setObjectName("action_Bulk_Plate_ID_Operations");
+	bulk_plate_id_action->setStatusTip(
+			tr("Copy, move, or delete all visible features belonging to a Plate ID"));
+	menu_Features->addAction(bulk_plate_id_action);
+	QObject::connect(
+			bulk_plate_id_action,
+			SIGNAL(triggered()),
+			d_plate_id_reassignment_operation_ptr.get(),
+			SLOT(trigger_bulk()));
+
 	// FIXME: remove this when all non Qt widget state has been moved into ViewState.
 	// This is a temporary solution to avoiding passing ViewportWindow references around
 	// when only non Qt widget related view state is needed - currently ViewportWindow contains

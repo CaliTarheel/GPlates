@@ -55,6 +55,9 @@ namespace GPlatesViewOperations
 		void
 		trigger();
 
+		void
+		trigger_bulk();
+
 	private:
 		GPlatesAppLogic::ApplicationState &d_application_state;
 		GPlatesPresentation::ViewState &d_view_state;

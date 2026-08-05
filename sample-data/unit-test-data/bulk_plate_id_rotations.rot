@@ -1,0 +1,4 @@
+101   0.0   0.0   0.0   0.0  000 ! D5/D6/D13 synthetic source plate
+101 100.0  90.0   0.0  20.0  000 ! D5/D6/D13 synthetic source plate
+202   0.0   0.0   0.0   0.0  000 ! D5/D6/D13 synthetic target plate
+202 100.0  90.0  90.0 -10.0  000 ! D5/D6/D13 synthetic target plate
