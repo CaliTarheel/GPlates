@@ -29,6 +29,7 @@
 #pragma warning( disable : 4005 )
 #endif 
 
+#include <algorithm>
 #include <iostream>
 #include <iterator>
 #include <memory>
@@ -119,6 +120,7 @@
 #include "app-logic/ReconstructionGeometryUtils.h"
 #include "app-logic/UserPreferences.h"
 #include "app-logic/VelocityDeltaTime.h"
+#include "app-logic/WorldbuildingProjectManifest.h"
 
 #include "canvas-tools/GeometryOperationState.h"
 #include "canvas-tools/MeasureDistanceState.h"
@@ -395,6 +397,28 @@ namespace GPlatesQtWidgets
 							configuration_name));
 		}
 
+		const ArtifexiaDrawStyle *
+		find_artifexia_draw_style_by_name(
+				const QString &style_name)
+		{
+			if (style_name.compare(QString::fromLatin1("Default"), Qt::CaseInsensitive) == 0)
+			{
+				return &ARTIFEXIA_DRAW_STYLES[ARTIFEXIA_DEFAULT_STYLE];
+			}
+			for (unsigned int index = 0;
+				 index < sizeof(ARTIFEXIA_DRAW_STYLES) / sizeof(ARTIFEXIA_DRAW_STYLES[0]);
+				 ++index)
+			{
+				if (style_name.compare(
+						QString::fromLatin1(ARTIFEXIA_DRAW_STYLES[index].style_name),
+						Qt::CaseInsensitive) == 0)
+				{
+					return &ARTIFEXIA_DRAW_STYLES[index];
+				}
+			}
+			return NULL;
+		}
+
 		bool
 		style_matches_artifexia_configuration(
 				const GPlatesGui::StyleAdapter &style,
@@ -576,6 +600,65 @@ namespace GPlatesQtWidgets
 			}
 
 			return result;
+		}
+
+		unsigned int
+		apply_worldbuilding_workspace_profile(
+				GPlatesQtWidgets::ViewportWindow &viewport_window,
+				const GPlatesAppLogic::WorldbuildingProjectManifest::Manifest &manifest)
+		{
+			unsigned int applied_layer_count = 0;
+			GPlatesPresentation::VisualLayers &visual_layers =
+					viewport_window.get_view_state().get_visual_layers();
+			GPlatesQtWidgets::DrawStyleDialog &draw_style_dialog =
+					viewport_window.dialogs().draw_style_dialog();
+
+			for (std::vector<GPlatesAppLogic::WorldbuildingProjectManifest::LayerProfile>::const_iterator
+				 profile = manifest.layers.begin(); profile != manifest.layers.end(); ++profile)
+			{
+				QStringList matching_names;
+				for (std::vector<GPlatesAppLogic::WorldbuildingProjectManifest::Collection>::const_iterator
+					 collection = manifest.collections.begin(); collection != manifest.collections.end(); ++collection)
+				{
+					if (collection->role.compare(profile->collection_role, Qt::CaseInsensitive) == 0)
+					{
+						matching_names << collection->display_name
+								<< QFileInfo(collection->file_name).completeBaseName();
+						break;
+					}
+				}
+
+				for (std::size_t layer_index = 0; layer_index < visual_layers.size(); ++layer_index)
+				{
+					boost::weak_ptr<GPlatesPresentation::VisualLayer> visual_layer_ref =
+							visual_layers.visual_layer_at(layer_index);
+					boost::shared_ptr<GPlatesPresentation::VisualLayer> visual_layer = visual_layer_ref.lock();
+					if (!visual_layer ||
+						!matching_names.contains(visual_layer->get_name().trimmed(), Qt::CaseInsensitive))
+					{
+						continue;
+					}
+
+					visual_layer->set_visible(profile->visible);
+					const ArtifexiaDrawStyle *draw_style =
+							find_artifexia_draw_style_by_name(profile->draw_style);
+					if (draw_style)
+					{
+						const GPlatesGui::StyleAdapter *style = resolve_artifexia_draw_style(*draw_style);
+						if (style)
+						{
+							draw_style_dialog.reset(visual_layer_ref, style);
+						}
+					}
+
+					const std::size_t target_index = static_cast<std::size_t>(
+							std::max(0, std::min(profile->order, static_cast<int>(visual_layers.size()) - 1)));
+					visual_layers.move_layer(layer_index, target_index);
+					++applied_layer_count;
+					break;
+				}
+			}
+			return applied_layer_count;
 		}
 
 		void
@@ -1016,9 +1099,9 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	QWidget *worldbuilding_pasta_palette = new QWidget(worldbuilding_pasta_scroll_area);
 	QVBoxLayout *worldbuilding_pasta_layout = new QVBoxLayout(worldbuilding_pasta_palette);
 	QPushButton *initialize_worldpasta_structure_button = new QPushButton(
-			tr("Initialize Worldpasta File Structure..."), worldbuilding_pasta_palette);
+			tr("Open / Update Worldbuilding Project..."), worldbuilding_pasta_palette);
 	initialize_worldpasta_structure_button->setToolTip(tr(
-			"Choose a directory, create and load the Artifexia-style collection set, apply its visual presentation, and save a reusable worldpasta.gproj project."));
+			"Choose a directory, inspect its editable worldbuilding manifest, and create only missing managed collections after a dry-run conflict report."));
 	worldbuilding_pasta_layout->addWidget(initialize_worldpasta_structure_button);
 	QLabel *worldbuilding_pasta_description = new QLabel(
 			tr("Follow the Worldbuilding Pasta sequence from stable continental core to active plate margins."),
@@ -1827,7 +1910,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			{
 				const QString directory = QFileDialog::getExistingDirectory(
 						this,
-						tr("Initialize Worldpasta File Structure"),
+						tr("Open or Update Worldbuilding Project"),
 						get_view_state().get_last_open_directory(),
 						QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
 				if (directory.isEmpty())
@@ -1838,44 +1921,101 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 				get_view_state().get_last_open_directory() = directory;
 				const QDir target_directory(directory);
 				const QString project_filename = target_directory.filePath("worldpasta.gproj");
-
-				QStringList target_filenames;
-				for (unsigned int index = 0;
-					 index < sizeof(WORLDPASTA_COLLECTION_FILENAMES) /
-							 sizeof(WORLDPASTA_COLLECTION_FILENAMES[0]);
-					 ++index)
+				const QString manifest_filename = target_directory.filePath(
+						GPlatesAppLogic::WorldbuildingProjectManifest::default_file_name());
+				const bool new_manifest = !QFileInfo::exists(manifest_filename);
+				GPlatesAppLogic::WorldbuildingProjectManifest::Manifest manifest;
+				QString manifest_error;
+				if (new_manifest)
 				{
-					target_filenames.append(target_directory.filePath(
-							QString::fromLatin1(WORLDPASTA_COLLECTION_FILENAMES[index])));
+					manifest = GPlatesAppLogic::WorldbuildingProjectManifest::default_manifest();
 				}
-				target_filenames.append(project_filename);
-
-				QStringList conflicting_filenames;
-				BOOST_FOREACH(const QString &target_filename, target_filenames)
+				else if (!GPlatesAppLogic::WorldbuildingProjectManifest::load(
+							manifest_filename, manifest, &manifest_error))
 				{
-					if (QFileInfo::exists(target_filename))
-					{
-						conflicting_filenames.append(QFileInfo(target_filename).fileName());
-					}
-				}
-				if (!conflicting_filenames.isEmpty())
-				{
-					QMessageBox::warning(
+					QMessageBox::critical(
 							this,
-							tr("Worldpasta Structure Already Exists"),
-							tr("Nothing was changed because the selected directory already contains %1 target file(s):\n\n%2\n\nChoose a new directory or move the existing Worldpasta files first. Existing files are never overwritten.")
-									.arg(conflicting_filenames.size())
-									.arg(conflicting_filenames.join(", ")));
+							tr("Cannot Read Worldbuilding Manifest"),
+							tr("The existing manifest was not changed:\n\n%1").arg(manifest_error));
 					return;
 				}
 
-				QStringList unwritable_filenames;
-				BOOST_FOREACH(const QString &target_filename, target_filenames)
+				const GPlatesAppLogic::WorldbuildingProjectManifest::Audit audit =
+						GPlatesAppLogic::WorldbuildingProjectManifest::audit(directory, manifest);
+				QMessageBox dry_run(this);
+				dry_run.setWindowTitle(tr("Worldbuilding Project Dry Run"));
+				dry_run.setIcon(audit.has_blocking_issues() ? QMessageBox::Critical : QMessageBox::Information);
+				dry_run.setText(new_manifest
+						? tr("A new editable manifest and the missing Worldbuilding Pasta collections can be created.")
+						: tr("The existing editable manifest was audited. Only missing managed collections can be created."));
+				dry_run.setInformativeText(audit.to_plain_text());
+				dry_run.setDetailedText(tr(
+						"Existing collection contents, layer visibility, order, draw styles, raster connections, reconstruction methods, and feature defaults are never replaced by this update. The manifest's workspace profile remains preview-only until a separate apply action is confirmed."));
+				if (audit.has_blocking_issues())
 				{
+					dry_run.setStandardButtons(QMessageBox::Close);
+					dry_run.exec();
+					return;
+				}
+				bool apply_workspace_profile = new_manifest;
+				QPushButton *files_only_button = NULL;
+				QPushButton *files_and_profile_button = NULL;
+				if (new_manifest)
+				{
+					dry_run.setStandardButtons(QMessageBox::Apply | QMessageBox::Cancel);
+					dry_run.setDefaultButton(QMessageBox::Cancel);
+				}
+				else
+				{
+					dry_run.setStandardButtons(QMessageBox::Cancel);
+					files_only_button = dry_run.addButton(
+							tr("Create Missing Files Only"), QMessageBox::AcceptRole);
+					files_and_profile_button = dry_run.addButton(
+							tr("Create Files + Reapply Profile"), QMessageBox::ActionRole);
+				}
+				const int dry_run_result = dry_run.exec();
+				if ((new_manifest && dry_run_result != QMessageBox::Apply) ||
+					(!new_manifest && dry_run.clickedButton() != files_only_button &&
+					 dry_run.clickedButton() != files_and_profile_button))
+				{
+					return;
+				}
+				if (!new_manifest)
+				{
+					apply_workspace_profile = dry_run.clickedButton() == files_and_profile_button;
+				}
+
+				QStringList collection_file_names = audit.missing_files;
+				// Preserve the full Artifexia filing system on first creation. The manifest
+				// assigns stable roles to the collections used by automated operations.
+				if (new_manifest)
+				{
+					for (unsigned int index = 0;
+						 index < sizeof(WORLDPASTA_COLLECTION_FILENAMES) /
+								 sizeof(WORLDPASTA_COLLECTION_FILENAMES[0]);
+						 ++index)
+					{
+						const QString file_name = QString::fromLatin1(WORLDPASTA_COLLECTION_FILENAMES[index]);
+						if (!QFileInfo::exists(target_directory.filePath(file_name)) &&
+							!collection_file_names.contains(file_name, Qt::CaseInsensitive))
+						{
+							collection_file_names.append(file_name);
+						}
+					}
+				}
+
+				QStringList unwritable_filenames;
+				BOOST_FOREACH(const QString &collection_file_name, collection_file_names)
+				{
+					const QString target_filename = target_directory.filePath(collection_file_name);
 					if (!GPlatesFileIO::is_writable(target_filename))
 					{
 						unwritable_filenames.append(QFileInfo(target_filename).fileName());
 					}
+				}
+				if (new_manifest && !GPlatesFileIO::is_writable(manifest_filename))
+				{
+					unwritable_filenames.append(QFileInfo(manifest_filename).fileName());
 				}
 				if (!unwritable_filenames.isEmpty())
 				{
@@ -1887,14 +2027,20 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 					return;
 				}
 
-				QStringList created_filenames;
-				for (unsigned int index = 0;
-					 index < sizeof(WORLDPASTA_COLLECTION_FILENAMES) /
-							 sizeof(WORLDPASTA_COLLECTION_FILENAMES[0]);
-					 ++index)
+				if (new_manifest && !GPlatesAppLogic::WorldbuildingProjectManifest::save(
+							manifest_filename, manifest, &manifest_error))
 				{
-					const QString collection_filename = target_directory.filePath(
-							QString::fromLatin1(WORLDPASTA_COLLECTION_FILENAMES[index]));
+					QMessageBox::critical(
+							this,
+							tr("Cannot Create Worldbuilding Manifest"),
+							manifest_error);
+					return;
+				}
+
+				QStringList created_filenames;
+				BOOST_FOREACH(const QString &collection_file_name, collection_file_names)
+				{
+					const QString collection_filename = target_directory.filePath(collection_file_name);
 					const GPlatesModel::FeatureCollectionHandle::non_null_ptr_type collection =
 							GPlatesModel::FeatureCollectionHandle::create();
 					const GPlatesFileIO::File::non_null_ptr_type file =
@@ -1914,9 +2060,17 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 					created_filenames.append(collection_filename);
 				}
 
-				const ArtifexiaPresetResult preset_result =
-						apply_artifexia_presentation(*this);
-				if (!file_io_feedback().save_project(project_filename))
+				ArtifexiaPresetResult preset_result = { 0, 0, 0 };
+				unsigned int manifest_profile_layer_count = 0;
+				if (new_manifest)
+				{
+					preset_result = apply_artifexia_presentation(*this);
+				}
+				else if (apply_workspace_profile)
+				{
+					manifest_profile_layer_count = apply_worldbuilding_workspace_profile(*this, manifest);
+				}
+				if (new_manifest && !file_io_feedback().save_project(project_filename))
 				{
 					const QString message = tr(
 							"The %1 Artifexia-style collection files were saved and loaded, but the visual project could not be saved as '%2'. You can retry with File > Save Project As.")
@@ -1927,14 +2081,23 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 					return;
 				}
 
-				const QString message = tr(
-						"Initialized, saved and loaded %1 Artifexia-style collection files in %2. Saved their presentation as %3 and applied styles to %4 matching layer(s). Create the plate circuit with step 2.3 when its plate IDs are known.")
+				const QString message = new_manifest
+						? tr("Created and loaded %1 missing collection files in %2. Saved %3, saved the initial presentation as %4, and applied styles to %5 matching layer(s). Future updates preserve user customisations.")
 							.arg(created_filenames.size())
 							.arg(QDir::toNativeSeparators(directory))
+							.arg(QFileInfo(manifest_filename).fileName())
 							.arg(QFileInfo(project_filename).fileName())
-							.arg(preset_result.matching_layer_count);
+							.arg(preset_result.matching_layer_count)
+						: apply_workspace_profile
+							? tr("Loaded %1 missing collection files from %2 and explicitly reapplied visibility, order, and draw style to %3 matching layers. Raster connections, reconstruction presets, and feature defaults remain recorded for operation-specific adapters.")
+									.arg(created_filenames.size())
+									.arg(QFileInfo(manifest_filename).fileName())
+									.arg(manifest_profile_layer_count)
+							: tr("Loaded %1 missing collection files from %2. The existing project and workspace customisations were not changed.")
+									.arg(created_filenames.size())
+									.arg(QFileInfo(manifest_filename).fileName());
 				status_message(message);
-				QMessageBox::information(this, tr("Worldpasta Structure Initialized"), message);
+				QMessageBox::information(this, tr("Worldbuilding Project Updated"), message);
 			});
 	QObject::connect(
 			create_initial_continent_button,
