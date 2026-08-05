@@ -130,6 +130,10 @@ namespace GPlatesQtWidgets
 		set_adjustment(
 				const GPlatesMaths::Rotation &adjustment_);
 
+	public Q_SLOTS:
+		void
+		accept() override;
+
 #if 0
 	public slots:
 		void
@@ -155,6 +159,9 @@ namespace GPlatesQtWidgets
 				double new_pole_time);
 
 	Q_SIGNALS:
+		void
+		apply_requested();
+
 		void
 		pole_sequence_choice_changed(
 				int new_choice);

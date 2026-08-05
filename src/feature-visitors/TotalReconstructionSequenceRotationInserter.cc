@@ -74,6 +74,7 @@ GPlatesFeatureVisitors::TotalReconstructionSequenceRotationInserter::TotalRecons
 	d_rotation_to_apply(rotation_to_apply),
 	d_is_expecting_a_finite_rotation(false),
 	d_trp_time_matches_exactly(false),
+	d_was_applied(false),
 	d_grot_proxy(NULL),
 	d_moving_plate_id(0),
 	d_fixed_plate_id(0)
@@ -370,6 +371,7 @@ GPlatesFeatureVisitors::TotalReconstructionSequenceRotationInserter::visit_gpml_
 
 			// Now insert the time-sample at the appropriate position.
 			time_samples.insert(iter, new_time_sample);
+			d_was_applied = true;
 			GPlatesFileIO::RotationPoleData data(
 					updated_finite_rotation,
 					d_moving_plate_id,
@@ -419,9 +421,12 @@ void
 GPlatesFeatureVisitors::TotalReconstructionSequenceRotationInserter::update_finite_rotation(
 		GPlatesPropertyValues::GpmlFiniteRotation &gpml_finite_rotation)
 {
+	const GPlatesMaths::FiniteRotation original_finite_rotation =
+			gpml_finite_rotation.get_finite_rotation();
 	const GPlatesMaths::FiniteRotation updated_finite_rotation =
-			GPlatesMaths::compose(d_rotation_to_apply, gpml_finite_rotation.get_finite_rotation());
+			GPlatesMaths::compose(d_rotation_to_apply, original_finite_rotation);
 	gpml_finite_rotation.set_finite_rotation(updated_finite_rotation);
+	d_was_applied = true;
 
 	if (d_grot_proxy)
 	{
@@ -431,7 +436,7 @@ GPlatesFeatureVisitors::TotalReconstructionSequenceRotationInserter::update_fini
 				d_fixed_plate_id,
 				d_recon_time.value());
 		const GPlatesFileIO::RotationPoleData old_pole(
-				gpml_finite_rotation.get_finite_rotation(),
+				original_finite_rotation,
 				d_moving_plate_id,
 				d_fixed_plate_id,
 				d_recon_time.value());

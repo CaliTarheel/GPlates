@@ -26,6 +26,7 @@
  
 #include <iostream>
 #include <QHeaderView>
+#include <QMessageBox>
 
 #include "ApplyReconstructionPoleAdjustmentDialog.h"
 
@@ -84,6 +85,17 @@ GPlatesQtWidgets::ApplyReconstructionPoleAdjustmentDialog::ApplyReconstructionPo
 			QHeaderView::Stretch);
 	table_pole_sequences->horizontalHeader()->setSectionResizeMode(ColumnNames::END_TIME,
 			QHeaderView::Stretch);
+}
+
+
+void
+GPlatesQtWidgets::ApplyReconstructionPoleAdjustmentDialog::accept()
+{
+	// Apply while the dialog and its selected pole sequence are still active.
+	// In Qt 6 the inherited QDialog::accepted signal can arrive after the
+	// dialog has been hidden, which previously allowed this action to be lost.
+	Q_EMIT apply_requested();
+	QDialog::accept();
 }
 
 
@@ -381,16 +393,20 @@ GPlatesQtWidgets::AdjustmentApplicator::apply_adjustment()
 {
 	if (d_sequence_choices.empty() || ( ! d_adjustment_rel_fixed) ||
 			( ! d_sequence_choice_index)) {
-		// Nothing we can do.
-		// (Is this an erroneous situation, about which we should complain?)
+		QMessageBox::warning(
+				d_dialog_ptr,
+				tr("Reconstruction pole was not applied"),
+				tr("No valid pole sequence is selected. Select a pole sequence and try again."));
 		return;
 	}
 
 	GPlatesModel::FeatureHandle::weak_ref chosen_pole_seq =
 			d_sequence_choices.at(*d_sequence_choice_index).d_trs;
 	if ( ! chosen_pole_seq.is_valid()) {
-		// Nothing we can do.
-		// (Should we complain?)
+		QMessageBox::warning(
+				d_dialog_ptr,
+				tr("Reconstruction pole was not applied"),
+				tr("The selected pole sequence is no longer available. Reopen the adjustment dialog and try again."));
 		return;
 	}
 
@@ -404,6 +420,15 @@ GPlatesQtWidgets::AdjustmentApplicator::apply_adjustment()
 			*d_adjustment_rel_fixed,
 			d_application_state_ptr->get_feature_collection_file_state());
 	inserter.visit_feature(chosen_pole_seq);
+
+	if ( ! inserter.was_applied())
+	{
+		QMessageBox::warning(
+				d_dialog_ptr,
+				tr("Reconstruction pole was not applied"),
+				tr("The selected sequence has no editable rotation at this reconstruction time. No changes were made."));
+		return;
+	}
 
 	// We release the model notification guard which will cause a reconstruction to occur
 	// because we modified the model.

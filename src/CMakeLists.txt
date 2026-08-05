@@ -634,14 +634,14 @@ target_include_directories(${SOURCE_TARGET} PUBLIC ${PROJECT_BINARY_DIR}/src)
 # External library include directories are treated as system include directories.
 # 'src/system-fixes' contains files copied from external libraries.
 #
-# The Python.h wrapper in this directory uses '#include_next' to reach the real
-# Python header after clearing CGAL CORE's incompatible LONG_BIT macro. MSVC does
-# not implement '#include_next', so put the real Python include directory ahead
-# of the wrapper on that compiler. The Windows LONG_BIT definition below then
-# prevents CGAL CORE from introducing the incompatible definition in the first
-# place.
-if (MSVC)
-	target_include_directories(${SOURCE_TARGET} SYSTEM BEFORE PUBLIC ${Python3_INCLUDE_DIRS})
+# The Python.h wrapper uses '#include_next' to reach the real Python header
+# after clearing CGAL CORE's incompatible LONG_BIT macro. MSVC does not support
+# '#include_next', so keep that wrapper in a separate include directory and only
+# expose it to compilers that implement the directive. On MSVC the real Python
+# header is found normally, while the Windows LONG_BIT definition below prevents
+# CGAL CORE from introducing the incompatible definition in the first place.
+if (NOT MSVC)
+	target_include_directories(${SOURCE_TARGET} SYSTEM BEFORE PUBLIC ${PROJECT_SOURCE_DIR}/src/system-fixes/python)
 endif()
 target_include_directories(${SOURCE_TARGET} SYSTEM PUBLIC ${PROJECT_SOURCE_DIR}/src/system-fixes)
 

@@ -1664,9 +1664,11 @@ GPlatesFileIO::PlatesRotationFileProxy::update_pole(
 
 			if(pole_line_ptr)
 			{
-				if(old_pole.moving_plate_id == pole_line_ptr->get_rotation_pole_data().moving_plate_id)
+				const RotationPoleData &pole_data = pole_line_ptr->get_rotation_pole_data();
+				if(old_pole.moving_plate_id == pole_data.moving_plate_id &&
+						old_pole.fix_plate_id == pole_data.fix_plate_id)
 				{
-					if(std::fabs(pole_line_ptr->get_rotation_pole_data().time - old_pole.time) 
+					if(std::fabs(pole_data.time - old_pole.time)
 						< ROTATION_EPSILON)
 					{
 						pole_line_ptr->get_rotation_pole_data() = new_pole;

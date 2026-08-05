@@ -74,6 +74,15 @@ namespace GPlatesFeatureVisitors
 		~TotalReconstructionSequenceRotationInserter()
 		{  }
 
+		/**
+		 * Return true if a rotation sample was updated or inserted.
+		 */
+		bool
+		was_applied() const
+		{
+			return d_was_applied;
+		}
+
 	protected:
 
 		virtual
@@ -104,6 +113,7 @@ namespace GPlatesFeatureVisitors
 		GPlatesMaths::Rotation d_rotation_to_apply;
 		bool d_is_expecting_a_finite_rotation;
 		bool d_trp_time_matches_exactly;
+		bool d_was_applied;
 		boost::optional<GPlatesMaths::FiniteRotation> d_finite_rotation;
 		GPlatesFileIO::PlatesRotationFileProxy* d_grot_proxy;
 		int d_moving_plate_id, d_fixed_plate_id;

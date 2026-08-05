@@ -1082,8 +1082,9 @@ GPlatesQtWidgets::ModifyReconstructionPoleWidget::make_signal_slot_connections(
 		d_applicator_ptr.get(), SLOT(handle_pole_sequence_choice_changed(int)));
 	QObject::connect(d_dialog_ptr, SIGNAL(pole_sequence_choice_cleared()),
 		d_applicator_ptr.get(), SLOT(handle_pole_sequence_choice_cleared()));
-	QObject::connect(d_dialog_ptr, SIGNAL(accepted()),
-		d_applicator_ptr.get(), SLOT(apply_adjustment()));
+	QObject::connect(
+			d_dialog_ptr, &ApplyReconstructionPoleAdjustmentDialog::apply_requested,
+			d_applicator_ptr.get(), &AdjustmentApplicator::apply_adjustment);
 
 	// The user has agreed to apply the adjustment as described in the dialog.
 	QObject::connect(d_applicator_ptr.get(), SIGNAL(have_reconstructed()),

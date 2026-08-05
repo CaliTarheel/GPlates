@@ -48,6 +48,12 @@ option(GPLATES_BUILD_GPLATES "True to build GPlates (false to build pyGPlates)."
 #
 set(GPLATES_SEMANTIC_VERSION 2.6.0-6)
 
+# Local user-visible label for the Super Explorer / Aesin integration build.
+# Keep this separate from GPLATES_SEMANTIC_VERSION so upstream package-version
+# ordering remains unchanged while the application title and About dialog make
+# this combined PR build unmistakable.
+set(GPLATES_VERSION_LOCAL_LABEL SR)
+
 
 #
 # The pyGPlates version.
@@ -170,6 +176,15 @@ else()
 	set(GPLATES_VERSION_PRERELEASE_SUFFIX_USER "")
 	set(GPLATES_VERSION_PRERELEASE ${GPLATES_VERSION})
 	set(GPLATES_VERSION_PRERELEASE_USER ${GPLATES_VERSION})
+endif()
+
+if (GPLATES_VERSION_LOCAL_LABEL)
+	if (GPLATES_VERSION_PRERELEASE_SUFFIX_USER)
+		set(GPLATES_VERSION_PRERELEASE_SUFFIX_USER "${GPLATES_VERSION_PRERELEASE_SUFFIX_USER}-${GPLATES_VERSION_LOCAL_LABEL}")
+	else()
+		set(GPLATES_VERSION_PRERELEASE_SUFFIX_USER "${GPLATES_VERSION_LOCAL_LABEL}")
+	endif()
+	set(GPLATES_VERSION_PRERELEASE_USER "${GPLATES_VERSION_PRERELEASE_USER}-${GPLATES_VERSION_LOCAL_LABEL}")
 endif()
 
 
