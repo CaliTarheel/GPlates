@@ -34,6 +34,7 @@
 #include "unit-test/FeatureEventVersionerTest.h"
 #include "unit-test/ProjectMetadataTest.h"
 #include "unit-test/ProjectTimestampScheduleTest.h"
+#include "unit-test/RotationMotionPlannerTest.h"
 #include "unit-test/WorldbuildingProjectManifestTest.h"
 
 
@@ -53,6 +54,7 @@ GPlatesUnitTest::AppLogicTestSuite::construct_maps()
 	ADD_TESTSUITE(FeatureEventVersioner);
 	ADD_TESTSUITE(ProjectMetadata);
 	ADD_TESTSUITE(ProjectTimestampSchedule);
+	ADD_TESTSUITE(RotationMotionPlanner);
 	ADD_TESTSUITE(WorldbuildingProjectManifest);
 }
 
