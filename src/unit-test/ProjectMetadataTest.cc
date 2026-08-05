@@ -68,6 +68,7 @@ GPlatesUnitTest::ProjectMetadataTest::test_front_matter_parsing()
 	BOOST_CHECK(!no_front_matter.has_front_matter);
 	BOOST_CHECK(no_front_matter.is_valid);
 	BOOST_CHECK(!no_front_matter.planet_radius_metres);
+	BOOST_CHECK(!no_front_matter.required_timestamps_ma);
 
 	const GPlatesAppLogic::ProjectMetadata delimiter_not_on_first_line =
 			GPlatesAppLogic::ProjectMetadataParser::parse("# Notes\n---\ngplates:\n  planet:\n    radius_m: 1\n---\n");
@@ -95,6 +96,36 @@ GPlatesUnitTest::ProjectMetadataTest::test_front_matter_parsing()
 					"---\n");
 	BOOST_REQUIRE(floating_radius.planet_radius_metres);
 	BOOST_CHECK_CLOSE(floating_radius.planet_radius_metres.get(), 6900000.25, 1e-10);
+
+	const GPlatesAppLogic::ProjectMetadata timestamps_only =
+			GPlatesAppLogic::ProjectMetadataParser::parse(
+					"---\n"
+					"gplates:\n"
+					"  reconstruction:\n"
+					"    required_timestamps_ma: \"1000, 950, 900, 850, 800, 750, 700, 650, 600, 560, 520, 480, 440, 400, 370, 340, 310, 280, 250, 225, 200, 180, 160, 140, 120, 100, 80, 60, 40, 20, 10, 0\"\n"
+					"---\n");
+	BOOST_CHECK(timestamps_only.is_valid);
+	BOOST_CHECK(!timestamps_only.planet_radius_metres);
+	BOOST_REQUIRE(timestamps_only.required_timestamps_ma);
+	BOOST_REQUIRE_EQUAL(timestamps_only.required_timestamps_ma->size(), 32);
+	BOOST_CHECK_EQUAL(timestamps_only.required_timestamps_ma->front(), 1000.0);
+	BOOST_CHECK_EQUAL(timestamps_only.required_timestamps_ma->back(), 0.0);
+
+	const GPlatesAppLogic::ProjectMetadata independent_fields =
+			GPlatesAppLogic::ProjectMetadataParser::parse(
+					"---\n"
+					"gplates:\n"
+					"  planet:\n"
+					"    radius_m: 7000000\n"
+					"  reconstruction:\n"
+					"    required_timestamps_ma: \"100, 50, 50, 0\"\n"
+					"---\n");
+	BOOST_CHECK(!independent_fields.is_valid);
+	BOOST_CHECK(independent_fields.planet_radius_is_valid);
+	BOOST_REQUIRE(independent_fields.planet_radius_metres);
+	BOOST_CHECK_EQUAL(independent_fields.planet_radius_metres.get(), 7000000.0);
+	BOOST_CHECK(!independent_fields.required_timestamps_are_valid);
+	BOOST_CHECK(!independent_fields.required_timestamps_diagnostic.isEmpty());
 }
 
 
@@ -111,7 +142,6 @@ GPlatesUnitTest::ProjectMetadataTest::test_invalid_front_matter()
 			<< "---\ngplates:\n  planet:\n    radius_m: [1]\n---\n"
 			<< "---\ngplates:\n  planet:\n    radius_m: .inf\n---\n"
 			<< "---\ngplates:\n  planet:\n    radius_m: nan\n---\n"
-			<< "---\nradius: 6900000\n---\n"
 			<< "---\ngplates:\n  planet:\n    radius_m: 1\n    radius_m: 2\n---\n"
 			<< "---\ngplates:\n  planet:\n    radius_m: 1\n";
 

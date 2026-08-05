@@ -12,7 +12,11 @@
 
 #include <stdexcept>
 #include <vector>
+#include <QDir>
+#include <QFile>
+#include <QTemporaryDir>
 
+#include "app-logic/ProjectDocumentRegistry.h"
 #include "app-logic/ProjectTimestampSchedule.h"
 
 
@@ -33,6 +37,7 @@ GPlatesUnitTest::ProjectTimestampScheduleTestSuite::construct_maps()
 	ADD_TESTCASE(ProjectTimestampScheduleTest, test_non_divisible_schedule);
 	ADD_TESTCASE(ProjectTimestampScheduleTest, test_single_timestamp);
 	ADD_TESTCASE(ProjectTimestampScheduleTest, test_invalid_schedule);
+	ADD_TESTCASE(ProjectTimestampScheduleTest, test_project_document_schedule);
 }
 
 
@@ -80,4 +85,44 @@ GPlatesUnitTest::ProjectTimestampScheduleTest::test_invalid_schedule()
 	BOOST_CHECK_THROW(
 			GPlatesAppLogic::ProjectTimestampSchedule::build(0.0, 100.0, 1.0, 10),
 			std::length_error);
+}
+
+
+void
+GPlatesUnitTest::ProjectTimestampScheduleTest::test_project_document_schedule()
+{
+	QTemporaryDir temporary_directory;
+	BOOST_REQUIRE(temporary_directory.isValid());
+	const QString document_path = QDir(temporary_directory.path()).filePath("PROJECT.md");
+	QFile document(document_path);
+	BOOST_REQUIRE(document.open(QIODevice::WriteOnly));
+	const QByteArray markdown(
+			"---\n"
+			"gplates:\n"
+			"  reconstruction:\n"
+			"    required_timestamps_ma: \"1000, 950, 900, 850, 800, 750, 700, 650, 600, 560, 520, 480, 440, 400, 370, 340, 310, 280, 250, 225, 200, 180, 160, 140, 120, 100, 80, 60, 40, 20, 10, 0\"\n"
+			"---\n");
+	BOOST_REQUIRE_EQUAL(document.write(markdown), markdown.size());
+	document.close();
+
+	GPlatesAppLogic::ProjectDocumentRegistry registry;
+	GPlatesAppLogic::ProjectTimestampSchedule schedule(registry);
+	BOOST_CHECK_EQUAL(
+			schedule.source(),
+			GPlatesAppLogic::ProjectTimestampSchedule::NO_PROJECT_TIMESTAMPS);
+	registry.add_document(document_path);
+	BOOST_CHECK_EQUAL(
+			schedule.source(),
+			GPlatesAppLogic::ProjectTimestampSchedule::PROJECT_MARKDOWN);
+	BOOST_REQUIRE_EQUAL(schedule.timestamps_older_to_younger().size(), 32);
+	BOOST_REQUIRE(schedule.next_older_timestamp(850.0));
+	BOOST_CHECK_EQUAL(schedule.next_older_timestamp(850.0).get(), 900.0);
+	BOOST_REQUIRE(schedule.next_younger_timestamp(850.0));
+	BOOST_CHECK_EQUAL(schedule.next_younger_timestamp(850.0).get(), 800.0);
+	BOOST_REQUIRE(schedule.next_older_timestamp(875.0));
+	BOOST_CHECK_EQUAL(schedule.next_older_timestamp(875.0).get(), 900.0);
+	BOOST_REQUIRE(schedule.next_younger_timestamp(875.0));
+	BOOST_CHECK_EQUAL(schedule.next_younger_timestamp(875.0).get(), 850.0);
+	BOOST_CHECK(!schedule.next_older_timestamp(1000.0));
+	BOOST_CHECK(!schedule.next_younger_timestamp(0.0));
 }

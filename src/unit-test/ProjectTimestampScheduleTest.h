@@ -25,6 +25,7 @@ namespace GPlatesUnitTest
 		void test_non_divisible_schedule();
 		void test_single_timestamp();
 		void test_invalid_schedule();
+		void test_project_document_schedule();
 	};
 
 	class ProjectTimestampScheduleTestSuite :

@@ -956,6 +956,14 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			this,
 			SLOT(handle_map_feature_context_menu(
 					const QPointF &, bool, Qt::MouseButton, Qt::KeyboardModifiers)));
+	QObject::connect(
+			&get_view_state().get_animation_controller(),
+			&GPlatesGui::AnimationController::project_timestamp_navigation_message,
+			this,
+			[this](const QString &message)
+			{
+				status_message(message);
+			});
 
 	// Keep the Worldbuilding Pasta procedure in one compact, ordered palette. Multi-step
 	// operations launch persistent modeless windows so globe selection remains available.

@@ -12,6 +12,155 @@
 
 #include <cmath>
 #include <stdexcept>
+#include <QFile>
+
+#include "ProjectDocumentRegistry.h"
+#include "ProjectMetadata.h"
+
+
+GPlatesAppLogic::ProjectTimestampSchedule::ProjectTimestampSchedule(
+		ProjectDocumentRegistry &document_registry,
+		QObject *parent) :
+	QObject(parent),
+	d_document_registry(&document_registry),
+	d_source(NO_PROJECT_TIMESTAMPS)
+{
+	QObject::connect(
+			d_document_registry,
+			SIGNAL(primary_document_changed(const QString &)),
+			this,
+			SLOT(reload_from_primary_document()));
+	QObject::connect(
+			d_document_registry,
+			SIGNAL(primary_document_saved(const QString &)),
+			this,
+			SLOT(reload_from_primary_document()));
+	reload_from_primary_document();
+}
+
+
+const std::vector<double> &
+GPlatesAppLogic::ProjectTimestampSchedule::timestamps_older_to_younger() const
+{
+	return d_timestamps_older_to_younger;
+}
+
+
+boost::optional<double>
+GPlatesAppLogic::ProjectTimestampSchedule::next_older_timestamp(
+		double current_time) const
+{
+	boost::optional<double> adjacent;
+	for (std::vector<double>::const_iterator timestamp = d_timestamps_older_to_younger.begin();
+			timestamp != d_timestamps_older_to_younger.end(); ++timestamp)
+	{
+		if (*timestamp > current_time + 1e-9 && (!adjacent || *timestamp < adjacent.get()))
+		{
+			adjacent = *timestamp;
+		}
+	}
+	return adjacent;
+}
+
+
+boost::optional<double>
+GPlatesAppLogic::ProjectTimestampSchedule::next_younger_timestamp(
+		double current_time) const
+{
+	boost::optional<double> adjacent;
+	for (std::vector<double>::const_iterator timestamp = d_timestamps_older_to_younger.begin();
+			timestamp != d_timestamps_older_to_younger.end(); ++timestamp)
+	{
+		if (*timestamp < current_time - 1e-9 && (!adjacent || *timestamp > adjacent.get()))
+		{
+			adjacent = *timestamp;
+		}
+	}
+	return adjacent;
+}
+
+
+boost::optional<double>
+GPlatesAppLogic::ProjectTimestampSchedule::default_older_bound(
+		double current_time) const
+{
+	return next_older_timestamp(current_time);
+}
+
+
+GPlatesAppLogic::ProjectTimestampSchedule::Source
+GPlatesAppLogic::ProjectTimestampSchedule::source() const
+{
+	return d_source;
+}
+
+
+const QString &
+GPlatesAppLogic::ProjectTimestampSchedule::diagnostic() const
+{
+	return d_diagnostic;
+}
+
+
+void
+GPlatesAppLogic::ProjectTimestampSchedule::reload_from_primary_document()
+{
+	const QString primary_document_path = d_document_registry->primary_document_path();
+	if (primary_document_path.isEmpty())
+	{
+		set_state(std::vector<double>(), NO_PROJECT_TIMESTAMPS, QString());
+		return;
+	}
+
+	QFile primary_document(primary_document_path);
+	if (!primary_document.open(QIODevice::ReadOnly))
+	{
+		set_state(
+				std::vector<double>(),
+				INVALID_PROJECT_METADATA,
+				tr("The Primary Project Document could not be read: %1.")
+						.arg(primary_document.errorString()));
+		return;
+	}
+
+	const ProjectMetadata metadata =
+			ProjectMetadataParser::parse(QString::fromUtf8(primary_document.readAll()));
+	if (!metadata.has_front_matter ||
+			(metadata.required_timestamps_are_valid && !metadata.required_timestamps_ma))
+	{
+		set_state(std::vector<double>(), NO_PROJECT_TIMESTAMPS, QString());
+		return;
+	}
+	if (!metadata.required_timestamps_are_valid || !metadata.required_timestamps_ma)
+	{
+		set_state(
+				std::vector<double>(),
+				INVALID_PROJECT_METADATA,
+				metadata.required_timestamps_diagnostic);
+		return;
+	}
+
+	set_state(metadata.required_timestamps_ma.get(), PROJECT_MARKDOWN, QString());
+}
+
+
+void
+GPlatesAppLogic::ProjectTimestampSchedule::set_state(
+		const std::vector<double> &timestamps,
+		Source source,
+		const QString &diagnostic)
+{
+	if (d_timestamps_older_to_younger == timestamps &&
+			d_source == source && d_diagnostic == diagnostic)
+	{
+		return;
+	}
+
+	d_timestamps_older_to_younger = timestamps;
+	d_source = source;
+	d_diagnostic = diagnostic;
+	Q_EMIT schedule_changed();
+}
 
 
 std::vector<double>
