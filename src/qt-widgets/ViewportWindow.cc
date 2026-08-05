@@ -30,6 +30,7 @@
 #endif 
 
 #include <algorithm>
+#include <functional>
 #include <iostream>
 #include <iterator>
 #include <memory>
@@ -120,6 +121,7 @@
 #include "app-logic/FeatureCollectionFileIO.h"
 #include "app-logic/FeatureCollectionFileState.h"
 #include "app-logic/PlateVelocityUtils.h"
+#include "app-logic/ProjectTimestampSchedule.h"
 #include "app-logic/ReconstructionGeometryUtils.h"
 #include "app-logic/UserPreferences.h"
 #include "app-logic/VelocityDeltaTime.h"
@@ -208,6 +210,7 @@
 #include "view-operations/RenderedGeometryCollection.h"
 #include "view-operations/RenderedGeometryParameters.h"
 #include "view-operations/RotationFileEditorOperation.h"
+#include "view-operations/RotationMotionPlanner.h"
 #include "view-operations/SplitPlateOperation.h"
 #include "view-operations/SubductionCutterOperation.h"
 #include "view-operations/UndoRedo.h"
@@ -1508,6 +1511,169 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	advance_plate_motion_button->setToolTip(tr(
 			"Use .rot history, normalized MOR push and normalized subduction pull to propose the next younger rotation poles."));
 	active_margin_layout->addWidget(advance_plate_motion_button);
+	QPushButton *show_motion_workbench_button = new QPushButton(
+			tr("3.2a  Rotation + Motion Workbench..."), active_margin_group);
+	show_motion_workbench_button->setToolTip(tr(
+			"Preview parent/child circuit validity and absolute/relative stage motion at Project Timestamps; never changes a pole automatically."));
+	active_margin_layout->addWidget(show_motion_workbench_button);
+
+	QDialog *motion_workbench_dialog = new QDialog(this, Qt::Tool);
+	motion_workbench_dialog->setWindowTitle(tr("Rotation and Motion Planning Workbench"));
+	motion_workbench_dialog->setModal(false);
+	QVBoxLayout *motion_workbench_layout = new QVBoxLayout(motion_workbench_dialog);
+	QLabel *motion_workbench_note = new QLabel(tr(
+			"Advisory preview only. Inspect circuit continuity and relative motion here, then use the existing Rotation File Editor for any confirmed pole copy or edit. No optimisation is performed."),
+			motion_workbench_dialog);
+	motion_workbench_note->setWordWrap(true);
+	motion_workbench_layout->addWidget(motion_workbench_note);
+	QFormLayout *motion_workbench_form = new QFormLayout();
+	QSpinBox *motion_moving_plate = new QSpinBox(motion_workbench_dialog);
+	motion_moving_plate->setRange(0, 99999999);
+	motion_moving_plate->setValue(1);
+	QSpinBox *motion_fixed_plate = new QSpinBox(motion_workbench_dialog);
+	motion_fixed_plate->setRange(0, 99999999);
+	motion_fixed_plate->setValue(0);
+	QDoubleSpinBox *motion_older_time = new QDoubleSpinBox(motion_workbench_dialog);
+	motion_older_time->setRange(0, 10000);
+	motion_older_time->setDecimals(3);
+	motion_older_time->setSuffix(tr(" Ma"));
+	QDoubleSpinBox *motion_younger_time = new QDoubleSpinBox(motion_workbench_dialog);
+	motion_younger_time->setRange(0, 10000);
+	motion_younger_time->setDecimals(3);
+	motion_younger_time->setSuffix(tr(" Ma"));
+	QDoubleSpinBox *motion_sample_latitude = new QDoubleSpinBox(motion_workbench_dialog);
+	motion_sample_latitude->setRange(-90.0, 90.0);
+	motion_sample_latitude->setDecimals(3);
+	motion_sample_latitude->setSuffix(tr(" deg"));
+	QDoubleSpinBox *motion_sample_longitude = new QDoubleSpinBox(motion_workbench_dialog);
+	motion_sample_longitude->setRange(-360.0, 360.0);
+	motion_sample_longitude->setDecimals(3);
+	motion_sample_longitude->setSuffix(tr(" deg"));
+	QDoubleSpinBox *motion_boundary_strike = new QDoubleSpinBox(motion_workbench_dialog);
+	motion_boundary_strike->setRange(0.0, 360.0);
+	motion_boundary_strike->setDecimals(2);
+	motion_boundary_strike->setSuffix(tr(" deg"));
+	QComboBox *motion_boundary_kind = new QComboBox(motion_workbench_dialog);
+	motion_boundary_kind->addItem(tr("Advisory only"),
+			GPlatesViewOperations::RotationMotionPlanner::NO_BOUNDARY);
+	motion_boundary_kind->addItem(tr("Mid-ocean ridge"),
+			GPlatesViewOperations::RotationMotionPlanner::MID_OCEAN_RIDGE);
+	motion_boundary_kind->addItem(tr("Transform fault"),
+			GPlatesViewOperations::RotationMotionPlanner::TRANSFORM_FAULT);
+	motion_boundary_kind->addItem(tr("Subduction trench"),
+			GPlatesViewOperations::RotationMotionPlanner::SUBDUCTION_TRENCH);
+	motion_workbench_form->addRow(tr("Moving / child Plate ID:"), motion_moving_plate);
+	motion_workbench_form->addRow(tr("Fixed / parent Plate ID:"), motion_fixed_plate);
+	motion_workbench_form->addRow(tr("Older bound:"), motion_older_time);
+	motion_workbench_form->addRow(tr("Younger bound:"), motion_younger_time);
+	motion_workbench_form->addRow(tr("Boundary sample latitude:"), motion_sample_latitude);
+	motion_workbench_form->addRow(tr("Boundary sample longitude:"), motion_sample_longitude);
+	motion_workbench_form->addRow(tr("Boundary strike (clockwise from north):"), motion_boundary_strike);
+	motion_workbench_form->addRow(tr("Boundary gate:"), motion_boundary_kind);
+	motion_workbench_layout->addLayout(motion_workbench_form);
+	QLabel *motion_constraint_note = new QLabel(tr(
+			"Boundary review gates: motion should be near the MOR normal, tangent to transforms, convergent at the selected trench, and should not pass first contact. Use Plate Direction Arrows and the relevant selected boundary geometry to confirm these before editing."),
+			motion_workbench_dialog);
+	motion_constraint_note->setWordWrap(true);
+	motion_workbench_layout->addWidget(motion_constraint_note);
+	QTableWidget *motion_workbench_table = new QTableWidget(motion_workbench_dialog);
+	motion_workbench_table->setColumnCount(12);
+	motion_workbench_table->setHorizontalHeaderLabels(QStringList()
+			<< tr("Older") << tr("Younger") << tr("Moving circuit") << tr("Parent circuit")
+			<< tr("Absolute stage (deg)") << tr("Relative stage (deg)")
+			<< tr("Relative deg/Ma") << tr("Local cm/yr") << tr("Normal cm/yr")
+			<< tr("Parallel cm/yr") << tr("Azimuth") << tr("Review"));
+	motion_workbench_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+	motion_workbench_table->horizontalHeader()->setStretchLastSection(true);
+	motion_workbench_layout->addWidget(motion_workbench_table);
+	QDialogButtonBox *motion_workbench_buttons = new QDialogButtonBox(
+			QDialogButtonBox::Close, motion_workbench_dialog);
+	QPushButton *motion_preview_button = motion_workbench_buttons->addButton(
+			tr("Preview Interval"), QDialogButtonBox::ActionRole);
+	QPushButton *motion_editor_button = motion_workbench_buttons->addButton(
+			tr("Open Rotation File Editor"), QDialogButtonBox::ActionRole);
+	motion_workbench_layout->addWidget(motion_workbench_buttons);
+	QObject::connect(motion_workbench_buttons, SIGNAL(rejected()), motion_workbench_dialog, SLOT(hide()));
+	QObject::connect(motion_editor_button, &QPushButton::clicked, this,
+			[this]() { handle_rotation_file_editor(); });
+	QObject::connect(motion_preview_button, &QPushButton::clicked, this,
+			[this, motion_moving_plate, motion_fixed_plate, motion_older_time,
+			 motion_younger_time, motion_sample_latitude, motion_sample_longitude,
+			 motion_boundary_strike, motion_boundary_kind, motion_workbench_table]()
+			{
+				motion_workbench_table->setRowCount(0);
+				const double older = motion_older_time->value();
+				const double younger = motion_younger_time->value();
+				if (older <= younger)
+				{
+					QMessageBox::warning(this, tr("Rotation and Motion Workbench"),
+							tr("The older bound must be greater than the younger bound."));
+					return;
+				}
+				std::vector<double> times;
+				times.push_back(older);
+				const std::vector<double> project_times = get_application_state()
+						.get_project_timestamp_schedule().timestamps_older_to_younger();
+				for (std::vector<double>::const_iterator time = project_times.begin();
+					 time != project_times.end(); ++time)
+				{
+					if (*time < older - 1e-9 && *time > younger + 1e-9)
+					{
+						times.push_back(*time);
+					}
+				}
+				times.push_back(younger);
+				std::sort(times.begin(), times.end(), std::greater<double>());
+				const GPlatesAppLogic::ReconstructionTreeCreator tree_creator =
+						get_application_state().get_current_reconstruction()
+								.get_default_reconstruction_layer_output()
+								->get_reconstruction_tree_creator();
+				for (std::size_t index = 1; index < times.size(); ++index)
+				{
+					const GPlatesViewOperations::RotationMotionPlanner::Sample sample =
+							GPlatesViewOperations::RotationMotionPlanner::analyse(
+									tree_creator, motion_moving_plate->value(), motion_fixed_plate->value(),
+									times[index - 1], times[index],
+									motion_sample_latitude->value(), motion_sample_longitude->value(),
+									motion_boundary_strike->value(),
+									static_cast<GPlatesViewOperations::RotationMotionPlanner::BoundaryKind>(
+											motion_boundary_kind->currentData().toInt()),
+									get_application_state().get_planetary_parameters().effective_radius_kilometres());
+					const int row = motion_workbench_table->rowCount();
+					motion_workbench_table->insertRow(row);
+					const QStringList values = QStringList()
+							<< QString::number(sample.older_time, 'f', 3)
+							<< QString::number(sample.younger_time, 'f', 3)
+							<< (sample.moving_circuit_valid ? tr("valid") : tr("missing"))
+							<< (sample.fixed_circuit_valid ? tr("valid") : tr("missing"))
+							<< QString::number(sample.absolute_stage_degrees, 'f', 5)
+							<< QString::number(sample.relative_stage_degrees, 'f', 5)
+							<< QString::number(sample.relative_rate_degrees_per_ma, 'f', 6)
+							<< QString::number(sample.local_speed_cm_per_year, 'f', 2)
+							<< QString::number(sample.boundary_normal_cm_per_year, 'f', 2)
+							<< QString::number(sample.boundary_parallel_cm_per_year, 'f', 2)
+							<< QString::number(sample.motion_azimuth_degrees, 'f', 1)
+							<< sample.diagnostic;
+					for (int column = 0; column < values.size(); ++column)
+					{
+						motion_workbench_table->setItem(row, column, new QTableWidgetItem(values[column]));
+					}
+				}
+				motion_workbench_table->resizeColumnsToContents();
+			});
+	QObject::connect(show_motion_workbench_button, &QPushButton::clicked, this,
+			[this, motion_workbench_dialog, motion_older_time, motion_younger_time]()
+			{
+				const double current_time = get_application_state().get_current_reconstruction_time();
+				motion_younger_time->setValue(current_time);
+				const boost::optional<double> older = get_application_state()
+						.get_project_timestamp_schedule().default_older_bound(current_time);
+				motion_older_time->setValue(older ? *older : current_time + 10.0);
+				motion_workbench_dialog->show();
+				motion_workbench_dialog->raise();
+				motion_workbench_dialog->activateWindow();
+			});
+	motion_workbench_dialog->resize(1180, 620);
 	QPushButton *create_ocean_crust_button = new QPushButton(
 			tr("3.3  Generate Ocean Crust from MOR..."), active_margin_group);
 	create_ocean_crust_button->setToolTip(tr(

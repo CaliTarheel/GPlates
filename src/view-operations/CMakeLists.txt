@@ -148,6 +148,8 @@ set(srcs
     RenderedString.h
     RotationFileEditorOperation.cc
     RotationFileEditorOperation.h
+    RotationMotionPlanner.cc
+    RotationMotionPlanner.h
     RotationPlateCreation.cc
     RotationPlateCreation.h
     RenderedSubductionTeethPolyline.h

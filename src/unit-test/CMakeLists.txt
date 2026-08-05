@@ -86,6 +86,8 @@ set(srcs
     ProjectMetadataTest.h
     ProjectTimestampScheduleTest.cc
     ProjectTimestampScheduleTest.h
+    RotationMotionPlannerTest.cc
+    RotationMotionPlannerTest.h
     WorldbuildingProjectManifestTest.cc
     WorldbuildingProjectManifestTest.h
     PropertyValuesTestSuite.cc
