@@ -22,11 +22,11 @@ void GPlatesUnitTest::BoundarySectionGraphTest::test_gap_and_successor_plan()
 	second_points.push_back(GPlatesMaths::make_point_on_sphere(GPlatesMaths::LatLonPoint(0, 20)));
 	std::vector<Graph::Section> sections;
 	sections.push_back(Graph::Section("a", "MidOceanRidge", 1, 2, GPlatesMaths::PolylineOnSphere::create(first_points)));
-	sections.push_back(Graph::Section("b", "Transform", 1, 2, GPlatesMaths::PolylineOnSphere::create(second_points)));
+	sections.push_back(Graph::Section("b", "MidOceanRidge", 1, 2, GPlatesMaths::PolylineOnSphere::create(second_points)));
 	const std::vector<Graph::Issue> issues = Graph::analyse(sections, 100.0, 0.01, false);
 	bool found_gap = false;
 	for (std::vector<Graph::Issue>::const_iterator issue = issues.begin(); issue != issues.end(); ++issue)
-		found_gap = found_gap || issue->type == Graph::GAP;
+		found_gap = found_gap || issue->type == Graph::POSSIBLE_MISSING_TRANSFORM;
 	BOOST_CHECK(found_gap);
 	const std::vector<Graph::SuccessorPlan> plan = Graph::plan_successors(sections, 80.0);
 	BOOST_REQUIRE_EQUAL(plan.size(), 2u);

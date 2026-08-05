@@ -29,6 +29,7 @@
 #include <QLabel>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QPushButton>
 #include <QStringList>
 #include <QUndoCommand>
 #include <QUndoStack>
@@ -847,8 +848,11 @@ GPlatesViewOperations::FlowlineManagerOperation::trigger()
 				.arg(sections.size()).arg(issues.size());
 		for (std::vector<BoundarySectionGraph::Issue>::const_iterator issue = issues.begin();
 				issue != issues.end(); ++issue)
-			report += QString("[%1] %2\nSuggested preview: %3\n\n")
-					.arg(BoundarySectionGraph::issue_name(issue->type), issue->summary, issue->suggested_fix);
+			report += QString("[%1] sections %2/%3: %4\nSuggested preview: %5\n\n")
+					.arg(BoundarySectionGraph::issue_name(issue->type))
+					.arg(issue->first_section + 1)
+					.arg(issue->second_section < 0 ? QString::fromLatin1("-") : QString::number(issue->second_section + 1))
+					.arg(issue->summary, issue->suggested_fix);
 		report += tr("TIME-SLICED SUCCESSION PLAN (%1 Ma)\n").arg(successor_time);
 		for (std::vector<BoundarySectionGraph::SuccessorPlan>::const_iterator successor = successors.begin();
 				successor != successors.end(); ++successor)
@@ -866,8 +870,16 @@ GPlatesViewOperations::FlowlineManagerOperation::trigger()
 		report_text->setReadOnly(true);
 		report_layout->addWidget(report_text);
 		QDialogButtonBox *report_buttons = new QDialogButtonBox(QDialogButtonBox::Close, &report_dialog);
+		QPushButton *open_topology_tools_button = report_buttons->addButton(
+				tr("Open Topology Tools"), QDialogButtonBox::ActionRole);
 		report_layout->addWidget(report_buttons);
 		QObject::connect(report_buttons, SIGNAL(rejected()), &report_dialog, SLOT(reject()));
+		QObject::connect(open_topology_tools_button, &QPushButton::clicked, &report_dialog,
+				[this, &report_dialog]()
+				{
+					report_dialog.accept();
+					Q_EMIT open_topology_tools_requested();
+				});
 		report_dialog.exec();
 		return;
 	}

@@ -111,11 +111,20 @@ GPlatesViewOperations::BoundarySectionGraph::analyse(
 						QString("%1 appears reversed after %2.").arg(current.feature_id, previous.feature_id),
 						"Preview reversing the section while retaining plate-side semantics.");
 			else
-				add_issue(issues, GAP, static_cast<int>(index - 1), static_cast<int>(index),
-						QString("Gap of %1 degrees between %2 and %3.")
+			{
+				const bool ridge_pair = previous.feature_type.contains(
+						QString::fromLatin1("MidOceanRidge"), Qt::CaseInsensitive) &&
+						current.feature_type.contains(QString::fromLatin1("MidOceanRidge"), Qt::CaseInsensitive);
+				add_issue(issues, ridge_pair ? POSSIBLE_MISSING_TRANSFORM : GAP,
+						static_cast<int>(index - 1), static_cast<int>(index),
+						QString("Gap of %1 degrees between %2 and %3.%4")
 								.arg(distance_degrees(previous.geometry->end_point(), current.geometry->start_point()), 0, 'f', 4)
-								.arg(previous.feature_id, current.feature_id),
-						"Preview snapping endpoints or adding a reviewed connector.");
+								.arg(previous.feature_id, current.feature_id)
+								.arg(ridge_pair ? QString::fromLatin1(" Two MOR sections may need a transform handoff.") : QString()),
+						ridge_pair
+								? "Review the ordered endpoints and create a Transform section in Topology Tools; do not bridge the gap with a long MOR."
+								: "Preview snapping endpoints or adding a reviewed connector.");
+			}
 		}
 		if (plate_pair(previous) != plate_pair(current))
 			add_issue(issues, PLATE_PAIR_MISMATCH, static_cast<int>(index - 1), static_cast<int>(index),
@@ -158,7 +167,8 @@ QString GPlatesViewOperations::BoundarySectionGraph::issue_name(IssueType type)
 {
 	switch (type)
 	{
-	case GAP: return "gap"; case CROSSING: return "crossing"; case DUPLICATE: return "duplicate";
+	case GAP: return "gap"; case POSSIBLE_MISSING_TRANSFORM: return "possible missing transform";
+	case CROSSING: return "crossing"; case DUPLICATE: return "duplicate";
 	case REVERSED: return "reversed section"; case PLATE_PAIR_MISMATCH: return "plate-pair mismatch";
 	case POLARITY_MISMATCH: return "polarity mismatch"; case MISSING_LINEAGE: return "missing lineage";
 	case STALE_SECTION: return "stale section"; case UNCLOSED_NETWORK: return "unclosed network";
