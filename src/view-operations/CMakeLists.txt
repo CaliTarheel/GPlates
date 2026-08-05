@@ -158,6 +158,8 @@ set(srcs
     CollisionAccretionGuardrails.h
     GeologyEventLedger.cc
     GeologyEventLedger.h
+    WorldbuildingAuditReport.cc
+    WorldbuildingAuditReport.h
     RotationPlateCreation.cc
     RotationPlateCreation.h
     RenderedSubductionTeethPolyline.h
