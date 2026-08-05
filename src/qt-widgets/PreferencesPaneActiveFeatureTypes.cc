@@ -17,6 +17,7 @@
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QPushButton>
+#include <QSet>
 #include <QVBoxLayout>
 
 #include "PreferencesPaneActiveFeatureTypes.h"
@@ -24,8 +25,13 @@
 #include "FeatureTypeDisplayPreferences.h"
 
 #include "app-logic/ApplicationState.h"
+#include "app-logic/FeatureCollectionFileState.h"
 #include "app-logic/UserPreferences.h"
 
+#include "file-io/File.h"
+
+#include "model/FeatureCollectionHandle.h"
+#include "model/FeatureHandle.h"
 #include "model/Gpgim.h"
 #include "model/QualifiedXmlName.h"
 
@@ -34,6 +40,7 @@ GPlatesQtWidgets::PreferencesPaneActiveFeatureTypes::PreferencesPaneActiveFeatur
 		GPlatesAppLogic::ApplicationState &app_state,
 		QWidget *parent_) :
 	QWidget(parent_),
+	d_application_state(app_state),
 	d_preferences(app_state.get_user_preferences()),
 	d_filter_line_edit(new QLineEdit(this)),
 	d_feature_type_list(new QListWidget(this)),
@@ -68,6 +75,20 @@ GPlatesQtWidgets::PreferencesPaneActiveFeatureTypes::PreferencesPaneActiveFeatur
 	controls_layout->addWidget(d_summary_label);
 	main_layout->addLayout(controls_layout);
 
+	QHBoxLayout *presets_layout = new QHBoxLayout;
+	QLabel *presets_label = new QLabel(tr("Presets:"), this);
+	QPushButton *loaded_project_button = new QPushButton(tr("Loaded Project Types"), this);
+	loaded_project_button->setToolTip(
+			tr("Show only feature types currently present in loaded feature collections."));
+	QPushButton *artifexia_button = new QPushButton(tr("Artifexia"), this);
+	artifexia_button->setToolTip(
+			tr("Show the feature types used by the Artifexia worldbuilding project."));
+	presets_layout->addWidget(presets_label);
+	presets_layout->addWidget(loaded_project_button);
+	presets_layout->addWidget(artifexia_button);
+	presets_layout->addStretch();
+	main_layout->addLayout(presets_layout);
+
 	populate_feature_types();
 
 	QObject::connect(
@@ -82,6 +103,16 @@ GPlatesQtWidgets::PreferencesPaneActiveFeatureTypes::PreferencesPaneActiveFeatur
 			SLOT(handle_filter_text_changed(QString)));
 	QObject::connect(show_all_button, SIGNAL(clicked()), this, SLOT(show_all_feature_types()));
 	QObject::connect(hide_all_button, SIGNAL(clicked()), this, SLOT(hide_all_feature_types()));
+	QObject::connect(
+			loaded_project_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(show_loaded_project_feature_types()));
+	QObject::connect(
+			artifexia_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(show_artifexia_feature_types()));
 }
 
 
@@ -160,6 +191,51 @@ GPlatesQtWidgets::PreferencesPaneActiveFeatureTypes::hide_all_feature_types()
 
 
 void
+GPlatesQtWidgets::PreferencesPaneActiveFeatureTypes::show_loaded_project_feature_types()
+{
+	QSet<QString> loaded_feature_types;
+	const std::vector<GPlatesAppLogic::FeatureCollectionFileState::file_reference> loaded_files =
+			d_application_state.get_feature_collection_file_state().get_loaded_files();
+
+	BOOST_FOREACH(
+			const GPlatesAppLogic::FeatureCollectionFileState::file_reference &loaded_file,
+			loaded_files)
+	{
+		GPlatesModel::FeatureCollectionHandle::weak_ref feature_collection =
+				loaded_file.get_file().get_feature_collection();
+		if (!feature_collection.is_valid())
+		{
+			continue;
+		}
+
+		for (GPlatesModel::FeatureCollectionHandle::iterator feature_iter = feature_collection->begin();
+			feature_iter != feature_collection->end();
+			++feature_iter)
+		{
+			const GPlatesModel::FeatureHandle::non_null_ptr_type feature = *feature_iter;
+			loaded_feature_types.insert(
+					GPlatesModel::convert_qualified_xml_name_to_qstring(feature->feature_type()));
+		}
+	}
+
+	if (loaded_feature_types.isEmpty())
+	{
+		d_summary_label->setText(tr("No feature types found in loaded collections"));
+		return;
+	}
+
+	set_checked_feature_types(loaded_feature_types.values());
+}
+
+
+void
+GPlatesQtWidgets::PreferencesPaneActiveFeatureTypes::show_artifexia_feature_types()
+{
+	set_checked_feature_types(FeatureTypeDisplayPreferences::artifexia_feature_types());
+}
+
+
+void
 GPlatesQtWidgets::PreferencesPaneActiveFeatureTypes::set_all_feature_types_checked(
 		bool checked)
 {
@@ -167,6 +243,25 @@ GPlatesQtWidgets::PreferencesPaneActiveFeatureTypes::set_all_feature_types_check
 	for (int row = 0; row < d_feature_type_list->count(); ++row)
 	{
 		d_feature_type_list->item(row)->setCheckState(checked ? Qt::Checked : Qt::Unchecked);
+	}
+	d_populating = false;
+
+	save_hidden_feature_types();
+	update_summary();
+}
+
+
+void
+GPlatesQtWidgets::PreferencesPaneActiveFeatureTypes::set_checked_feature_types(
+		const QStringList &checked_feature_types)
+{
+	d_populating = true;
+	for (int row = 0; row < d_feature_type_list->count(); ++row)
+	{
+		QListWidgetItem *item = d_feature_type_list->item(row);
+		item->setCheckState(checked_feature_types.contains(item->data(Qt::UserRole).toString())
+				? Qt::Checked
+				: Qt::Unchecked);
 	}
 	d_populating = false;
 

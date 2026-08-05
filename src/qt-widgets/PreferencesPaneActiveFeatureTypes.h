@@ -11,6 +11,7 @@
 #ifndef GPLATES_QTWIDGETS_PREFERENCESPANEACTIVEFEATURETYPES_H
 #define GPLATES_QTWIDGETS_PREFERENCESPANEACTIVEFEATURETYPES_H
 
+#include <QStringList>
 #include <QWidget>
 
 
@@ -62,6 +63,12 @@ namespace GPlatesQtWidgets
 		void
 		hide_all_feature_types();
 
+		void
+		show_loaded_project_feature_types();
+
+		void
+		show_artifexia_feature_types();
+
 	private:
 
 		void
@@ -72,11 +79,16 @@ namespace GPlatesQtWidgets
 				bool checked);
 
 		void
+		set_checked_feature_types(
+				const QStringList &checked_feature_types);
+
+		void
 		save_hidden_feature_types();
 
 		void
 		update_summary();
 
+		GPlatesAppLogic::ApplicationState &d_application_state;
 		GPlatesAppLogic::UserPreferences &d_preferences;
 		QLineEdit *d_filter_line_edit;
 		QListWidget *d_feature_type_list;
