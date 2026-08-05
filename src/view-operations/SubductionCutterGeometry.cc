@@ -427,3 +427,77 @@ GPlatesViewOperations::SubductionCutterGeometry::cut_polygon(
 	result.overlap = true;
 	return result;
 }
+
+
+GPlatesViewOperations::SubductionCutterGeometry::BooleanResult
+GPlatesViewOperations::SubductionCutterGeometry::apply_polygon_boolean(
+		const GPlatesMaths::PolygonOnSphere &first,
+		const polygon_seq_type &operands,
+		BooleanOperation operation)
+{
+	BooleanResult result;
+	if (operands.empty())
+	{
+		result.success = false;
+		result.error = QObject::tr("Select at least one operand polygon.");
+		return result;
+	}
+
+	const Projection projection = create_projection(first);
+	QPainterPath first_path;
+	if (!create_projected_path(first_path, first, projection))
+	{
+		result.success = false;
+		result.error = QObject::tr(
+				"The first polygon reaches the antipode of its clipping projection.");
+		return result;
+	}
+
+	QPainterPath operand_path;
+	operand_path.setFillRule(Qt::OddEvenFill);
+	for (polygon_seq_type::const_iterator operand_iter = operands.begin();
+			operand_iter != operands.end(); ++operand_iter)
+	{
+		QPainterPath projected_operand;
+		if (!create_projected_path(projected_operand, **operand_iter, projection))
+		{
+			result.success = false;
+			result.error = QObject::tr(
+					"An operand polygon reaches the antipode of the first polygon's clipping projection.");
+			return result;
+		}
+		operand_path = operand_path.united(projected_operand);
+		operand_path.setFillRule(Qt::OddEvenFill);
+	}
+
+	QPainterPath output_path;
+	switch (operation)
+	{
+	case POLYGON_UNION:
+		output_path = first_path.united(operand_path);
+		break;
+	case POLYGON_DIFFERENCE:
+		output_path = first_path.subtracted(operand_path);
+		break;
+	case POLYGON_INTERSECTION:
+		output_path = first_path.intersected(operand_path);
+		break;
+	case POLYGON_SYMMETRIC_DIFFERENCE:
+		output_path = first_path.united(operand_path).subtracted(
+				first_path.intersected(operand_path));
+		break;
+	}
+
+	output_path = output_path.simplified();
+	if (!output_path.isEmpty())
+	{
+		result.polygons = create_spherical_polygons(output_path, projection);
+		if (result.polygons.empty())
+		{
+			result.success = false;
+			result.error = QObject::tr(
+					"The Boolean result was too small or degenerate to form a valid spherical polygon.");
+		}
+	}
+	return result;
+}

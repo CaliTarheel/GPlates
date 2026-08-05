@@ -112,6 +112,8 @@ set(srcs
     CreateFeaturePropertiesPage.cc
     CreateFeaturePropertiesPage.h
     CreateFeaturePropertiesPageUi.ui
+    BooleanPolygonsDialog.cc
+    BooleanPolygonsDialog.h
     CreateSmallCircleDialog.cc
     CreateSmallCircleDialog.h
     CreateSmallCircleDialogUi.ui

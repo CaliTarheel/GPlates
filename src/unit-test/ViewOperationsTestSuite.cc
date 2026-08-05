@@ -28,6 +28,7 @@
 
 #include "unit-test/ViewOperationsTestSuite.h"
 #include "unit-test/TestSuiteFilter.h"
+#include "unit-test/BooleanPolygonGeometryTest.h"
 
 GPlatesUnitTest::ViewOperationsTestSuite::ViewOperationsTestSuite(
 		unsigned level) : 
@@ -40,7 +41,7 @@ GPlatesUnitTest::ViewOperationsTestSuite::ViewOperationsTestSuite(
 void 
 GPlatesUnitTest::ViewOperationsTestSuite::construct_maps()
 {
-	//ADD YOUR TEST SUITE HERE
+	ADD_TESTSUITE(BooleanPolygonGeometry);
 }
 
 

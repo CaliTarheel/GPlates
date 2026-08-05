@@ -65,6 +65,7 @@
 #include "ViewportWindow.h"
 
 #include "ActionButtonBox.h"
+#include "BooleanPolygonsDialog.h"
 #include "CanvasToolBarDockWidget.h"
 #include "ChooseFeatureCollectionDialog.h"
 #include "CreateFeatureDialog.h"
@@ -1242,6 +1243,11 @@ GPlatesQtWidgets::ViewportWindow::connect_world_building_menu_actions()
 			SIGNAL(triggered()),
 			this,
 			SLOT(handle_split_plate()));
+	QObject::connect(
+			action_Boolean_Polygons,
+			SIGNAL(triggered()),
+			this,
+			SLOT(show_boolean_polygons_window()));
 	QObject::connect(
 			action_Subduction_Cutter,
 			SIGNAL(triggered()),
@@ -2431,6 +2437,23 @@ GPlatesQtWidgets::ViewportWindow::handle_split_plate()
 				result.message);
 		break;
 	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::show_boolean_polygons_window()
+{
+	// Created on first use. The window owns the operation, and neither is needed until asked for.
+	if (!d_boolean_polygons_dialog_ptr)
+	{
+		d_boolean_polygons_dialog_ptr.reset(
+				new BooleanPolygonsDialog(
+						get_view_state().get_feature_focus(),
+						get_application_state(),
+						this));
+	}
+
+	d_boolean_polygons_dialog_ptr->pop_up();
 }
 
 

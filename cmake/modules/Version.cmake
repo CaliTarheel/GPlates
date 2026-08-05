@@ -52,7 +52,7 @@ set(GPLATES_SEMANTIC_VERSION 2.6.0-8)
 # Keep this separate from GPLATES_SEMANTIC_VERSION so upstream package-version
 # ordering remains unchanged while the application title and About dialog make
 # this combined PR build unmistakable.
-set(GPLATES_VERSION_LOCAL_LABEL SR1)
+set(GPLATES_VERSION_LOCAL_LABEL SR1a)
 
 
 #

@@ -9,6 +9,8 @@
 # so the build is unaware of the change.
 #
 set(srcs
+    BooleanPolygonGeometryTest.cc
+    BooleanPolygonGeometryTest.h
     ApplicationStateTest.cc
     ApplicationStateTest.h
     AppLogicTestSuite.cc

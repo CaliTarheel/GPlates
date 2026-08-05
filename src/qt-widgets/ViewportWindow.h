@@ -110,6 +110,7 @@ namespace GPlatesViewOperations
 
 namespace GPlatesQtWidgets
 {
+	class BooleanPolygonsDialog;
 	class CanvasToolBarDockWidget;
 	class DockWidget;
 	class GlobeCanvas;
@@ -530,6 +531,9 @@ namespace GPlatesQtWidgets
 		handle_split_plate();
 
 		void
+		show_boolean_polygons_window();
+
+		void
 		handle_subduction_cutter();
 
 		void
@@ -578,6 +582,14 @@ namespace GPlatesQtWidgets
 
 		//! For splitting a polygon feature with a selected polyline.
 		boost::scoped_ptr<GPlatesViewOperations::SplitPlateOperation> d_split_plate_operation_ptr;
+
+		/**
+		 * For combining polygons with a Boolean operation.
+		 *
+		 * Created on first use rather than at startup, since the window owns the operation and
+		 * neither is needed until the user asks for it.
+		 */
+		boost::scoped_ptr<BooleanPolygonsDialog> d_boolean_polygons_dialog_ptr;
 
 		//! For roughening long coastline sections while preserving shared geometry.
 

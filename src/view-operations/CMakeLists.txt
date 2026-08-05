@@ -11,6 +11,8 @@
 set(srcs
     AddPointGeometryOperation.cc
     AddPointGeometryOperation.h
+    BooleanPolygonOperation.cc
+    BooleanPolygonOperation.h
     ChangeLightDirectionOperation.cc
     ChangeLightDirectionOperation.h
     CloneOperation.cc
