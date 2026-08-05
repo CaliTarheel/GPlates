@@ -67,6 +67,7 @@
 #include <QProcess>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QString>
@@ -109,6 +110,7 @@
 #include "api/Sleeper.h"
 
 #include "app-logic/ApplicationState.h"
+#include "app-logic/ProjectTimestampSchedule.h"
 #include "app-logic/PlanetaryParameters.h"
 #include "app-logic/AppLogicUtils.h"
 #include "app-logic/FeatureCollectionFileIO.h"
@@ -605,6 +607,22 @@ namespace GPlatesQtWidgets
 						action->shortcut().toString(QKeySequence::NativeText));
 			}
 		}
+
+		QVBoxLayout *
+		create_scrollable_dialog_layout(
+				QDialog *dialog)
+		{
+			QVBoxLayout *outer_layout = new QVBoxLayout(dialog);
+			outer_layout->setContentsMargins(0, 0, 0, 0);
+			QScrollArea *scroll_area = new QScrollArea(dialog);
+			scroll_area->setWidgetResizable(true);
+			scroll_area->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+			QWidget *contents = new QWidget(scroll_area);
+			QVBoxLayout *contents_layout = new QVBoxLayout(contents);
+			scroll_area->setWidget(contents);
+			outer_layout->addWidget(scroll_area);
+			return contents_layout;
+		}
 	}
 }
 
@@ -971,7 +989,11 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	d_worldbuilding_pasta_dock_ptr->setObjectName("WorldbuildingPastaDock");
 	d_worldbuilding_pasta_dock_ptr->setAllowedAreas(
 			Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
-	QWidget *worldbuilding_pasta_palette = new QWidget(d_worldbuilding_pasta_dock_ptr);
+	QScrollArea *worldbuilding_pasta_scroll_area = new QScrollArea(
+			d_worldbuilding_pasta_dock_ptr);
+	worldbuilding_pasta_scroll_area->setWidgetResizable(true);
+	worldbuilding_pasta_scroll_area->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+	QWidget *worldbuilding_pasta_palette = new QWidget(worldbuilding_pasta_scroll_area);
 	QVBoxLayout *worldbuilding_pasta_layout = new QVBoxLayout(worldbuilding_pasta_palette);
 	QPushButton *initialize_worldpasta_structure_button = new QPushButton(
 			tr("Initialize Worldpasta File Structure..."), worldbuilding_pasta_palette);
@@ -983,6 +1005,113 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			worldbuilding_pasta_palette);
 	worldbuilding_pasta_description->setWordWrap(true);
 	worldbuilding_pasta_layout->addWidget(worldbuilding_pasta_description);
+
+	QGroupBox *project_time_group = new QGroupBox(
+			tr("Project Timestamp Navigation"), worldbuilding_pasta_palette);
+	QVBoxLayout *project_time_layout = new QVBoxLayout(project_time_group);
+	QLabel *project_time_status = new QLabel(project_time_group);
+	project_time_status->setWordWrap(true);
+	project_time_layout->addWidget(project_time_status);
+	QHBoxLayout *project_time_buttons = new QHBoxLayout();
+	QPushButton *older_project_timestamp_button = new QPushButton(
+			tr("Older"), project_time_group);
+	QPushButton *younger_project_timestamp_button = new QPushButton(
+			tr("Younger"), project_time_group);
+	older_project_timestamp_button->setToolTip(tr(
+			"Go to the next older required Project Timestamp. This is the visible equivalent of Alt plus the reverse timeline-step button."));
+	younger_project_timestamp_button->setToolTip(tr(
+			"Go to the next younger required Project Timestamp. This is the visible equivalent of Alt plus the forward timeline-step button."));
+	project_time_buttons->addWidget(older_project_timestamp_button);
+	project_time_buttons->addWidget(younger_project_timestamp_button);
+	project_time_layout->addLayout(project_time_buttons);
+	worldbuilding_pasta_layout->addWidget(project_time_group);
+
+	GPlatesAppLogic::ProjectTimestampSchedule &project_timestamp_schedule =
+			get_application_state().get_project_timestamp_schedule();
+	GPlatesGui::AnimationController &animation_controller =
+			get_view_state().get_animation_controller();
+	const auto update_project_timestamp_status =
+			[this, project_time_status, older_project_timestamp_button,
+			 younger_project_timestamp_button]()
+			{
+				const GPlatesAppLogic::ProjectTimestampSchedule &schedule =
+						get_application_state().get_project_timestamp_schedule();
+				const double current_time =
+						get_view_state().get_animation_controller().view_time();
+				const boost::optional<double> older = schedule.next_older_timestamp(current_time);
+				const boost::optional<double> younger = schedule.next_younger_timestamp(current_time);
+				const bool active = schedule.source() ==
+						GPlatesAppLogic::ProjectTimestampSchedule::PROJECT_MARKDOWN;
+				older_project_timestamp_button->setEnabled(active && older);
+				younger_project_timestamp_button->setEnabled(active && younger);
+
+				if (active)
+				{
+					project_time_status->setText(tr(
+							"View: %1 Ma. Required schedule active (%2 timestamps).%3%4")
+							.arg(QLocale().toString(current_time, 'f', 1))
+							.arg(static_cast<qulonglong>(
+									schedule.timestamps_older_to_younger().size()))
+							.arg(older
+									? tr(" Older: %1 Ma.").arg(
+											QLocale().toString(older.get(), 'f', 1))
+									: tr(" At the oldest required timestamp."))
+							.arg(younger
+									? tr(" Younger: %1 Ma.").arg(
+											QLocale().toString(younger.get(), 'f', 1))
+									: tr(" At the youngest required timestamp.")));
+				}
+				else
+				{
+					project_time_status->setText(schedule.diagnostic().isEmpty()
+							? tr("No required Project Timestamp schedule is active. Ordinary timeline stepping remains available.")
+							: schedule.diagnostic());
+				}
+			};
+	QObject::connect(
+			&project_timestamp_schedule,
+			&GPlatesAppLogic::ProjectTimestampSchedule::schedule_changed,
+			worldbuilding_pasta_palette,
+			update_project_timestamp_status);
+	QObject::connect(
+			&animation_controller,
+			&GPlatesGui::AnimationController::view_time_changed,
+			worldbuilding_pasta_palette,
+			[update_project_timestamp_status](double)
+			{
+				update_project_timestamp_status();
+			});
+	QObject::connect(
+			older_project_timestamp_button,
+			&QPushButton::clicked,
+			worldbuilding_pasta_palette,
+			[this]()
+			{
+				const GPlatesAppLogic::ProjectTimestampSchedule &schedule =
+						get_application_state().get_project_timestamp_schedule();
+				const boost::optional<double> timestamp = schedule.next_older_timestamp(
+						get_view_state().get_animation_controller().view_time());
+				if (timestamp)
+				{
+					get_view_state().get_animation_controller().set_view_time(timestamp.get());
+				}
+			});
+	QObject::connect(
+			younger_project_timestamp_button,
+			&QPushButton::clicked,
+			worldbuilding_pasta_palette,
+			[this]()
+			{
+				const GPlatesAppLogic::ProjectTimestampSchedule &schedule =
+						get_application_state().get_project_timestamp_schedule();
+				const boost::optional<double> timestamp = schedule.next_younger_timestamp(
+						get_view_state().get_animation_controller().view_time());
+				if (timestamp)
+				{
+					get_view_state().get_animation_controller().set_view_time(timestamp.get());
+				}
+			});
+	update_project_timestamp_status();
 	QLabel *worldbuilding_pasta_attribution = new QLabel(
 			QString("%1 <a href=\"https://worldbuildingpasta.blogspot.com/\">%2</a>")
 					.arg(tr("Method and inspiration:"), tr("Worldbuilding Pasta blog")),
@@ -993,6 +1122,14 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	worldbuilding_pasta_attribution->setToolTip(tr(
 			"Open the original Worldbuilding Pasta blog, whose tectonic-worldbuilding method this workflow follows."));
 	worldbuilding_pasta_layout->addWidget(worldbuilding_pasta_attribution);
+	QLabel *gplates_tutorials_link = new QLabel(
+			QString("<a href=\"https://sites.google.com/site/gplatestutorials/\">%1</a>")
+					.arg(tr("Additional GPlates tutorials and guidance")),
+			worldbuilding_pasta_palette);
+	gplates_tutorials_link->setTextFormat(Qt::RichText);
+	gplates_tutorials_link->setTextInteractionFlags(Qt::TextBrowserInteraction);
+	gplates_tutorials_link->setOpenExternalLinks(true);
+	worldbuilding_pasta_layout->addWidget(gplates_tutorials_link);
 
 	QGroupBox *foundation_group = new QGroupBox(
 			tr("1. Continental Foundation"), worldbuilding_pasta_palette);
@@ -1096,7 +1233,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	d_make_rift_dialog_ptr->setWindowTitle(tr("Worldbuilding Pasta - Make Rift"));
 	d_make_rift_dialog_ptr->setModal(false);
 	d_make_rift_dialog_ptr->setAttribute(Qt::WA_DeleteOnClose, false);
-	QVBoxLayout *make_rift_layout = new QVBoxLayout(d_make_rift_dialog_ptr);
+	QVBoxLayout *make_rift_layout = create_scrollable_dialog_layout(d_make_rift_dialog_ptr);
 	QLabel *make_rift_description = new QLabel(tr(
 			"Keep this window open while selecting in the globe or map. The cutter may be any polyline; it no longer has to be a provisional MOR."),
 			d_make_rift_dialog_ptr);
@@ -1132,7 +1269,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			tr("Worldbuilding Pasta - Opposite-Margin Subduction"));
 	d_initial_subduction_dialog_ptr->setModal(false);
 	d_initial_subduction_dialog_ptr->setAttribute(Qt::WA_DeleteOnClose, false);
-	QVBoxLayout *initial_subduction_layout = new QVBoxLayout(d_initial_subduction_dialog_ptr);
+	QVBoxLayout *initial_subduction_layout = create_scrollable_dialog_layout(d_initial_subduction_dialog_ptr);
 	QLabel *initial_subduction_description = new QLabel(tr(
 			"Select one rifted continent and its half-stage MOR. The preview uses the MOR-to-continent vector for motion, spans the far-side silhouette, smooths coastal detail, and adds a broad natural arc."),
 			d_initial_subduction_dialog_ptr);
@@ -1169,7 +1306,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			tr("Worldbuilding Pasta - Island Arcs and Mountains"));
 	d_subduction_effects_dialog_ptr->setModal(false);
 	d_subduction_effects_dialog_ptr->setAttribute(Qt::WA_DeleteOnClose, false);
-	QVBoxLayout *subduction_effects_layout = new QVBoxLayout(d_subduction_effects_dialog_ptr);
+	QVBoxLayout *subduction_effects_layout = create_scrollable_dialog_layout(d_subduction_effects_dialog_ptr);
 	QLabel *subduction_effects_description = new QLabel(tr(
 			"Select a trench, then optionally its overriding continental crust. Auto proposes an island-arc notation line without a selected crust and an Andean belt with one. Arc intersections with any visible ContinentalCrust or terrane automatically preview mountain building. Nothing is committed until review."),
 			d_subduction_effects_dialog_ptr);
@@ -1250,7 +1387,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			tr("Worldbuilding Pasta - Collision and Orogeny"));
 	d_collision_dialog_ptr->setModal(false);
 	d_collision_dialog_ptr->setAttribute(Qt::WA_DeleteOnClose, false);
-	QVBoxLayout *collision_layout = new QVBoxLayout(d_collision_dialog_ptr);
+	QVBoxLayout *collision_layout = create_scrollable_dialog_layout(d_collision_dialog_ptr);
 	QLabel *collision_description = new QLabel(tr(
 			"Select the incoming and receiving continental crust. Optionally select only the trench segment consumed by the collision. Preview estimates convergence, proposes a suture and mountain belt, and can time-slice a welded younger plate without erasing its older reconstruction history."),
 			d_collision_dialog_ptr);
@@ -1383,7 +1520,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			tr("Worldbuilding Pasta - Post-Collision Suture Reactivation"));
 	d_post_collision_rift_dialog_ptr->setModal(false);
 	d_post_collision_rift_dialog_ptr->setAttribute(Qt::WA_DeleteOnClose, false);
-	QVBoxLayout *post_collision_rift_layout = new QVBoxLayout(d_post_collision_rift_dialog_ptr);
+	QVBoxLayout *post_collision_rift_layout = create_scrollable_dialog_layout(d_post_collision_rift_dialog_ptr);
 	QLabel *post_collision_rift_description = new QLabel(tr(
 			"Select one crust polygon the new rift must cut and the inherited collision suture. The generator searches for a nearby, irregular, craton-safe route; commit time-slices the welded assemblage, creates the half-stage MOR, and adds only a missing no-jump rotation branch."),
 			d_post_collision_rift_dialog_ptr);
@@ -1469,7 +1606,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			tr("Worldbuilding Pasta - LIP and Hotspot Event"));
 	d_mantle_events_dialog_ptr->setModal(false);
 	d_mantle_events_dialog_ptr->setAttribute(Qt::WA_DeleteOnClose, false);
-	QVBoxLayout *mantle_events_layout = new QVBoxLayout(d_mantle_events_dialog_ptr);
+	QVBoxLayout *mantle_events_layout = create_scrollable_dialog_layout(d_mantle_events_dialog_ptr);
 	QLabel *mantle_events_description = new QLabel(tr(
 			"Select continental crust, then optionally a rift. Preview keeps the whole LIP inside the host. Commit creates Artifexia-aligned active/former LIP layers and, if enabled, a mantle-fixed HotSpot plus a native GPlates MotionPath trail."),
 			d_mantle_events_dialog_ptr);
@@ -1562,7 +1699,9 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	d_mantle_events_dialog_ptr->resize(570, 760);
 	d_mantle_events_dialog_ptr->hide();
 
-	d_worldbuilding_pasta_dock_ptr->setWidget(worldbuilding_pasta_palette);
+	worldbuilding_pasta_layout->addStretch();
+	worldbuilding_pasta_scroll_area->setWidget(worldbuilding_pasta_palette);
+	d_worldbuilding_pasta_dock_ptr->setWidget(worldbuilding_pasta_scroll_area);
 	addDockWidget(Qt::RightDockWidgetArea, d_worldbuilding_pasta_dock_ptr);
 	d_worldbuilding_pasta_dock_ptr->setFloating(true);
 	d_worldbuilding_pasta_dock_ptr->resize(420, 650);
