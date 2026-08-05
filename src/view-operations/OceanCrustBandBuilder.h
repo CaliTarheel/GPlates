@@ -13,11 +13,13 @@
 #include <QString>
 
 #include "maths/PolygonOnSphere.h"
+#include "model/FeatureHandle.h"
 #include "model/types.h"
 
 
 namespace GPlatesAppLogic
 {
+	class ApplicationState;
 	class ReconstructionTree;
 }
 
@@ -68,6 +70,20 @@ namespace GPlatesViewOperations
 				const GPlatesMaths::PolygonOnSphere &polygon,
 				GPlatesModel::integer_plate_id_type plate_id,
 				const GPlatesAppLogic::ReconstructionTree &current_tree);
+
+		/** Returns all active loaded reconstructed OceanicCrust polygons. */
+		polygon_seq_type
+		get_existing_ocean_crust(
+				GPlatesAppLogic::ApplicationState &application_state);
+
+		/** Creates a normal rigid OceanicCrust feature for an accepted component. */
+		GPlatesModel::FeatureHandle::non_null_ptr_type
+		create_oceanic_crust_feature(
+				const QString &name,
+				double appearance_time,
+				double geometry_import_time,
+				GPlatesModel::integer_plate_id_type plate_id,
+				const polygon_ptr_type &stored_polygon);
 	}
 }
 

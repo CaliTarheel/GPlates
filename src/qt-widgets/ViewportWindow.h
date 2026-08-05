@@ -116,6 +116,7 @@ namespace GPlatesViewOperations
 	class CreateInitialContinentOperation;
 	class CreateInitialRotationFileOperation;
 	class CreateOceanCrustOperation;
+	class CreateTripleJunctionCrustOperation;
 	class CratonPlateIdLabels;
 	class DeleteFeatureOperation;
 	class GenerateInitialSubductionOperation;
@@ -746,6 +747,9 @@ namespace GPlatesQtWidgets
 		handle_create_ocean_crust();
 
 		void
+		handle_create_triple_junction_crust();
+
+		void
 		handle_create_initial_rotation_file();
 
 		void
@@ -851,6 +855,9 @@ namespace GPlatesQtWidgets
 
 		//! For creating a separate editable ocean-crust age band from recorded plate motion.
 		boost::scoped_ptr<GPlatesViewOperations::CreateOceanCrustOperation> d_create_ocean_crust_operation_ptr;
+
+		//! RRR mode sharing the MOR selection and ocean-crust builder with the basic workflow.
+		boost::scoped_ptr<GPlatesViewOperations::CreateTripleJunctionCrustOperation> d_create_triple_junction_crust_operation_ptr;
 
 		//! For proposing, reviewing and committing an initial rift system.
 		boost::scoped_ptr<GPlatesViewOperations::ProposeInitialRiftsOperation> d_propose_initial_rifts_operation_ptr;

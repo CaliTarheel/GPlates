@@ -39,6 +39,8 @@ set(srcs
     CreateInitialRotationFileOperation.h
     CreateOceanCrustOperation.cc
     CreateOceanCrustOperation.h
+    CreateTripleJunctionCrustOperation.cc
+    CreateTripleJunctionCrustOperation.h
     CratonPlateIdLabels.cc
     CratonPlateIdLabels.h
     CraterGeneratorOperation.cc
@@ -153,6 +155,8 @@ set(srcs
     SubductionCutterOperation.h
     SubductionEffectsGeometry.cc
     SubductionEffectsGeometry.h
+    TripleJunctionGeometry.cc
+    TripleJunctionGeometry.h
     UndoRedo.cc
     UndoRedo.h
     VisibleReconstructionGeometryExport.cc

@@ -184,6 +184,7 @@
 #include "view-operations/CreateInitialContinentOperation.h"
 #include "view-operations/CreateInitialRotationFileOperation.h"
 #include "view-operations/CreateOceanCrustOperation.h"
+#include "view-operations/CreateTripleJunctionCrustOperation.h"
 #include "view-operations/CratonPlateIdLabels.h"
 #include "view-operations/DeleteFeatureOperation.h"
 #include "view-operations/GenerateInitialSubductionOperation.h"
@@ -690,6 +691,12 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 					get_view_state().get_feature_focus(),
 					get_application_state(),
 					get_view_state())),
+	d_create_triple_junction_crust_operation_ptr(
+			new GPlatesViewOperations::CreateTripleJunctionCrustOperation(
+					*d_create_ocean_crust_operation_ptr,
+					get_view_state().get_feature_focus(),
+					get_application_state(),
+					get_view_state())),
 	d_propose_initial_rifts_operation_ptr(
 			new GPlatesViewOperations::ProposeInitialRiftsOperation(
 					get_application_state(),
@@ -1179,8 +1186,13 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	create_ocean_crust_button->setToolTip(tr(
 			"Shift-click a half-stage MOR, use the Project Timeline interval and recorded .rot motion, then fill only open ocean space on each side."));
 	active_margin_layout->addWidget(create_ocean_crust_button);
+	QPushButton *create_triple_junction_crust_button = new QPushButton(
+			tr("3.4  Generate RRR Triple-Junction Crust..."), active_margin_group);
+	create_triple_junction_crust_button->setToolTip(tr(
+			"Shift-click three connected half-stage MORs, conservatively extend them to one junction, and fill all three plate sectors using the shared crust-band builder."));
+	active_margin_layout->addWidget(create_triple_junction_crust_button);
 	QPushButton *retire_ocean_crust_button = new QPushButton(
-			tr("3.4  Retire Subducted Oceanic Crust..."), active_margin_group);
+			tr("3.5  Retire Subducted Oceanic Crust..."), active_margin_group);
 	retire_ocean_crust_button->setToolTip(tr(
 			"Preview where OceanicCrust first overlaps an overriding plate, split those pieces, and give them disappearance times."));
 	active_margin_layout->addWidget(retire_ocean_crust_button);
@@ -1947,6 +1959,11 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			SIGNAL(clicked()),
 			this,
 			SLOT(handle_create_ocean_crust()));
+	QObject::connect(
+			create_triple_junction_crust_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_create_triple_junction_crust()));
 	QObject::connect(
 			retire_ocean_crust_button,
 			SIGNAL(clicked()),
@@ -2974,6 +2991,11 @@ GPlatesQtWidgets::ViewportWindow::connect_world_building_menu_actions()
 			SIGNAL(triggered()),
 			this,
 			SLOT(handle_create_ocean_crust()));
+	QObject::connect(
+			action_Create_Triple_Junction_Crust,
+			SIGNAL(triggered()),
+			this,
+			SLOT(handle_create_triple_junction_crust()));
 	QObject::connect(
 			action_Naturalize_Coastline,
 			SIGNAL(triggered()),
@@ -5209,6 +5231,28 @@ GPlatesQtWidgets::ViewportWindow::apply_artifexia_preset()
 					: QString());
 	status_message(message);
 	QMessageBox::information(this, tr("Artifexia Project Preset"), message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_create_triple_junction_crust()
+{
+	const GPlatesViewOperations::CreateTripleJunctionCrustOperation::Result result =
+			d_create_triple_junction_crust_operation_ptr->trigger(this);
+	status_message(result.message);
+	if (result.outcome == GPlatesViewOperations::CreateTripleJunctionCrustOperation::SELECTION_REQUIRED)
+	{
+		activate_choose_feature_tool(canvas_tool_workflows());
+		QMessageBox::information(this, tr("Shift-Click Three Half-Stage MORs"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::CreateTripleJunctionCrustOperation::OPERATION_COMPLETED)
+	{
+		QMessageBox::information(this, tr("RRR Triple-Junction Crust Generated"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::CreateTripleJunctionCrustOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Generate RRR Triple-Junction Crust"), result.message);
+	}
 }
 
 
