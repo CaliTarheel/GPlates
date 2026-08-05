@@ -34,6 +34,7 @@
 #include <iostream>
 #include <iterator>
 #include <memory>
+#include <set>
 #include <boost/format.hpp>
 #include <boost/scoped_ptr.hpp>
 #include <boost/foreach.hpp>
@@ -55,6 +56,7 @@
 #include <QDropEvent>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFile>
 #include <QHeaderView>
 #include <QGroupBox>
 #include <QFormLayout>
@@ -208,6 +210,7 @@
 #include "view-operations/FlowlineManagerOperation.h"
 #include "view-operations/FeatureEventVersioner.h"
 #include "view-operations/GeologyEventLedger.h"
+#include "view-operations/WorldbuildingAuditReport.h"
 #include "view-operations/RenderedGeometryCollection.h"
 #include "view-operations/RenderedGeometryParameters.h"
 #include "view-operations/RotationFileEditorOperation.h"
@@ -1116,6 +1119,11 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	show_event_history_button->setToolTip(tr(
 			"Show read-only Worldbuilding event lineage stored in GPML-compatible feature descriptions."));
 	worldbuilding_pasta_layout->addWidget(show_event_history_button);
+	QPushButton *show_worldbuilding_audit_button = new QPushButton(
+			tr("Audit + Crust Ledger..."), worldbuilding_pasta_palette);
+	show_worldbuilding_audit_button->setToolTip(tr(
+			"Run read-only current-time, interval, or all-time checks; review the ocean-crust lifecycle ledger; and export Markdown or JSON."));
+	worldbuilding_pasta_layout->addWidget(show_worldbuilding_audit_button);
 
 	QDialog *event_history_dialog = new QDialog(this);
 	event_history_dialog->setWindowTitle(tr("Worldbuilding Event History"));
@@ -1248,6 +1256,195 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 				event_history_dialog->raise();
 				event_history_dialog->activateWindow();
 			});
+
+	QDialog *audit_dialog = new QDialog(this);
+	audit_dialog->setWindowTitle(tr("Worldbuilding Audit and Ocean-Crust Ledger"));
+	audit_dialog->setModal(false);
+	QVBoxLayout *audit_layout = new QVBoxLayout(audit_dialog);
+	QLabel *audit_note = new QLabel(tr(
+			"Read-only diagnostics. Checking Queue only promotes a suggestion into the exported repair queue; it never mutates geometry, rotations, boundaries, or topology."), audit_dialog);
+	audit_note->setWordWrap(true);
+	audit_layout->addWidget(audit_note);
+	QLineEdit *audit_filter = new QLineEdit(audit_dialog);
+	audit_filter->setPlaceholderText(tr("Filter findings and ocean-crust records..."));
+	audit_filter->setClearButtonEnabled(true);
+	audit_layout->addWidget(audit_filter);
+	QLabel *audit_status = new QLabel(audit_dialog);
+	audit_status->setWordWrap(true);
+	audit_layout->addWidget(audit_status);
+	QFormLayout *audit_form = new QFormLayout();
+	QComboBox *audit_scope = new QComboBox(audit_dialog);
+	audit_scope->addItem(tr("Current time"));
+	audit_scope->addItem(tr("Interval"));
+	audit_scope->addItem(tr("All times"));
+	QDoubleSpinBox *audit_older = new QDoubleSpinBox(audit_dialog);
+	audit_older->setRange(0, 10000); audit_older->setDecimals(3); audit_older->setSuffix(tr(" Ma"));
+	QDoubleSpinBox *audit_old_crust = new QDoubleSpinBox(audit_dialog);
+	audit_old_crust->setRange(1, 1000); audit_old_crust->setValue(200); audit_old_crust->setSuffix(tr(" Ma"));
+	QLineEdit *audit_revision = new QLineEdit(tr("working"), audit_dialog);
+	audit_form->addRow(tr("Scope:"), audit_scope);
+	audit_form->addRow(tr("Older interval bound:"), audit_older);
+	audit_form->addRow(tr("Old-crust advisory threshold:"), audit_old_crust);
+	audit_form->addRow(tr("Project revision:"), audit_revision);
+	audit_layout->addLayout(audit_form);
+	QLabel *findings_label = new QLabel(tr("Findings and user-promoted repair queue"), audit_dialog);
+	audit_layout->addWidget(findings_label);
+	QTableWidget *audit_findings = new QTableWidget(audit_dialog);
+	audit_findings->setColumnCount(8);
+	audit_findings->setHorizontalHeaderLabels(QStringList() << tr("Queue") << tr("Severity")
+			<< tr("Domain") << tr("Code") << tr("Feature ID") << tr("Time")
+			<< tr("Finding") << tr("Suggested repair"));
+	audit_findings->setEditTriggers(QAbstractItemView::NoEditTriggers);
+	audit_findings->setSelectionBehavior(QAbstractItemView::SelectRows);
+	audit_findings->horizontalHeader()->setStretchLastSection(true);
+	audit_layout->addWidget(audit_findings);
+	QLabel *crust_label = new QLabel(tr("Ocean-crust creation / retirement / survival ledger"), audit_dialog);
+	audit_layout->addWidget(crust_label);
+	QTableWidget *audit_crust = new QTableWidget(audit_dialog);
+	audit_crust->setColumnCount(6);
+	audit_crust->setHorizontalHeaderLabels(QStringList() << tr("Feature ID") << tr("Created")
+			<< tr("Retired") << tr("Status") << tr("Age") << tr("Advisory"));
+	audit_crust->setEditTriggers(QAbstractItemView::NoEditTriggers);
+	audit_crust->horizontalHeader()->setStretchLastSection(true);
+	audit_layout->addWidget(audit_crust);
+	QDialogButtonBox *audit_buttons = new QDialogButtonBox(QDialogButtonBox::Close, audit_dialog);
+	QPushButton *audit_refresh = audit_buttons->addButton(tr("Refresh"), QDialogButtonBox::ActionRole);
+	QPushButton *audit_export_markdown = audit_buttons->addButton(tr("Export Markdown"), QDialogButtonBox::ActionRole);
+	QPushButton *audit_export_json = audit_buttons->addButton(tr("Export JSON"), QDialogButtonBox::ActionRole);
+	audit_layout->addWidget(audit_buttons);
+	QObject::connect(audit_buttons, SIGNAL(rejected()), audit_dialog, SLOT(hide()));
+	std::shared_ptr<GPlatesViewOperations::WorldbuildingAuditReport::Report> audit_report(
+			new GPlatesViewOperations::WorldbuildingAuditReport::Report());
+	const auto apply_audit_filter = [audit_filter, audit_status, audit_findings, audit_crust]()
+	{
+		const QString query = audit_filter->text().trimmed();
+		unsigned int visible_findings = 0;
+		for (int row = 0; row < audit_findings->rowCount(); ++row)
+		{
+			bool match = query.isEmpty();
+			for (int column = 1; !match && column < audit_findings->columnCount(); ++column)
+				match = audit_findings->item(row, column) &&
+						audit_findings->item(row, column)->text().contains(query, Qt::CaseInsensitive);
+			audit_findings->setRowHidden(row, !match);
+			if (match) ++visible_findings;
+		}
+		unsigned int visible_crust = 0;
+		for (int row = 0; row < audit_crust->rowCount(); ++row)
+		{
+			bool match = query.isEmpty();
+			for (int column = 0; !match && column < audit_crust->columnCount(); ++column)
+				match = audit_crust->item(row, column) &&
+						audit_crust->item(row, column)->text().contains(query, Qt::CaseInsensitive);
+			audit_crust->setRowHidden(row, !match);
+			if (match) ++visible_crust;
+		}
+		audit_status->setText(QObject::tr(
+				"Showing %1 of %2 findings and %3 of %4 ocean-crust records.")
+				.arg(visible_findings).arg(audit_findings->rowCount())
+				.arg(visible_crust).arg(audit_crust->rowCount()));
+	};
+	const auto refresh_audit = [this, audit_scope, audit_older, audit_old_crust, audit_revision,
+			audit_findings, audit_crust, audit_report, apply_audit_filter]()
+	{
+		std::set<QString> queued_findings;
+		for (int row = 0; row < audit_findings->rowCount(); ++row)
+			if (audit_findings->item(row, 0) && audit_findings->item(row, 0)->checkState() == Qt::Checked &&
+					audit_findings->item(row, 3) && audit_findings->item(row, 4))
+				queued_findings.insert(audit_findings->item(row, 3)->text() + QString::fromLatin1("|") +
+						audit_findings->item(row, 4)->text());
+		GPlatesViewOperations::WorldbuildingAuditReport::Request request;
+		request.scope = static_cast<GPlatesViewOperations::WorldbuildingAuditReport::Scope>(audit_scope->currentIndex());
+		request.current_time = get_application_state().get_current_reconstruction_time();
+		request.older_time = audit_older->value();
+		request.old_crust_threshold_ma = audit_old_crust->value();
+		request.project_revision = audit_revision->text().trimmed();
+		*audit_report = GPlatesViewOperations::WorldbuildingAuditReport::build(
+				get_application_state().get_feature_collection_file_state(), request);
+		audit_findings->setRowCount(0);
+		for (size_t index = 0; index < audit_report->findings.size(); ++index)
+		{
+			const GPlatesViewOperations::WorldbuildingAuditReport::Finding &finding = audit_report->findings[index];
+			const int row = audit_findings->rowCount(); audit_findings->insertRow(row);
+			QTableWidgetItem *queue = new QTableWidgetItem();
+			queue->setCheckState(queued_findings.count(
+					finding.code + QString::fromLatin1("|") + finding.feature_id)
+					? Qt::Checked : Qt::Unchecked);
+			audit_findings->setItem(row, 0, queue);
+			const QStringList values = QStringList() << finding.severity << finding.domain << finding.code
+					<< finding.feature_id << (finding.time ? QString::number(*finding.time, 'f', 3) : QString())
+					<< finding.message << finding.suggested_repair;
+			for (int column = 0; column < values.size(); ++column)
+				audit_findings->setItem(row, column + 1, new QTableWidgetItem(values[column]));
+		}
+		audit_crust->setRowCount(0);
+		for (std::vector<GPlatesViewOperations::WorldbuildingAuditReport::CrustRecord>::const_iterator
+				record = audit_report->crust.begin(); record != audit_report->crust.end(); ++record)
+		{
+			const int row = audit_crust->rowCount(); audit_crust->insertRow(row);
+			const QStringList values = QStringList() << record->feature_id
+					<< QString::number(record->created_time, 'f', 3)
+					<< (record->retired_time ? QString::number(*record->retired_time, 'f', 3) : QString())
+					<< record->status << QString::number(record->age_at_current_time, 'f', 1)
+					<< (record->old_crust_advisory ? tr("review") : QString());
+			for (int column = 0; column < values.size(); ++column)
+				audit_crust->setItem(row, column, new QTableWidgetItem(values[column]));
+		}
+		audit_findings->resizeColumnsToContents(); audit_crust->resizeColumnsToContents();
+		apply_audit_filter();
+	};
+	const auto export_audit = [this, audit_findings, audit_report](bool json)
+	{
+		std::vector<int> queue;
+		for (int row = 0; row < audit_findings->rowCount(); ++row)
+			if (audit_findings->item(row, 0) && audit_findings->item(row, 0)->checkState() == Qt::Checked)
+				queue.push_back(row);
+		const QString file_name = QFileDialog::getSaveFileName(this,
+				json ? tr("Export Worldbuilding Audit JSON") : tr("Export Worldbuilding Audit Markdown"),
+				json ? tr("worldbuilding-audit.json") : tr("worldbuilding-audit.md"),
+				json ? tr("JSON (*.json)") : tr("Markdown (*.md)"));
+		if (file_name.isEmpty()) return;
+		QFile file(file_name);
+		if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+		{
+			QMessageBox::warning(this, tr("Export Worldbuilding Audit"), file.errorString());
+			return;
+		}
+		file.write((json ? audit_report->to_json(queue) : audit_report->to_markdown(queue)).toUtf8());
+		file.close();
+	};
+	QObject::connect(audit_refresh, &QPushButton::clicked, this, refresh_audit);
+	QObject::connect(audit_filter, &QLineEdit::textChanged, this,
+			[apply_audit_filter](const QString &) { apply_audit_filter(); });
+	QObject::connect(audit_findings, &QTableWidget::cellDoubleClicked, this,
+			[this, audit_findings](int row, int)
+			{
+				if (!audit_findings->item(row, 5) || audit_findings->item(row, 5)->text().isEmpty()) return;
+				bool valid = false;
+				const double time = audit_findings->item(row, 5)->text().toDouble(&valid);
+				if (valid) get_view_state().get_animation_controller().set_view_time(time);
+			});
+	QObject::connect(audit_crust, &QTableWidget::cellDoubleClicked, this,
+			[this, audit_crust](int row, int)
+			{
+				if (!audit_crust->item(row, 1)) return;
+				bool valid = false;
+				const double time = audit_crust->item(row, 1)->text().toDouble(&valid);
+				if (valid) get_view_state().get_animation_controller().set_view_time(time);
+			});
+	QObject::connect(audit_export_markdown, &QPushButton::clicked, this,
+			[export_audit]() { export_audit(false); });
+	QObject::connect(audit_export_json, &QPushButton::clicked, this,
+			[export_audit]() { export_audit(true); });
+	QObject::connect(show_worldbuilding_audit_button, &QPushButton::clicked, this,
+			[this, audit_dialog, audit_older, refresh_audit]()
+			{
+				const double current = get_application_state().get_current_reconstruction_time();
+				const boost::optional<double> older = get_application_state()
+						.get_project_timestamp_schedule().default_older_bound(current);
+				audit_older->setValue(older ? *older : current);
+				refresh_audit(); audit_dialog->show(); audit_dialog->raise(); audit_dialog->activateWindow();
+			});
+	audit_dialog->resize(1320, 820);
 	QLabel *worldbuilding_pasta_description = new QLabel(
 			tr("Follow the Worldbuilding Pasta sequence from stable continental core to active plate margins."),
 			worldbuilding_pasta_palette);
