@@ -152,6 +152,8 @@ set(srcs
     RotationMotionPlanner.h
     BoundarySectionGraph.cc
     BoundarySectionGraph.h
+    SubductionLifecyclePlanner.cc
+    SubductionLifecyclePlanner.h
     RotationPlateCreation.cc
     RotationPlateCreation.h
     RenderedSubductionTeethPolyline.h

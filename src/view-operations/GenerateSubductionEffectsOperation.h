@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "SubductionEffectsGeometry.h"
+#include "SubductionLifecyclePlanner.h"
 #include "RenderedGeometryCollection.h"
 
 #include "app-logic/ReconstructedFeatureGeometry.h"
@@ -79,6 +80,10 @@ namespace GPlatesViewOperations
 			double offset_km;
 			double island_irregularity;
 			double belt_width_km;
+			SubductionLifecyclePlanner::EventType lifecycle_event;
+			GPlatesModel::integer_plate_id_type subducting_plate;
+			double migration_offset_km;
+			bool isolates_plate_fragment;
 		};
 
 		struct Result
@@ -109,6 +114,7 @@ namespace GPlatesViewOperations
 		bool declared_overriding_side_is_left() const;
 		bool recommended_polarity_flip() const;
 		double subduction_age_ma() const;
+		GPlatesModel::integer_plate_id_type suggested_subducting_plate() const;
 		QString subduction_status() const;
 		QString continent_status() const;
 		void clear_continent();
@@ -122,10 +128,12 @@ namespace GPlatesViewOperations
 					const GPlatesModel::FeatureHandle::weak_ref &feature_,
 					const GPlatesMaths::PolylineOnSphere::non_null_ptr_to_const_type &polyline_,
 					GPlatesModel::integer_plate_id_type overriding_plate_,
+					GPlatesModel::integer_plate_id_type subducting_plate_,
 					bool declared_left_,
 					double start_time_,
 					double reconstruction_time_) :
 				feature(feature_), polyline(polyline_), overriding_plate(overriding_plate_),
+				subducting_plate(subducting_plate_),
 				declared_left(declared_left_), start_time(start_time_),
 				reconstruction_time(reconstruction_time_)
 			{  }
@@ -133,6 +141,7 @@ namespace GPlatesViewOperations
 			GPlatesModel::FeatureHandle::weak_ref feature;
 			GPlatesMaths::PolylineOnSphere::non_null_ptr_to_const_type polyline;
 			GPlatesModel::integer_plate_id_type overriding_plate;
+			GPlatesModel::integer_plate_id_type subducting_plate;
 			bool declared_left;
 			double start_time;
 			double reconstruction_time;
@@ -172,12 +181,14 @@ namespace GPlatesViewOperations
 			Preview(
 					const Options &options_,
 					const SubductionEffectsGeometry::Result &geometry_,
+					const SubductionLifecyclePlanner::Plan &lifecycle_plan_,
 					const std::vector<LandBelt> &land_belts_ = std::vector<LandBelt>()) :
-				options(options_), geometry(geometry_), land_belts(land_belts_)
+				options(options_), geometry(geometry_), lifecycle_plan(lifecycle_plan_), land_belts(land_belts_)
 			{  }
 
 			Options options;
 			SubductionEffectsGeometry::Result geometry;
+			SubductionLifecyclePlanner::Plan lifecycle_plan;
 			std::vector<LandBelt> land_belts;
 		};
 

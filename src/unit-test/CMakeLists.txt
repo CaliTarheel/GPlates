@@ -90,6 +90,8 @@ set(srcs
     RotationMotionPlannerTest.h
     BoundarySectionGraphTest.cc
     BoundarySectionGraphTest.h
+    SubductionLifecyclePlannerTest.cc
+    SubductionLifecyclePlannerTest.h
     WorldbuildingProjectManifestTest.cc
     WorldbuildingProjectManifestTest.h
     PropertyValuesTestSuite.cc

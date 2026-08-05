@@ -1017,6 +1017,10 @@ namespace GPlatesQtWidgets
 		QPointer<QLabel> d_subduction_effects_continent_status_label_ptr;
 		QPointer<QLabel> d_subduction_effects_instruction_label_ptr;
 		QPointer<QComboBox> d_subduction_effect_type_combo_ptr;
+		QPointer<QComboBox> d_subduction_lifecycle_combo_ptr;
+		QPointer<QSpinBox> d_subduction_subducting_plate_spin_ptr;
+		QPointer<QDoubleSpinBox> d_subduction_migration_offset_spin_ptr;
+		QPointer<QCheckBox> d_subduction_isolates_fragment_check_ptr;
 		QPointer<QCheckBox> d_subduction_effects_flip_polarity_check_ptr;
 		QPointer<QCheckBox> d_subduction_effects_early_arc_check_ptr;
 		QPointer<QDoubleSpinBox> d_subduction_effects_arc_delay_spin_ptr;

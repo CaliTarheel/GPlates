@@ -1930,6 +1930,27 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	d_subduction_effect_type_combo_ptr->addItem(tr("Andean Orogeny"));
 	d_subduction_effect_type_combo_ptr->addItem(tr("Laramide Orogeny"));
 	subduction_effects_form->addRow(tr("Interpretation:"), d_subduction_effect_type_combo_ptr);
+	d_subduction_lifecycle_combo_ptr = new QComboBox(d_subduction_effects_dialog_ptr);
+	d_subduction_lifecycle_combo_ptr->addItem(tr("Continued subduction"));
+	d_subduction_lifecycle_combo_ptr->addItem(tr("Trench extension"));
+	d_subduction_lifecycle_combo_ptr->addItem(tr("Rollback"));
+	d_subduction_lifecycle_combo_ptr->addItem(tr("Trench jump"));
+	d_subduction_lifecycle_combo_ptr->addItem(tr("Polarity reversal"));
+	d_subduction_lifecycle_combo_ptr->addItem(tr("Plate invasion"));
+	d_subduction_lifecycle_combo_ptr->addItem(tr("Flat-slab interval"));
+	d_subduction_lifecycle_combo_ptr->addItem(tr("Final retirement"));
+	subduction_effects_form->addRow(tr("Lifecycle event:"), d_subduction_lifecycle_combo_ptr);
+	d_subduction_subducting_plate_spin_ptr = new QSpinBox(d_subduction_effects_dialog_ptr);
+	d_subduction_subducting_plate_spin_ptr->setRange(0, 999999);
+	d_subduction_subducting_plate_spin_ptr->setSpecialValueText(tr("Required"));
+	subduction_effects_form->addRow(tr("Subducting Plate ID:"), d_subduction_subducting_plate_spin_ptr);
+	d_subduction_migration_offset_spin_ptr = new QDoubleSpinBox(d_subduction_effects_dialog_ptr);
+	d_subduction_migration_offset_spin_ptr->setRange(0, 3000);
+	d_subduction_migration_offset_spin_ptr->setSuffix(tr(" km"));
+	subduction_effects_form->addRow(tr("Lifecycle migration:"), d_subduction_migration_offset_spin_ptr);
+	d_subduction_isolates_fragment_check_ptr = new QCheckBox(
+			tr("Event isolates a plate fragment (delegate plate birth)"), d_subduction_effects_dialog_ptr);
+	subduction_effects_form->addRow(QString(), d_subduction_isolates_fragment_check_ptr);
 	d_subduction_effects_flip_polarity_check_ptr = new QCheckBox(
 			tr("Flip declared trench polarity"), d_subduction_effects_dialog_ptr);
 	subduction_effects_form->addRow(QString(), d_subduction_effects_flip_polarity_check_ptr);
@@ -2717,6 +2738,14 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	QObject::connect(
 			d_subduction_effect_type_combo_ptr,
 			SIGNAL(currentIndexChanged(int)), this, SLOT(handle_subduction_effect_type_changed(int)));
+	QObject::connect(d_subduction_lifecycle_combo_ptr,
+			SIGNAL(currentIndexChanged(int)), this, SLOT(handle_subduction_effects_controls_changed()));
+	QObject::connect(d_subduction_subducting_plate_spin_ptr,
+			SIGNAL(valueChanged(int)), this, SLOT(handle_subduction_effects_controls_changed()));
+	QObject::connect(d_subduction_migration_offset_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_subduction_effects_controls_changed()));
+	QObject::connect(d_subduction_isolates_fragment_check_ptr,
+			SIGNAL(toggled(bool)), this, SLOT(handle_subduction_effects_controls_changed()));
 	QObject::connect(
 			d_subduction_effects_flip_polarity_check_ptr,
 			SIGNAL(toggled(bool)), this, SLOT(handle_subduction_effects_controls_changed()));
@@ -5198,6 +5227,17 @@ GPlatesQtWidgets::ViewportWindow::handle_subduction_effects_focus_changed(
 	}
 	QString message = result.message;
 	if (result.outcome ==
+			GPlatesViewOperations::GenerateSubductionEffectsOperation::SUBDUCTION_CAPTURED)
+	{
+		const GPlatesModel::integer_plate_id_type suggested =
+				d_generate_subduction_effects_operation_ptr->suggested_subducting_plate();
+		if (suggested != 0)
+		{
+			QSignalBlocker blocker(d_subduction_subducting_plate_spin_ptr);
+			d_subduction_subducting_plate_spin_ptr->setValue(static_cast<int>(suggested));
+		}
+	}
+	if (result.outcome ==
 			GPlatesViewOperations::GenerateSubductionEffectsOperation::CONTINENT_CAPTURED)
 	{
 		const bool recommended_flip =
@@ -5245,6 +5285,11 @@ GPlatesQtWidgets::ViewportWindow::handle_subduction_effects_preview()
 	options.offset_km = d_subduction_effects_offset_spin_ptr->value();
 	options.island_irregularity = d_subduction_effects_irregularity_spin_ptr->value() / 100.0;
 	options.belt_width_km = d_subduction_effects_belt_width_spin_ptr->value();
+	options.lifecycle_event = static_cast<GPlatesViewOperations::SubductionLifecyclePlanner::EventType>(
+			d_subduction_lifecycle_combo_ptr->currentIndex());
+	options.subducting_plate = d_subduction_subducting_plate_spin_ptr->value();
+	options.migration_offset_km = d_subduction_migration_offset_spin_ptr->value();
+	options.isolates_plate_fragment = d_subduction_isolates_fragment_check_ptr->isChecked();
 
 	const GPlatesViewOperations::GenerateSubductionEffectsOperation::Result result =
 			d_generate_subduction_effects_operation_ptr->preview(options);
