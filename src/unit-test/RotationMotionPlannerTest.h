@@ -5,7 +5,7 @@
 #include "unit-test/GPlatesTestSuite.h"
 namespace GPlatesUnitTest
 {
-	class RotationMotionPlannerTest { public: void test_stage_angle(); };
+	class RotationMotionPlannerTest { public: void test_stage_angle(); void test_boundary_decomposition(); };
 	class RotationMotionPlannerTestSuite : public GPlatesTestSuite
 	{
 	public: RotationMotionPlannerTestSuite(unsigned depth);

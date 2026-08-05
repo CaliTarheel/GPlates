@@ -12,6 +12,21 @@ void GPlatesUnitTest::RotationMotionPlannerTestSuite::construct_maps()
 {
 	boost::shared_ptr<RotationMotionPlannerTest> instance(new RotationMotionPlannerTest());
 	ADD_TESTCASE(RotationMotionPlannerTest, test_stage_angle);
+	ADD_TESTCASE(RotationMotionPlannerTest, test_boundary_decomposition);
+}
+
+void GPlatesUnitTest::RotationMotionPlannerTest::test_boundary_decomposition()
+{
+	double normal = 0.0;
+	double parallel = 0.0;
+	GPlatesViewOperations::RotationMotionPlanner::decompose_boundary_velocity(
+			4.0, 3.0, 0.0, normal, parallel);
+	BOOST_CHECK_CLOSE(normal, 3.0, 1e-8);
+	BOOST_CHECK_CLOSE(parallel, 4.0, 1e-8);
+	GPlatesViewOperations::RotationMotionPlanner::decompose_boundary_velocity(
+			4.0, 3.0, 90.0, normal, parallel);
+	BOOST_CHECK_CLOSE(normal, -4.0, 1e-8);
+	BOOST_CHECK_CLOSE(parallel, 3.0, 1e-8);
 }
 void GPlatesUnitTest::RotationMotionPlannerTest::test_stage_angle()
 {
