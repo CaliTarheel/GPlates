@@ -31,6 +31,7 @@
 #include "UndoRedo.h"
 
 #include "app-logic/ApplicationState.h"
+#include "app-logic/PlanetaryParameters.h"
 #include "app-logic/FeatureCollectionFileIO.h"
 #include "app-logic/FeatureCollectionFileState.h"
 #include "app-logic/GeometryUtils.h"
@@ -572,26 +573,47 @@ GPlatesViewOperations::CreateOceanCrustOperation::trigger(
 							GPlatesGui::Colour(0.40f, 0.20f, 0.0f)));
 		}
 
-		const QMessageBox::StandardButton confirmation = QMessageBox::question(
-				parent_widget,
+		double left_area_steradians = 0.0;
+		for (OceanCrustBandBuilder::polygon_seq_type::const_iterator piece_iter =
+				left_band.polygons.begin(); piece_iter != left_band.polygons.end(); ++piece_iter)
+		{
+			left_area_steradians += (*piece_iter)->get_area().dval();
+		}
+		double right_area_steradians = 0.0;
+		for (OceanCrustBandBuilder::polygon_seq_type::const_iterator piece_iter =
+				right_band.polygons.begin(); piece_iter != right_band.polygons.end(); ++piece_iter)
+		{
+			right_area_steradians += (*piece_iter)->get_area().dval();
+		}
+		const double radius_km = d_application_state.get_planetary_parameters().
+				effective_radius_kilometres();
+		const double square_radius_million_km2 = radius_km * radius_km / 1.0e6;
+		QMessageBox confirmation(
+				QMessageBox::Question,
 				QObject::tr("Confirm Ocean-Crust Age Band"),
 				QObject::tr(
-						"Aqua follows left Plate %1 (%2 piece(s)); orange follows right Plate %3 (%4 piece(s)). "
-						"%5 existing OceanicCrust polygon(s) were checked and overlapping area was removed%6. "
-						"The result records seafloor created from %7 to %8 Ma without changing the MOR or either plate's motion.\n\n"
+						"Aqua follows left Plate %1: %2 piece(s), %3 million km².\n"
+						"Orange follows right Plate %4: %5 piece(s), %6 million km².\n\n"
+						"%7 existing OceanicCrust polygon(s) were checked and overlapping area was removed%8. "
+						"The result records seafloor created from %9 to %10 Ma without changing the MOR or either plate's motion.\n\n"
 						"Create these editable OceanicCrust polygons in the selected collection?")
 						.arg(left_plate_id)
 						.arg(static_cast<unsigned int>(left_band.polygons.size()))
+						.arg(left_area_steradians * square_radius_million_km2, 0, 'f', 3)
 						.arg(right_plate_id)
 						.arg(static_cast<unsigned int>(right_band.polygons.size()))
+						.arg(right_area_steradians * square_radius_million_km2, 0, 'f', 3)
 						.arg(static_cast<unsigned int>(existing_ocean_crust.size()))
 						.arg(left_band.existing_overlap_removed || right_band.existing_overlap_removed
 								? QObject::tr(" where necessary") : QObject::tr("; no overlap was found"))
 						.arg(older_time, 0, 'f', 2).arg(current_time, 0, 'f', 2),
-				QMessageBox::Yes | QMessageBox::No,
-				QMessageBox::Yes);
+				QMessageBox::Ok | QMessageBox::Cancel,
+				parent_widget);
+		confirmation.button(QMessageBox::Ok)->setText(QObject::tr("Create Ocean Crust"));
+		confirmation.setDefaultButton(QMessageBox::Cancel);
+		const int confirmation_result = confirmation.exec();
 		preview_layer->clear_rendered_geometries();
-		if (confirmation != QMessageBox::Yes)
+		if (confirmation_result != QMessageBox::Ok)
 		{
 			return Result(OPERATION_CANCELLED,
 					QObject::tr("Ocean-crust preview rejected; no data changed."));
