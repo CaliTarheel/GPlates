@@ -28,9 +28,11 @@
 #include <QFormLayout>
 #include <QLabel>
 #include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QStringList>
 #include <QUndoCommand>
 #include <QUndoStack>
+#include <QVBoxLayout>
 
 #include "app-logic/ApplicationState.h"
 #include "app-logic/FeatureCollectionFileState.h"
@@ -72,6 +74,8 @@
 #include "utils/UnicodeStringUtils.h"
 
 #include "view-operations/UndoRedo.h"
+#include "view-operations/BoundarySectionGraph.h"
+#include "view-operations/FeatureEventVersioner.h"
 
 
 namespace
@@ -83,7 +87,8 @@ namespace
 		GENERATE_OR_REGENERATE,
 		DELETE_GENERATED,
 		SHOW_GENERATED_LAYER,
-		HIDE_GENERATED_LAYER
+		HIDE_GENERATED_LAYER,
+		AUDIT_BOUNDARY_NETWORK
 	};
 
 	enum SourceScope
@@ -664,6 +669,7 @@ GPlatesViewOperations::FlowlineManagerOperation::trigger()
 	action_combo->addItem(tr("Delete generated flowlines"), DELETE_GENERATED);
 	action_combo->addItem(tr("Show generated layer"), SHOW_GENERATED_LAYER);
 	action_combo->addItem(tr("Hide generated layer"), HIDE_GENERATED_LAYER);
+	action_combo->addItem(tr("Audit ordered boundary sections (preview only)"), AUDIT_BOUNDARY_NETWORK);
 	QComboBox *scope_combo = new QComboBox(&dialog);
 	scope_combo->addItem(tr("Focused source feature"), FOCUSED_SOURCE);
 	scope_combo->addItem(tr("All eligible features in source collection"), ALL_ELIGIBLE_IN_COLLECTION);
@@ -705,6 +711,12 @@ GPlatesViewOperations::FlowlineManagerOperation::trigger()
 	QCheckBox *swap_checkbox = new QCheckBox(tr("Swap left/right Plate IDs"), &dialog);
 	QCheckBox *dry_run_checkbox = new QCheckBox(tr("Dry run only"), &dialog);
 	dry_run_checkbox->setChecked(true);
+	QCheckBox *closed_network_checkbox = new QCheckBox(
+			tr("Require the ordered sections to form a closed network"), &dialog);
+	QDoubleSpinBox *endpoint_tolerance_spin = new QDoubleSpinBox(&dialog);
+	endpoint_tolerance_spin->setRange(0.000001, 5.0);
+	endpoint_tolerance_spin->setDecimals(6);
+	endpoint_tolerance_spin->setValue(0.01);
 
 	layout->addRow(tr("Action:"), action_combo);
 	layout->addRow(tr("Sources:"), scope_combo);
@@ -715,6 +727,8 @@ GPlatesViewOperations::FlowlineManagerOperation::trigger()
 	layout->addRow(replace_checkbox);
 	layout->addRow(swap_checkbox);
 	layout->addRow(dry_run_checkbox);
+	layout->addRow(closed_network_checkbox);
+	layout->addRow(tr("Audit endpoint tolerance (degrees):"), endpoint_tolerance_spin);
 	QLabel *note = new QLabel(tr(
 			"Generate and delete are one-step undo operations. Show/hide changes only the visual-layer state. "
 			"Unsupported sources are reported by Feature ID and are never silently changed."), &dialog);
@@ -792,6 +806,71 @@ GPlatesViewOperations::FlowlineManagerOperation::trigger()
 	feature_record_seq_type existing = find_generated(
 			file_state,
 			action == DELETE_GENERATED ? requested_source_ids : source_ids);
+	if (action == AUDIT_BOUNDARY_NETWORK)
+	{
+		std::vector<BoundarySectionGraph::Section> sections;
+		for (std::vector<PreparedSource>::const_iterator prepared = prepared_sources.begin();
+				prepared != prepared_sources.end(); ++prepared)
+		{
+			const GPlatesMaths::PolylineOnSphere *polyline =
+					dynamic_cast<const GPlatesMaths::PolylineOnSphere *>(prepared->geometry.get());
+			if (!polyline)
+			{
+				skipped.append(tr("%1: active geometry is not a polyline").arg(prepared->feature_id));
+				continue;
+			}
+			BoundarySectionGraph::Section section(
+					prepared->feature_id,
+					prepared->feature->feature_type().get_name().qstring(),
+					prepared->left_plate,
+					prepared->right_plate,
+					GPlatesMaths::PolylineOnSphere::non_null_ptr_to_const_type(polyline));
+			const std::vector<FeatureEventVersioner::EventRecord> history =
+					FeatureEventVersioner::events(prepared->feature);
+			if (!history.empty())
+			{
+				if (!history.back().source_feature_ids.isEmpty())
+					section.source_feature_id = history.back().source_feature_ids.first();
+				if (!history.back().output_feature_ids.isEmpty())
+					section.successor_feature_id = history.back().output_feature_ids.first();
+			}
+			sections.push_back(section);
+		}
+		const std::vector<BoundarySectionGraph::Issue> issues = BoundarySectionGraph::analyse(
+				sections, current_time, endpoint_tolerance_spin->value(), closed_network_checkbox->isChecked());
+		const boost::optional<double> next_time =
+				d_application_state.get_project_timestamp_schedule().next_younger_timestamp(current_time);
+		const double successor_time = next_time ? next_time.get() : current_time;
+		const std::vector<BoundarySectionGraph::SuccessorPlan> successors =
+				BoundarySectionGraph::plan_successors(sections, successor_time);
+		QString report = tr("BOUNDARY SECTION GRAPH - PREVIEW ONLY\n%1 ordered section(s); %2 issue(s).\n\n")
+				.arg(sections.size()).arg(issues.size());
+		for (std::vector<BoundarySectionGraph::Issue>::const_iterator issue = issues.begin();
+				issue != issues.end(); ++issue)
+			report += QString("[%1] %2\nSuggested preview: %3\n\n")
+					.arg(BoundarySectionGraph::issue_name(issue->type), issue->summary, issue->suggested_fix);
+		report += tr("TIME-SLICED SUCCESSION PLAN (%1 Ma)\n").arg(successor_time);
+		for (std::vector<BoundarySectionGraph::SuccessorPlan>::const_iterator successor = successors.begin();
+				successor != successors.end(); ++successor)
+			report += QString("%1 -> %2\n").arg(successor->source_feature_id, successor->proposed_feature_id);
+		if (!skipped.isEmpty())
+			report += tr("\nSKIPPED\n%1\n").arg(skipped.join("\n"));
+		report += tr("\nNo geometry, topology, feature, or rotation was changed. "
+				"Apply repairs only through the existing reviewed tools.");
+
+		QDialog report_dialog(d_parent_widget);
+		report_dialog.setWindowTitle(tr("Flowline Manager - Boundary Network Audit"));
+		report_dialog.resize(820, 600);
+		QVBoxLayout *report_layout = new QVBoxLayout(&report_dialog);
+		QPlainTextEdit *report_text = new QPlainTextEdit(report, &report_dialog);
+		report_text->setReadOnly(true);
+		report_layout->addWidget(report_text);
+		QDialogButtonBox *report_buttons = new QDialogButtonBox(QDialogButtonBox::Close, &report_dialog);
+		report_layout->addWidget(report_buttons);
+		QObject::connect(report_buttons, SIGNAL(rejected()), &report_dialog, SLOT(reject()));
+		report_dialog.exec();
+		return;
+	}
 	if (action == DELETE_GENERATED)
 	{
 		const QString report = tr("Generated flowlines matched: %1\nSources considered: %2")
