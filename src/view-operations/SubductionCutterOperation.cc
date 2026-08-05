@@ -40,6 +40,7 @@
 #include "app-logic/Layer.h"
 #include "app-logic/LayerTaskType.h"
 #include "app-logic/PartitionFeatureUtils.h"
+#include "app-logic/ProjectTimestampSchedule.h"
 #include "app-logic/ReconstructLayerProxy.h"
 #include "app-logic/ReconstructedFeatureGeometry.h"
 #include "app-logic/ReconstructUtils.h"
@@ -48,6 +49,7 @@
 #include "feature-visitors/GeometrySetter.h"
 
 #include "gui/FeatureFocus.h"
+#include "gui/AnimationController.h"
 
 #include "maths/PolygonOnSphere.h"
 
@@ -81,6 +83,15 @@ namespace
 		GPlatesModel::integer_plate_id_type plate_id;
 		unsigned int polygon_count;
 	};
+
+	bool
+	is_oceanic_crust(
+			const GPlatesAppLogic::ReconstructedFeatureGeometry &rfg)
+	{
+		return rfg.get_feature_ref().is_valid() &&
+				rfg.get_feature_ref()->feature_type() ==
+						GPlatesModel::FeatureType::create_gpml("OceanicCrust");
+	}
 
 	struct TimedPiece
 	{
@@ -158,7 +169,9 @@ namespace
 	}
 
 	std::vector<PlateChoice>
-	get_plate_choices(const reconstruct_layer_seq_type &layers)
+	get_plate_choices(
+			const reconstruct_layer_seq_type &layers,
+			bool oceanic_crust_only)
 	{
 		std::map<GPlatesModel::integer_plate_id_type, unsigned int> counts;
 		std::set<const GPlatesModel::TopLevelProperty *> seen_properties;
@@ -170,7 +183,8 @@ namespace
 			const GPlatesAppLogic::ReconstructedFeatureGeometry &rfg = **geometry_iter;
 			if (!rfg.is_valid() || !rfg.property().is_still_valid() ||
 					!rfg.reconstruction_plate_id() ||
-					!dynamic_cast<const GPlatesMaths::PolygonOnSphere *>(rfg.reconstructed_geometry().get()))
+					!dynamic_cast<const GPlatesMaths::PolygonOnSphere *>(rfg.reconstructed_geometry().get()) ||
+					(oceanic_crust_only && !is_oceanic_crust(rfg)))
 			{
 				continue;
 			}
@@ -442,7 +456,7 @@ namespace
 			}
 
 			setText(QObject::tr(
-					"subduction cutter — overriding plate %1; subducting plate %2; %3 checks")
+					"retire subducted OceanicCrust - overriding plate %1; subducting plate %2; %3 checks")
 					.arg(static_cast<qulonglong>(overriding_plate_id))
 					.arg(static_cast<qulonglong>(subducting_plate_id))
 					.arg(checks));
@@ -524,23 +538,32 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 				QObject::tr("No visible reconstruct layers are available."));
 	}
 
-	const std::vector<PlateChoice> plate_choices = get_plate_choices(visible_layers);
-	if (plate_choices.size() < 2)
+	const std::vector<PlateChoice> overriding_plate_choices =
+			get_plate_choices(visible_layers, false);
+	const std::vector<PlateChoice> oceanic_crust_plate_choices =
+			get_plate_choices(visible_layers, true);
+	if (oceanic_crust_plate_choices.empty())
 	{
 		return Result(OPERATION_ERROR,
 				QObject::tr(
-						"At least two plate IDs with visible polygon geometry are required at the current time."));
+						"No visible gpml:OceanicCrust polygon is available at the current View time."));
+	}
+	if (overriding_plate_choices.size() < 2)
+	{
+		return Result(OPERATION_ERROR,
+				QObject::tr(
+						"At least two plate IDs with visible polygon geometry are required to retire subducted oceanic crust."));
 	}
 
 	QDialog dialog(parent_widget);
-	dialog.setWindowTitle(QObject::tr("Subduction Cutter"));
+	dialog.setWindowTitle(QObject::tr("Retire Subducted Oceanic Crust"));
 	dialog.setModal(true);
 	QVBoxLayout *dialog_layout = new QVBoxLayout(&dialog);
 
 	QLabel *description = new QLabel(QObject::tr(
-			"Rewind to the older bound, advance through equal time checks, and cut portions of the "
-			"subducting plate that overlap the overriding plate. Cut pieces disappear 0.01 My before "
-			"their check time. The complete operation is undoable."), &dialog);
+			"Rewind from the current View time to an older bound, advance through equal detection checks, "
+			"and split only OceanicCrust on the selected subducting plate where it first overlaps the "
+			"overriding plate. Retired pieces receive a disappearance time and the complete edit is undoable."), &dialog);
 	description->setWordWrap(true);
 	description->setMinimumWidth(540);
 	dialog_layout->addWidget(description);
@@ -550,16 +573,31 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 	QDoubleSpinBox *older_time = new QDoubleSpinBox(range_group);
 	older_time->setRange(-1000.0, 10000.0);
 	older_time->setDecimals(2);
-	older_time->setValue(original_time + 50.0);
+	const boost::optional<double> project_older_bound =
+			d_application_state.get_project_timestamp_schedule().default_older_bound(original_time);
+	const double fallback_increment =
+			d_view_state.get_animation_controller().time_increment();
+	older_time->setValue(project_older_bound
+			? *project_older_bound : original_time + fallback_increment);
 	older_time->setSuffix(QObject::tr(" Ma"));
 	range_form->addRow(QObject::tr("Older bound:"), older_time);
+
+	QLabel *older_bound_source = new QLabel(range_group);
+	older_bound_source->setWordWrap(true);
+	older_bound_source->setText(project_older_bound
+			? QObject::tr("Defaulted to the next older Project Timestamp (%1 Ma).")
+					.arg(*project_older_bound, 0, 'f', 2)
+			: QObject::tr("No usable Project Timeline; defaulted to the current animation increment (%1 My).")
+					.arg(fallback_increment, 0, 'f', 2));
+	range_form->addRow(QObject::tr("Default source:"), older_bound_source);
 
 	QDoubleSpinBox *younger_time = new QDoubleSpinBox(range_group);
 	younger_time->setRange(-1000.0, 10000.0);
 	younger_time->setDecimals(2);
 	younger_time->setValue(original_time);
 	younger_time->setSuffix(QObject::tr(" Ma"));
-	range_form->addRow(QObject::tr("Younger bound:"), younger_time);
+	younger_time->setReadOnly(true);
+	range_form->addRow(QObject::tr("Current View time:"), younger_time);
 
 	QSpinBox *checks = new QSpinBox(range_group);
 	checks->setRange(1, 1000);
@@ -574,8 +612,8 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 	QFormLayout *plates_form = new QFormLayout(plates_group);
 	QComboBox *overriding_plate = new QComboBox(plates_group);
 	QComboBox *subducting_plate = new QComboBox(plates_group);
-	for (std::vector<PlateChoice>::const_iterator choice_iter = plate_choices.begin();
-			choice_iter != plate_choices.end(); ++choice_iter)
+	for (std::vector<PlateChoice>::const_iterator choice_iter = overriding_plate_choices.begin();
+			choice_iter != overriding_plate_choices.end(); ++choice_iter)
 	{
 		const QString label = QObject::tr("Plate %1 (%2 polygon%3)")
 				.arg(static_cast<qulonglong>(choice_iter->plate_id))
@@ -584,11 +622,27 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 		const QVariant plate_data = QVariant::fromValue(
 				static_cast<qulonglong>(choice_iter->plate_id));
 		overriding_plate->addItem(label, plate_data);
-		subducting_plate->addItem(label, plate_data);
 	}
-	subducting_plate->setCurrentIndex(1);
+	for (std::vector<PlateChoice>::const_iterator choice_iter = oceanic_crust_plate_choices.begin();
+			choice_iter != oceanic_crust_plate_choices.end(); ++choice_iter)
+	{
+		const QString label = QObject::tr("Plate %1 (%2 OceanicCrust polygon%3)")
+				.arg(static_cast<qulonglong>(choice_iter->plate_id))
+				.arg(choice_iter->polygon_count)
+				.arg(choice_iter->polygon_count == 1 ? QString() : QObject::tr("s"));
+		subducting_plate->addItem(label, QVariant::fromValue(
+				static_cast<qulonglong>(choice_iter->plate_id)));
+	}
+	for (int index = 0; index < overriding_plate->count(); ++index)
+	{
+		if (overriding_plate->itemData(index) != subducting_plate->currentData())
+		{
+			overriding_plate->setCurrentIndex(index);
+			break;
+		}
+	}
 	plates_form->addRow(QObject::tr("Overriding plate:"), overriding_plate);
-	plates_form->addRow(QObject::tr("Subducting plate:"), subducting_plate);
+	plates_form->addRow(QObject::tr("Subducting OceanicCrust plate:"), subducting_plate);
 	dialog_layout->addWidget(plates_group);
 
 	QLabel *validation_label = new QLabel(&dialog);
@@ -598,7 +652,7 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 	QDialogButtonBox *buttons = new QDialogButtonBox(
 			QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
 	QPushButton *run_button = buttons->button(QDialogButtonBox::Ok);
-	run_button->setText(QObject::tr("Run Cutter"));
+	run_button->setText(QObject::tr("Preview Retirement"));
 	dialog_layout->addWidget(buttons);
 
 	auto update_validation = [&]()
@@ -616,7 +670,7 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 			problem = QObject::tr("Choose different overriding and subducting plate IDs.");
 		}
 		validation_label->setText(problem.isEmpty()
-				? QObject::tr("Only rigid reconstructed polygon features in the currently visible layers are cut.")
+				? QObject::tr("Only rigid gpml:OceanicCrust polygons in currently visible reconstruct layers are candidates.")
 				: problem);
 		run_button->setEnabled(problem.isEmpty());
 	};
@@ -642,7 +696,7 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 
 	if (dialog.exec() != QDialog::Accepted)
 	{
-		return Result(CUT_CANCELLED, QObject::tr("Subduction Cutter cancelled; no data changed."));
+		return Result(CUT_CANCELLED, QObject::tr("Oceanic-crust retirement cancelled; no data changed."));
 	}
 
 	const double selected_older_time = older_time->value();
@@ -658,7 +712,7 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 	QProgressDialog progress(
 			QObject::tr("Rewinding to %1 Ma...").arg(selected_older_time, 0, 'f', 2),
 			QObject::tr("Cancel"), 0, static_cast<int>(selected_checks), parent_widget);
-	progress.setWindowTitle(QObject::tr("Subduction Cutter"));
+	progress.setWindowTitle(QObject::tr("Retire Subducted Oceanic Crust"));
 	progress.setWindowModality(Qt::WindowModal);
 	progress.setMinimumDuration(0);
 	progress.setAutoClose(false);
@@ -679,7 +733,7 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 			{
 				d_application_state.set_reconstruction_time(original_time);
 				return Result(CUT_CANCELLED,
-						QObject::tr("Subduction Cutter cancelled; no data changed."));
+						QObject::tr("Oceanic-crust retirement cancelled; no data changed."));
 			}
 
 			const double check_time = check_index + 1 == selected_checks
@@ -719,6 +773,7 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 					overriding_polygons.push_back(polygon_ptr_type(polygon));
 				}
 				if (*rfg.reconstruction_plate_id() == subducting_plate_id &&
+						is_oceanic_crust(rfg) &&
 						seen_subducting_properties.insert(property_ptr).second)
 				{
 					subducting_geometries.push_back(&rfg);
@@ -804,13 +859,13 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 	{
 		d_application_state.set_reconstruction_time(original_time);
 		return Result(OPERATION_ERROR,
-				QObject::tr("Subduction Cutter stopped without changing data: %1").arg(exception.what()));
+				QObject::tr("Oceanic-crust retirement stopped without changing data: %1").arg(exception.what()));
 	}
 	catch (...)
 	{
 		d_application_state.set_reconstruction_time(original_time);
 		return Result(OPERATION_ERROR,
-				QObject::tr("Subduction Cutter stopped on an unexpected geometry error; no data changed."));
+				QObject::tr("Oceanic-crust retirement stopped on an unexpected geometry error; no data changed."));
 	}
 
 	progress.close();
@@ -828,10 +883,44 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 		d_application_state.set_reconstruction_time(original_time);
 		return Result(OPERATION_ERROR,
 				QObject::tr(
-						"No polygon area from plate %1 overlapped plate %2 at the %3 requested checks.")
+						"No OceanicCrust area from plate %1 overlapped plate %2 at the %3 requested checks.")
 						.arg(static_cast<qulonglong>(subducting_plate_id))
 						.arg(static_cast<qulonglong>(overriding_plate_id))
 						.arg(selected_checks));
+	}
+
+	unsigned int surviving_pieces = 0;
+	for (tracked_source_seq_type::const_iterator source_iter = tracked_sources.begin();
+			source_iter != tracked_sources.end(); ++source_iter)
+	{
+		if (source_iter->changed)
+		{
+			surviving_pieces += static_cast<unsigned int>(source_iter->remaining.size());
+		}
+	}
+	const QString preview_summary = QObject::tr(
+			"Preview complete.\n\n"
+			"OceanicCrust source features changed: %1\n"
+			"First-overlap cut events: %2\n"
+			"Surviving pieces: %3\n"
+			"Pieces receiving disappearance times: %4\n"
+			"Detection checks: %5\n\n"
+			"The View has been restored to %6 Ma. No feature data has changed yet.")
+				.arg(changed_features).arg(cut_events).arg(surviving_pieces)
+				.arg(subducted_pieces).arg(selected_checks).arg(original_time, 0, 'f', 2);
+	d_application_state.set_reconstruction_time(original_time);
+	QMessageBox confirmation(
+			QMessageBox::Question,
+			QObject::tr("Apply Oceanic-Crust Retirement?"),
+			preview_summary,
+			QMessageBox::Ok | QMessageBox::Cancel,
+			parent_widget);
+	confirmation.button(QMessageBox::Ok)->setText(QObject::tr("Apply Retirement"));
+	confirmation.setDefaultButton(QMessageBox::Cancel);
+	if (confirmation.exec() != QMessageBox::Ok)
+	{
+		return Result(CUT_CANCELLED,
+				QObject::tr("Oceanic-crust retirement cancelled after preview; no data changed."));
 	}
 
 	d_view_state.get_feature_focus().unset_focus();
@@ -839,6 +928,7 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 			d_model_interface, tracked_sources, overriding_plate_id,
 			subducting_plate_id, selected_checks));
 	UndoRedo::instance().get_active_undo_stack().push(command.release());
+	d_application_state.set_reconstruction_time(original_time);
 
 	QString skipped_checks;
 	if (checks_without_overriding_polygon)
@@ -848,8 +938,8 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 	}
 	return Result(CUT_COMPLETED,
 			QObject::tr(
-					"Subduction cut complete: %1 source feature(s), %2 overlap event(s), "
-					"and %3 timed subducted piece(s). View time is %4 Ma.%5")
+					"Oceanic-crust retirement complete: %1 source feature(s), %2 overlap event(s), "
+					"and %3 timed retired piece(s). View time was restored to %4 Ma.%5")
 					.arg(changed_features).arg(cut_events).arg(subducted_pieces)
 					.arg(selected_younger_time, 0, 'f', 2).arg(skipped_checks));
 }

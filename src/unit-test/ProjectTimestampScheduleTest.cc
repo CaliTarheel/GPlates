@@ -123,6 +123,10 @@ GPlatesUnitTest::ProjectTimestampScheduleTest::test_project_document_schedule()
 	BOOST_CHECK_EQUAL(schedule.next_older_timestamp(875.0).get(), 900.0);
 	BOOST_REQUIRE(schedule.next_younger_timestamp(875.0));
 	BOOST_CHECK_EQUAL(schedule.next_younger_timestamp(875.0).get(), 850.0);
+	BOOST_REQUIRE(schedule.default_older_bound(180.0));
+	BOOST_CHECK_EQUAL(schedule.default_older_bound(180.0).get(), 200.0);
+	BOOST_REQUIRE(schedule.default_older_bound(10.0));
+	BOOST_CHECK_EQUAL(schedule.default_older_bound(10.0).get(), 20.0);
 	BOOST_CHECK(!schedule.next_older_timestamp(1000.0));
 	BOOST_CHECK(!schedule.next_younger_timestamp(0.0));
 }

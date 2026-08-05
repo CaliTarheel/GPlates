@@ -1179,6 +1179,11 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	create_ocean_crust_button->setToolTip(tr(
 			"Select a half-stage MOR, then use the recorded .rot motion to preview and create one editable ocean-crust age band on each side."));
 	active_margin_layout->addWidget(create_ocean_crust_button);
+	QPushButton *retire_ocean_crust_button = new QPushButton(
+			tr("3.4  Retire Subducted Oceanic Crust..."), active_margin_group);
+	retire_ocean_crust_button->setToolTip(tr(
+			"Preview where OceanicCrust first overlaps an overriding plate, split those pieces, and give them disappearance times."));
+	active_margin_layout->addWidget(retire_ocean_crust_button);
 	worldbuilding_pasta_layout->addWidget(active_margin_group);
 
 	QGroupBox *convergent_margin_group = new QGroupBox(
@@ -1942,6 +1947,11 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			SIGNAL(clicked()),
 			this,
 			SLOT(handle_create_ocean_crust()));
+	QObject::connect(
+			retire_ocean_crust_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_subduction_cutter()));
 	QObject::connect(
 			show_subduction_effects_button,
 			SIGNAL(clicked()),
@@ -5414,11 +5424,11 @@ GPlatesQtWidgets::ViewportWindow::handle_subduction_cutter()
 
 	if (result.outcome == GPlatesViewOperations::SubductionCutterOperation::OPERATION_ERROR)
 	{
-		QMessageBox::warning(this, tr("Subduction Cutter"), result.message);
+		QMessageBox::warning(this, tr("Retire Subducted Oceanic Crust"), result.message);
 	}
 	else if (result.outcome == GPlatesViewOperations::SubductionCutterOperation::CUT_COMPLETED)
 	{
-		QMessageBox::information(this, tr("Subduction Cutter Complete"), result.message);
+		QMessageBox::information(this, tr("Oceanic-Crust Retirement Complete"), result.message);
 	}
 }
 
