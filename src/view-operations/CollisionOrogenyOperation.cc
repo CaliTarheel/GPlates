@@ -19,6 +19,8 @@
 
 #include "RenderedGeometryFactory.h"
 #include "RenderedGeometryLayer.h"
+#include "FeatureEventVersioner.h"
+#include "PlateEventTransaction.h"
 #include "UndoRedo.h"
 #include "WorldbuildingFeatureCollectionUtils.h"
 
@@ -142,114 +144,6 @@ namespace
 		return feature;
 	}
 
-	property_seq_type clone_properties(const GPlatesModel::FeatureHandle &feature)
-	{
-		property_seq_type properties;
-		for (GPlatesModel::FeatureHandle::const_iterator property_iter = feature.begin();
-			property_iter != feature.end(); ++property_iter)
-		{
-			properties.push_back((*property_iter)->clone());
-		}
-		return properties;
-	}
-
-	property_seq_type make_ended_properties(
-			const GPlatesModel::FeatureHandle::weak_ref &feature,
-			double end_time)
-	{
-		property_seq_type properties;
-		const GPlatesModel::PropertyName valid_time_name =
-				GPlatesModel::PropertyName::create_gml("validTime");
-		GPlatesPropertyValues::GeoTimeInstant begin_time =
-				GPlatesPropertyValues::GeoTimeInstant::create_distant_past();
-		const boost::optional<GPlatesPropertyValues::GmlTimePeriod::non_null_ptr_to_const_type>
-				valid_time = GPlatesFeatureVisitors::get_property_value<
-						GPlatesPropertyValues::GmlTimePeriod>(feature, valid_time_name);
-		if (valid_time)
-		{
-			begin_time = (*valid_time)->begin()->get_time_position();
-		}
-		for (GPlatesModel::FeatureHandle::const_iterator property_iter = feature->begin();
-			property_iter != feature->end(); ++property_iter)
-		{
-			if ((*property_iter)->get_property_name() != valid_time_name)
-			{
-				properties.push_back((*property_iter)->clone());
-			}
-		}
-		const GPlatesPropertyValues::GmlTimePeriod::non_null_ptr_type period =
-				GPlatesModel::ModelUtils::create_gml_time_period(
-						begin_time, GPlatesPropertyValues::GeoTimeInstant(end_time));
-		const boost::optional<GPlatesModel::TopLevelProperty::non_null_ptr_type> property =
-				GPlatesModel::ModelUtils::create_top_level_property(valid_time_name, period);
-		if (property)
-		{
-			properties.push_back(*property);
-		}
-		else
-		{
-			properties.push_back(
-					GPlatesModel::TopLevelPropertyInline::create(valid_time_name, period));
-		}
-		return properties;
-	}
-
-	property_seq_type make_started_properties(
-			const GPlatesModel::FeatureHandle::weak_ref &feature,
-			double begin_time)
-	{
-		property_seq_type properties;
-		const GPlatesModel::PropertyName valid_time_name =
-				GPlatesModel::PropertyName::create_gml("validTime");
-		GPlatesPropertyValues::GeoTimeInstant end_time =
-				GPlatesPropertyValues::GeoTimeInstant::create_distant_future();
-		const boost::optional<GPlatesPropertyValues::GmlTimePeriod::non_null_ptr_to_const_type>
-				valid_time = GPlatesFeatureVisitors::get_property_value<
-						GPlatesPropertyValues::GmlTimePeriod>(feature, valid_time_name);
-		if (valid_time)
-		{
-			end_time = (*valid_time)->end()->get_time_position();
-		}
-		for (GPlatesModel::FeatureHandle::const_iterator property_iter = feature->begin();
-			property_iter != feature->end(); ++property_iter)
-		{
-			if ((*property_iter)->get_property_name() != valid_time_name)
-			{
-				properties.push_back((*property_iter)->clone());
-			}
-		}
-		const GPlatesPropertyValues::GmlTimePeriod::non_null_ptr_type period =
-				GPlatesModel::ModelUtils::create_gml_time_period(
-						GPlatesPropertyValues::GeoTimeInstant(begin_time), end_time);
-		const boost::optional<GPlatesModel::TopLevelProperty::non_null_ptr_type> property =
-				GPlatesModel::ModelUtils::create_top_level_property(valid_time_name, period);
-		if (property)
-		{
-			properties.push_back(*property);
-		}
-		else
-		{
-			properties.push_back(
-					GPlatesModel::TopLevelPropertyInline::create(valid_time_name, period));
-		}
-		return properties;
-	}
-
-	void set_properties(
-			const GPlatesModel::FeatureHandle::weak_ref &feature,
-			const property_seq_type &properties)
-	{
-		while (feature->begin() != feature->end())
-		{
-			feature->remove(feature->begin());
-		}
-		for (property_seq_type::const_iterator property_iter = properties.begin();
-			property_iter != properties.end(); ++property_iter)
-		{
-			feature->add((*property_iter)->clone());
-		}
-	}
-
 	struct FeatureGroup
 	{
 		GPlatesModel::FeatureCollectionHandle::weak_ref collection;
@@ -321,8 +215,18 @@ namespace
 		GPlatesFeatureVisitors::GeometrySetter geometry_setter(stored_geometry);
 		geometry_setter.set_geometry(geometry_property.get());
 		successor->set(successor_geometry_property, geometry_property);
-		set_properties(successor->reference(),
-				make_started_properties(successor->reference(), collision_time));
+		const QString source_id = source->feature_id().get().qstring();
+		const QString successor_id = successor->feature_id().get().qstring();
+		const GPlatesViewOperations::FeatureEventVersioner::EventRecord event =
+				GPlatesViewOperations::FeatureEventVersioner::make_event(
+						QString::fromLatin1("collision-time-slice"), collision_time,
+						QString::fromLatin1("1"), QStringList() << source_id,
+						QStringList() << successor_id, QString::fromLatin1("successor"));
+		GPlatesViewOperations::FeatureEventVersioner::set_properties(
+				successor->reference(),
+				GPlatesViewOperations::FeatureEventVersioner::properties_for_event(
+						successor->reference(),
+						GPlatesViewOperations::FeatureEventVersioner::START_AT_EVENT, event));
 		return successor;
 	}
 
@@ -356,8 +260,15 @@ namespace
 		{
 			if (d_trench && d_trench->is_valid())
 			{
-				d_trench_before = clone_properties(**d_trench);
-				d_trench_after = make_ended_properties(*d_trench, collision_time);
+				d_trench_before = GPlatesViewOperations::FeatureEventVersioner::clone_properties(**d_trench);
+				const QString trench_id = (*d_trench)->feature_id().get().qstring();
+				const GPlatesViewOperations::FeatureEventVersioner::EventRecord event =
+						GPlatesViewOperations::FeatureEventVersioner::make_event(
+								QString::fromLatin1("collision-trench-retirement"), collision_time,
+								QString::fromLatin1("1"), QStringList() << trench_id,
+								QStringList(), QString::fromLatin1("retired-source"));
+				d_trench_after = GPlatesViewOperations::FeatureEventVersioner::properties_for_event(
+						*d_trench, GPlatesViewOperations::FeatureEventVersioner::END_AT_EVENT, event);
 			}
 			d_iterators.resize(d_groups.size());
 			d_successor_iterators.resize(d_time_slices.size());
@@ -369,7 +280,7 @@ namespace
 			GPlatesModel::NotificationGuard guard(*d_model_interface.access_model());
 			if (d_trench && d_trench->is_valid() && !d_trench_after.empty())
 			{
-				set_properties(*d_trench, d_trench_after);
+				GPlatesViewOperations::FeatureEventVersioner::set_properties(*d_trench, d_trench_after);
 			}
 			for (unsigned int slice_index = 0; slice_index < d_time_slices.size(); ++slice_index)
 			{
@@ -378,7 +289,7 @@ namespace
 				{
 					continue;
 				}
-				set_properties(slice.source, slice.source_after);
+				GPlatesViewOperations::FeatureEventVersioner::set_properties(slice.source, slice.source_after);
 				d_successor_iterators[slice_index] = slice.collection->add(slice.successor);
 				slice.successor = *d_successor_iterators[slice_index];
 			}
@@ -432,12 +343,12 @@ namespace
 				}
 				if (slice.source.is_valid())
 				{
-					set_properties(slice.source, slice.source_before);
+					GPlatesViewOperations::FeatureEventVersioner::set_properties(slice.source, slice.source_before);
 				}
 			}
 			if (d_trench && d_trench->is_valid() && !d_trench_before.empty())
 			{
-				set_properties(*d_trench, d_trench_before);
+				GPlatesViewOperations::FeatureEventVersioner::set_properties(*d_trench, d_trench_before);
 			}
 			guard.release_guard();
 		}
@@ -1026,14 +937,25 @@ GPlatesViewOperations::CollisionOrogenyOperation::commit()
 			}
 			const GPlatesModel::FeatureCollectionHandle::weak_ref collection =
 					source->parent_ptr()->reference();
+			const GPlatesModel::FeatureHandle::non_null_ptr_type successor =
+					create_time_slice_successor(
+							source, geometry_property, geometry, target_plate_id,
+							current_time, tree_creator);
+			const QString source_id = source->feature_id().get().qstring();
+			const QString successor_id = successor->feature_id().get().qstring();
+			const GPlatesViewOperations::FeatureEventVersioner::EventRecord source_event =
+					GPlatesViewOperations::FeatureEventVersioner::make_event(
+							QString::fromLatin1("collision-time-slice"), current_time,
+							QString::fromLatin1("1"), QStringList() << source_id,
+							QStringList() << successor_id, QString::fromLatin1("ended-source"));
 			time_slices.push_back(TimeSliceChange(
 					source,
 					collection,
-					clone_properties(*source),
-					make_ended_properties(source, current_time),
-					create_time_slice_successor(
-							source, geometry_property, geometry, target_plate_id,
-							current_time, tree_creator)));
+					GPlatesViewOperations::FeatureEventVersioner::clone_properties(*source),
+					GPlatesViewOperations::FeatureEventVersioner::properties_for_event(
+							source, GPlatesViewOperations::FeatureEventVersioner::END_AT_EVENT,
+							source_event),
+					successor));
 		};
 
 		if (d_preview->options.retire_incoming_plate ||
@@ -1096,7 +1018,9 @@ GPlatesViewOperations::CollisionOrogenyOperation::commit()
 		std::unique_ptr<QUndoCommand> command(new CollisionCommitUndoCommand(
 				d_feature_focus, d_model_interface, groups, time_slices,
 				trench_to_end, current_time));
-		UndoRedo::instance().get_active_undo_stack().push(command.release());
+		GPlatesViewOperations::PlateEventTransaction::commit_command(
+				std::move(command), QObject::tr("commit reviewed collision and orogeny"),
+				GPlatesViewOperations::PlateEventTransaction::FEATURE_GEOMETRY);
 		for (unsigned int group_index = 0; group_index < groups.size(); ++group_index)
 		{
 			name_layer(d_application_state, d_view_state,

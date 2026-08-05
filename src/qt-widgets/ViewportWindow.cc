@@ -39,6 +39,7 @@
 #include <boost/bind/bind.hpp>
 
 #include <QActionGroup>
+#include <QAbstractItemView>
 #include <QCheckBox>
 #include <QColor>
 #include <QComboBox>
@@ -73,6 +74,8 @@
 #include <QSpinBox>
 #include <QString>
 #include <QStringList>
+#include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QtGlobal>
 #include <QToolBar>
 #include <QVBoxLayout>
@@ -201,6 +204,7 @@
 #include "view-operations/ProposeInitialRiftsOperation.h"
 #include "view-operations/CraterGeneratorOperation.h"
 #include "view-operations/FlowlineManagerOperation.h"
+#include "view-operations/FeatureEventVersioner.h"
 #include "view-operations/RenderedGeometryCollection.h"
 #include "view-operations/RenderedGeometryParameters.h"
 #include "view-operations/RotationFileEditorOperation.h"
@@ -1103,6 +1107,148 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	initialize_worldpasta_structure_button->setToolTip(tr(
 			"Choose a directory, inspect its editable worldbuilding manifest, and create only missing managed collections after a dry-run conflict report."));
 	worldbuilding_pasta_layout->addWidget(initialize_worldpasta_structure_button);
+	QPushButton *show_event_history_button = new QPushButton(
+			tr("Event History..."), worldbuilding_pasta_palette);
+	show_event_history_button->setToolTip(tr(
+			"Show read-only Worldbuilding event lineage stored in GPML-compatible feature descriptions."));
+	worldbuilding_pasta_layout->addWidget(show_event_history_button);
+
+	QDialog *event_history_dialog = new QDialog(this);
+	event_history_dialog->setWindowTitle(tr("Worldbuilding Event History"));
+	event_history_dialog->setModal(false);
+	QVBoxLayout *event_history_layout = new QVBoxLayout(event_history_dialog);
+	QLabel *event_history_note = new QLabel(
+			tr("Read-only lineage for loaded features. Search any column; double-click an event to move the reconstruction to its time."),
+			event_history_dialog);
+	event_history_note->setWordWrap(true);
+	event_history_layout->addWidget(event_history_note);
+	QLineEdit *event_history_filter = new QLineEdit(event_history_dialog);
+	event_history_filter->setPlaceholderText(tr("Filter by event, relation, feature, plate collection, version, or ID..."));
+	event_history_filter->setClearButtonEnabled(true);
+	event_history_layout->addWidget(event_history_filter);
+	QLabel *event_history_status = new QLabel(event_history_dialog);
+	event_history_status->setWordWrap(true);
+	event_history_layout->addWidget(event_history_status);
+	QTableWidget *event_history_table = new QTableWidget(event_history_dialog);
+	event_history_table->setColumnCount(9);
+	event_history_table->setHorizontalHeaderLabels(QStringList()
+			<< tr("Time (Ma)") << tr("Event") << tr("Relation") << tr("Feature ID")
+			<< tr("Sources") << tr("Outputs") << tr("Version") << tr("Seed")
+			<< tr("Collection"));
+	event_history_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+	event_history_table->setSelectionBehavior(QAbstractItemView::SelectRows);
+	event_history_table->setAlternatingRowColors(true);
+	event_history_table->horizontalHeader()->setStretchLastSection(true);
+	event_history_layout->addWidget(event_history_table);
+	QDialogButtonBox *event_history_buttons = new QDialogButtonBox(
+			QDialogButtonBox::Close, event_history_dialog);
+	QPushButton *refresh_event_history_button = event_history_buttons->addButton(
+			tr("Refresh"), QDialogButtonBox::ActionRole);
+	event_history_layout->addWidget(event_history_buttons);
+	QObject::connect(event_history_buttons, SIGNAL(rejected()), event_history_dialog, SLOT(hide()));
+	event_history_dialog->resize(1120, 520);
+	const auto apply_event_history_filter =
+			[event_history_table, event_history_filter, event_history_status]()
+			{
+				const QString query = event_history_filter->text().trimmed();
+				unsigned int visible_count = 0;
+				for (int row = 0; row < event_history_table->rowCount(); ++row)
+				{
+					bool matches = query.isEmpty();
+					for (int column = 0; !matches && column < event_history_table->columnCount(); ++column)
+					{
+						const QTableWidgetItem *item = event_history_table->item(row, column);
+						matches = item && item->text().contains(query, Qt::CaseInsensitive);
+					}
+					event_history_table->setRowHidden(row, !matches);
+					if (matches)
+					{
+						++visible_count;
+					}
+				}
+				event_history_status->setText(QObject::tr("Showing %1 of %2 event records.")
+						.arg(visible_count).arg(event_history_table->rowCount()));
+			};
+
+	const auto refresh_event_history = [this, event_history_table, apply_event_history_filter]()
+	{
+		event_history_table->setSortingEnabled(false);
+		event_history_table->setRowCount(0);
+		const std::vector<GPlatesAppLogic::FeatureCollectionFileState::file_reference> files =
+				get_application_state().get_feature_collection_file_state().get_loaded_files();
+		for (std::vector<GPlatesAppLogic::FeatureCollectionFileState::file_reference>::const_iterator
+			 file = files.begin(); file != files.end(); ++file)
+		{
+			const QString collection_name = file->get_file().get_file_info().get_display_name(false);
+			const GPlatesModel::FeatureCollectionHandle::weak_ref collection =
+					file->get_file().get_feature_collection();
+			if (!collection.is_valid())
+			{
+				continue;
+			}
+			for (GPlatesModel::FeatureCollectionHandle::iterator feature = collection->begin();
+				 feature != collection->end(); ++feature)
+			{
+				const std::vector<GPlatesViewOperations::FeatureEventVersioner::EventRecord> events =
+						GPlatesViewOperations::FeatureEventVersioner::events((*feature)->reference());
+				for (std::vector<GPlatesViewOperations::FeatureEventVersioner::EventRecord>::const_iterator
+					 event = events.begin(); event != events.end(); ++event)
+				{
+					const int row = event_history_table->rowCount();
+					event_history_table->insertRow(row);
+					QTableWidgetItem *time_item = new QTableWidgetItem();
+					time_item->setData(Qt::EditRole, event->event_time);
+					event_history_table->setItem(row, 0, time_item);
+					event_history_table->setItem(row, 1, new QTableWidgetItem(event->event_type));
+					event_history_table->setItem(row, 2, new QTableWidgetItem(event->relation));
+					event_history_table->setItem(row, 3, new QTableWidgetItem(
+							(*feature)->feature_id().get().qstring()));
+					event_history_table->setItem(row, 4, new QTableWidgetItem(
+							event->source_feature_ids.join(QString::fromLatin1(", "))));
+					event_history_table->setItem(row, 5, new QTableWidgetItem(
+							event->output_feature_ids.join(QString::fromLatin1(", "))));
+					event_history_table->setItem(row, 6, new QTableWidgetItem(event->operation_version));
+					event_history_table->setItem(row, 7, new QTableWidgetItem(
+							event->seed ? QString::number(*event->seed) : QString()));
+					event_history_table->setItem(row, 8, new QTableWidgetItem(collection_name));
+				}
+			}
+		}
+		event_history_table->resizeColumnsToContents();
+		event_history_table->setSortingEnabled(true);
+		apply_event_history_filter();
+	};
+	QObject::connect(event_history_filter, &QLineEdit::textChanged,
+			this, [apply_event_history_filter](const QString &) { apply_event_history_filter(); });
+	QObject::connect(event_history_table, &QTableWidget::cellDoubleClicked,
+			this,
+			[this, event_history_table](int row, int)
+			{
+				const QTableWidgetItem *time_item = event_history_table->item(row, 0);
+				if (!time_item)
+				{
+					return;
+				}
+				bool valid = false;
+				const double event_time = time_item->data(Qt::EditRole).toDouble(&valid);
+				if (valid)
+				{
+					get_view_state().get_animation_controller().set_view_time(event_time);
+					status_message(tr("Moved to event time %1 Ma. Feature %2 remains selected in the ledger for review.")
+							.arg(event_time, 0, 'f', 3)
+							.arg(event_history_table->item(row, 3)->text()));
+				}
+			});
+	QObject::connect(refresh_event_history_button, &QPushButton::clicked,
+			this, refresh_event_history);
+	QObject::connect(show_event_history_button, &QPushButton::clicked, this,
+			[event_history_dialog, refresh_event_history]()
+			{
+				refresh_event_history();
+				event_history_dialog->show();
+				event_history_dialog->raise();
+				event_history_dialog->activateWindow();
+			});
 	QLabel *worldbuilding_pasta_description = new QLabel(
 			tr("Follow the Worldbuilding Pasta sequence from stable continental core to active plate margins."),
 			worldbuilding_pasta_palette);

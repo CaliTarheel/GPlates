@@ -35,6 +35,8 @@ set(srcs
     DataMiningTestSuite.h
     FeatureHandleTest.cc
     FeatureHandleTest.h
+    FeatureEventVersionerTest.cc
+    FeatureEventVersionerTest.h
     FeatureVisitorsTestSuite.cc
     FeatureVisitorsTestSuite.h
     FileIoTestSuite.cc
