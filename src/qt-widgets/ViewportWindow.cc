@@ -178,6 +178,7 @@
 #include "utils/Profile.h"
 
 #include "view-operations/CloneOperation.h"
+#include "view-operations/BooleanPolygonOperation.h"
 #include "view-operations/CollisionOrogenyOperation.h"
 #include "view-operations/AdvancePlateMotionOperation.h"
 #include "view-operations/CreateInitialContinentOperation.h"
@@ -649,6 +650,10 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 				get_view_state().get_digitise_geometry_builder(),
 				get_view_state().get_focused_feature_geometry_builder(),
 				get_view_state())),
+	d_boolean_polygon_operation_ptr(
+			new GPlatesViewOperations::BooleanPolygonOperation(
+					get_view_state().get_feature_focus(),
+					get_application_state())),
 	d_collision_orogeny_operation_ptr(
 			new GPlatesViewOperations::CollisionOrogenyOperation(
 					get_view_state().get_feature_focus(),
@@ -1223,8 +1228,72 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	artifexia_preset_button->setToolTip(tr(
 			"Show the Artifexia feature-type set and apply its saved colouring to matching loaded or generated layers."));
 	project_helpers_layout->addWidget(artifexia_preset_button);
+	QPushButton *show_boolean_polygons_button = new QPushButton(
+			tr("Boolean Polygons..."), project_helpers_group);
+	show_boolean_polygons_button->setToolTip(tr(
+			"Union, subtract, intersect, or symmetric-difference polygon features while keeping the first feature's properties."));
+	project_helpers_layout->addWidget(show_boolean_polygons_button);
 	worldbuilding_pasta_layout->addWidget(project_helpers_group);
 	worldbuilding_pasta_layout->addStretch();
+
+	// Modeless Boolean workflow. It remains visible while the user selects the
+	// first polygon and any number of operands, then hides after a successful edit.
+	d_boolean_polygon_dialog_ptr = new QDialog(this, Qt::Tool);
+	d_boolean_polygon_dialog_ptr->setObjectName("WorldbuildingBooleanPolygonsDialog");
+	d_boolean_polygon_dialog_ptr->setWindowTitle(tr("World Building - Boolean Polygons"));
+	d_boolean_polygon_dialog_ptr->setModal(false);
+	d_boolean_polygon_dialog_ptr->setAttribute(Qt::WA_DeleteOnClose, false);
+	QVBoxLayout *boolean_layout = new QVBoxLayout(d_boolean_polygon_dialog_ptr);
+	QLabel *boolean_description = new QLabel(tr(
+			"Keep this window open while selecting polygons on the globe or map. The first polygon supplies every output feature property. Operand features are read-only inputs."),
+			d_boolean_polygon_dialog_ptr);
+	boolean_description->setWordWrap(true);
+	boolean_description->setMinimumWidth(500);
+	boolean_layout->addWidget(boolean_description);
+
+	QFormLayout *boolean_form = new QFormLayout();
+	d_boolean_operation_combo_ptr = new QComboBox(d_boolean_polygon_dialog_ptr);
+	d_boolean_operation_combo_ptr->addItem(tr("Union (first + operands)"));
+	d_boolean_operation_combo_ptr->addItem(tr("Subtract (first - operands)"));
+	d_boolean_operation_combo_ptr->addItem(tr("Intersection"));
+	d_boolean_operation_combo_ptr->addItem(tr("Symmetric difference"));
+	boolean_form->addRow(tr("Operation:"), d_boolean_operation_combo_ptr);
+	boolean_layout->addLayout(boolean_form);
+
+	d_boolean_select_first_button_ptr = new QPushButton(
+			tr("1. Select First Polygon"), d_boolean_polygon_dialog_ptr);
+	d_boolean_select_first_button_ptr->setCheckable(true);
+	d_boolean_first_status_label_ptr = new QLabel(d_boolean_polygon_dialog_ptr);
+	d_boolean_first_status_label_ptr->setWordWrap(true);
+	boolean_layout->addWidget(d_boolean_select_first_button_ptr);
+	boolean_layout->addWidget(d_boolean_first_status_label_ptr);
+
+	QHBoxLayout *boolean_operand_buttons = new QHBoxLayout();
+	d_boolean_select_operand_button_ptr = new QPushButton(
+			tr("2. Add Operand Polygon"), d_boolean_polygon_dialog_ptr);
+	d_boolean_select_operand_button_ptr->setCheckable(true);
+	d_boolean_clear_operands_button_ptr = new QPushButton(
+			tr("Clear Operands"), d_boolean_polygon_dialog_ptr);
+	boolean_operand_buttons->addWidget(d_boolean_select_operand_button_ptr);
+	boolean_operand_buttons->addWidget(d_boolean_clear_operands_button_ptr);
+	d_boolean_operands_status_label_ptr = new QLabel(d_boolean_polygon_dialog_ptr);
+	d_boolean_operands_status_label_ptr->setWordWrap(true);
+	boolean_layout->addLayout(boolean_operand_buttons);
+	boolean_layout->addWidget(d_boolean_operands_status_label_ptr);
+
+	d_boolean_instruction_label_ptr = new QLabel(d_boolean_polygon_dialog_ptr);
+	d_boolean_instruction_label_ptr->setWordWrap(true);
+	boolean_layout->addWidget(d_boolean_instruction_label_ptr);
+	QHBoxLayout *boolean_finish_buttons = new QHBoxLayout();
+	d_boolean_apply_button_ptr = new QPushButton(
+			tr("Apply and Finish"), d_boolean_polygon_dialog_ptr);
+	d_boolean_cancel_button_ptr = new QPushButton(
+			tr("Cancel"), d_boolean_polygon_dialog_ptr);
+	boolean_finish_buttons->addStretch();
+	boolean_finish_buttons->addWidget(d_boolean_apply_button_ptr);
+	boolean_finish_buttons->addWidget(d_boolean_cancel_button_ptr);
+	boolean_layout->addLayout(boolean_finish_buttons);
+	d_boolean_polygon_dialog_ptr->hide();
 
 	// Modeless Make Rift workflow. Closing it merely hides it; selections remain
 	// captured until a successful cut resets the operation.
@@ -1891,6 +1960,47 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			SIGNAL(clicked()),
 			this,
 			SLOT(apply_artifexia_preset()));
+	QObject::connect(
+			show_boolean_polygons_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(show_boolean_polygons_window()));
+	QObject::connect(
+			d_boolean_select_first_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_boolean_select_first()));
+	QObject::connect(
+			d_boolean_select_operand_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_boolean_select_operand()));
+	QObject::connect(
+			d_boolean_clear_operands_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_boolean_clear_operands()));
+	QObject::connect(
+			d_boolean_apply_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_boolean_apply()));
+	QObject::connect(
+			d_boolean_cancel_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_boolean_cancel()));
+	QObject::connect(
+			d_boolean_polygon_dialog_ptr,
+			SIGNAL(rejected()),
+			this,
+			SLOT(handle_boolean_cancel()));
+	QObject::connect(
+			&get_view_state().get_feature_focus(),
+			SIGNAL(focus_changed(GPlatesGui::FeatureFocus &)),
+			this,
+			SLOT(handle_boolean_focus_changed(GPlatesGui::FeatureFocus &)));
+	update_boolean_palette();
 	QObject::connect(
 			d_make_rift_select_continent_button_ptr,
 			SIGNAL(clicked()),
@@ -2805,6 +2915,11 @@ GPlatesQtWidgets::ViewportWindow::connect_world_building_menu_actions()
 			SIGNAL(triggered()),
 			this,
 			SLOT(handle_split_plate()));
+	QObject::connect(
+			action_Boolean_Polygons,
+			SIGNAL(triggered()),
+			this,
+			SLOT(show_boolean_polygons_window()));
 	QObject::connect(
 			action_Naturalize_Coastline,
 			SIGNAL(triggered()),
@@ -5023,6 +5138,139 @@ GPlatesQtWidgets::ViewportWindow::apply_artifexia_preset()
 					: QString());
 	status_message(message);
 	QMessageBox::information(this, tr("Artifexia Project Preset"), message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::show_boolean_polygons_window()
+{
+	update_boolean_palette();
+	d_boolean_polygon_dialog_ptr->show();
+	d_boolean_polygon_dialog_ptr->raise();
+	d_boolean_polygon_dialog_ptr->activateWindow();
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_boolean_select_first()
+{
+	const GPlatesViewOperations::BooleanPolygonOperation::Result result =
+			d_boolean_polygon_operation_ptr->arm_first_selection();
+	status_message(result.message);
+	update_boolean_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_boolean_select_operand()
+{
+	const GPlatesViewOperations::BooleanPolygonOperation::Result result =
+			d_boolean_polygon_operation_ptr->arm_operand_selection();
+	status_message(result.message);
+	update_boolean_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_boolean_clear_operands()
+{
+	d_boolean_polygon_operation_ptr->clear_operands();
+	const QString message = tr("Operand selection cleared; the first polygon is unchanged.");
+	status_message(message);
+	update_boolean_palette(message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_boolean_focus_changed(
+		GPlatesGui::FeatureFocus &)
+{
+	if (d_boolean_polygon_operation_ptr->selection_mode() ==
+			GPlatesViewOperations::BooleanPolygonOperation::NOT_SELECTING)
+	{
+		return;
+	}
+	const GPlatesViewOperations::BooleanPolygonOperation::Result result =
+			d_boolean_polygon_operation_ptr->capture_armed_selection();
+	if (!result.message.isEmpty())
+	{
+		status_message(result.message);
+		update_boolean_palette(result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_boolean_apply()
+{
+	GPlatesViewOperations::SubductionCutterGeometry::BooleanOperation operation =
+			GPlatesViewOperations::SubductionCutterGeometry::POLYGON_UNION;
+	switch (d_boolean_operation_combo_ptr->currentIndex())
+	{
+	case 1:
+		operation = GPlatesViewOperations::SubductionCutterGeometry::POLYGON_DIFFERENCE;
+		break;
+	case 2:
+		operation = GPlatesViewOperations::SubductionCutterGeometry::POLYGON_INTERSECTION;
+		break;
+	case 3:
+		operation = GPlatesViewOperations::SubductionCutterGeometry::POLYGON_SYMMETRIC_DIFFERENCE;
+		break;
+	default:
+		break;
+	}
+
+	const GPlatesViewOperations::BooleanPolygonOperation::Result result =
+			d_boolean_polygon_operation_ptr->apply(operation);
+	status_message(result.message);
+	update_boolean_palette(result.message);
+	if (result.outcome == GPlatesViewOperations::BooleanPolygonOperation::BOOLEAN_COMPLETED)
+	{
+		d_boolean_polygon_dialog_ptr->hide();
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_boolean_cancel()
+{
+	d_boolean_polygon_operation_ptr->reset();
+	d_boolean_polygon_dialog_ptr->hide();
+	update_boolean_palette(tr("Boolean Polygons cancelled; no data changed."));
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::update_boolean_palette(
+		const QString &message)
+{
+	const GPlatesViewOperations::BooleanPolygonOperation::SelectionMode mode =
+			d_boolean_polygon_operation_ptr->selection_mode();
+	{
+		const QSignalBlocker blocker(d_boolean_select_first_button_ptr);
+		d_boolean_select_first_button_ptr->setChecked(
+				mode == GPlatesViewOperations::BooleanPolygonOperation::SELECTING_FIRST);
+	}
+	{
+		const QSignalBlocker blocker(d_boolean_select_operand_button_ptr);
+		d_boolean_select_operand_button_ptr->setChecked(
+				mode == GPlatesViewOperations::BooleanPolygonOperation::SELECTING_OPERAND);
+	}
+
+	d_boolean_first_status_label_ptr->setText(
+			d_boolean_polygon_operation_ptr->first_status());
+	d_boolean_operands_status_label_ptr->setText(
+			d_boolean_polygon_operation_ptr->operands_status());
+	d_boolean_select_operand_button_ptr->setEnabled(
+			d_boolean_polygon_operation_ptr->has_first());
+	d_boolean_clear_operands_button_ptr->setEnabled(
+			d_boolean_polygon_operation_ptr->operand_count() > 0);
+	d_boolean_apply_button_ptr->setEnabled(
+			d_boolean_polygon_operation_ptr->has_first() &&
+			d_boolean_polygon_operation_ptr->operand_count() > 0);
+	d_boolean_instruction_label_ptr->setText(message.isEmpty()
+			? tr("Select the first polygon, add one or more operands, choose the operation, then click Apply and Finish. The dialog closes only after a successful edit or Cancel.")
+			: message);
 }
 
 
