@@ -116,6 +116,7 @@ namespace GPlatesViewOperations
 	class CreateInitialContinentOperation;
 	class CreateInitialRotationFileOperation;
 	class CreateOceanCrustOperation;
+	class CreatePacificPlateOperation;
 	class CreateTripleJunctionCrustOperation;
 	class CratonPlateIdLabels;
 	class DeleteFeatureOperation;
@@ -207,6 +208,12 @@ namespace GPlatesQtWidgets
 		 */
 		bool
 		try_select_worldbuilding_mor();
+
+		/** Gives an armed Pacific-plate seed capture first refusal on an ordinary click. */
+		bool
+		try_capture_pacific_void_seed(
+				const GPlatesMaths::PointOnSphere &point_on_sphere,
+				bool is_on_earth);
 
 		ReconstructionViewWidget &
 		reconstruction_view_widget();
@@ -750,6 +757,9 @@ namespace GPlatesQtWidgets
 		handle_create_triple_junction_crust();
 
 		void
+		handle_create_pacific_plate();
+
+		void
 		handle_create_initial_rotation_file();
 
 		void
@@ -858,6 +868,9 @@ namespace GPlatesQtWidgets
 
 		//! RRR mode sharing the MOR selection and ocean-crust builder with the basic workflow.
 		boost::scoped_ptr<GPlatesViewOperations::CreateTripleJunctionCrustOperation> d_create_triple_junction_crust_operation_ptr;
+
+		//! Local seeded plate-birth mode sharing the MOR selection and geometry services.
+		boost::scoped_ptr<GPlatesViewOperations::CreatePacificPlateOperation> d_create_pacific_plate_operation_ptr;
 
 		//! For proposing, reviewing and committing an initial rift system.
 		boost::scoped_ptr<GPlatesViewOperations::ProposeInitialRiftsOperation> d_propose_initial_rifts_operation_ptr;

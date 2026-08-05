@@ -30,6 +30,7 @@
 #include "RenderedGeometryCollection.h"
 #include "RenderedGeometryFactory.h"
 #include "RenderedGeometryLayer.h"
+#include "MORFeatureBuilder.h"
 #include "SplitPlateOperation.h"
 #include "UndoRedo.h"
 #include "WorldbuildingFeatureCollectionUtils.h"
@@ -415,40 +416,6 @@ namespace
 				child->reference(), GPlatesModel::PropertyName::create_gpml("reconstructionPlateId"),
 				GPlatesPropertyValues::GpmlPlateId::create(plate_id));
 		return child;
-	}
-
-	GPlatesModel::FeatureHandle::non_null_ptr_type
-	create_half_stage_mor(
-			const QString &name,
-			double start_time,
-			GPlatesModel::integer_plate_id_type left_plate,
-			GPlatesModel::integer_plate_id_type right_plate,
-			const GPlatesMaths::PolylineOnSphere::non_null_ptr_to_const_type &polyline)
-	{
-		GPlatesModel::FeatureHandle::non_null_ptr_type feature =
-				GPlatesModel::FeatureHandle::create(
-						GPlatesModel::FeatureType::create_gpml("MidOceanRidge"));
-		const GPlatesModel::FeatureHandle::weak_ref feature_ref = feature->reference();
-		set_required_property(feature_ref, GPlatesModel::PropertyName::create_gml("name"),
-				GPlatesPropertyValues::XsString::create(GPlatesUtils::make_icu_string_from_qstring(name)));
-		set_required_property(feature_ref, GPlatesModel::PropertyName::create_gml("validTime"),
-				GPlatesModel::ModelUtils::create_gml_time_period(
-						GPlatesPropertyValues::GeoTimeInstant(start_time),
-						GPlatesPropertyValues::GeoTimeInstant::create_distant_future()));
-		set_required_property(feature_ref, GPlatesModel::PropertyName::create_gpml("geometryImportTime"),
-				GPlatesModel::ModelUtils::create_gml_time_instant(
-						GPlatesPropertyValues::GeoTimeInstant(start_time)));
-		set_required_property(feature_ref, GPlatesModel::PropertyName::create_gpml("reconstructionMethod"),
-				GPlatesPropertyValues::Enumeration::create(
-						GPlatesPropertyValues::EnumerationType::create_gpml("ReconstructionMethodEnumeration"),
-						"HalfStageRotationVersion3"));
-		set_required_property(feature_ref, GPlatesModel::PropertyName::create_gpml("leftPlate"),
-				GPlatesPropertyValues::GpmlPlateId::create(left_plate));
-		set_required_property(feature_ref, GPlatesModel::PropertyName::create_gpml("rightPlate"),
-				GPlatesPropertyValues::GpmlPlateId::create(right_plate));
-		set_required_property(feature_ref, GPlatesModel::PropertyName::create_gpml("centerLineOf"),
-				GPlatesAppLogic::GeometryUtils::create_polyline_geometry_property_value(polyline));
-		return feature;
 	}
 
 	class MakeRiftUndoCommand :
@@ -907,7 +874,7 @@ GPlatesViewOperations::MakeRiftOperation::cut(
 		const GPlatesModel::FeatureHandle::non_null_ptr_type right_feature = clone_continent_child(
 				d_captured_continent->feature, d_captured_continent->geometry_property,
 				right_polygon, dialog.right_name(), dialog.right_plate());
-		const GPlatesModel::FeatureHandle::non_null_ptr_type mor_feature = create_half_stage_mor(
+		const GPlatesModel::FeatureHandle::non_null_ptr_type mor_feature = MORFeatureBuilder::create_half_stage_mor(
 				QObject::tr("%1 - %2 Rift").arg(dialog.left_name(), dialog.right_name()),
 				reconstruction_time, dialog.left_plate(), dialog.right_plate(), split->rift_polyline);
 

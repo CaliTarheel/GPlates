@@ -39,6 +39,8 @@ set(srcs
     CreateInitialRotationFileOperation.h
     CreateOceanCrustOperation.cc
     CreateOceanCrustOperation.h
+    CreatePacificPlateOperation.cc
+    CreatePacificPlateOperation.h
     CreateTripleJunctionCrustOperation.cc
     CreateTripleJunctionCrustOperation.h
     CratonPlateIdLabels.cc
@@ -79,6 +81,8 @@ set(srcs
     InitialSubductionGeometry.h
     MakeRiftOperation.cc
     MakeRiftOperation.h
+    MORFeatureBuilder.cc
+    MORFeatureBuilder.h
     MovePoleOperation.cc
     MovePoleOperation.h
     MoveVertexGeometryOperation.cc
@@ -89,6 +93,8 @@ set(srcs
     NaturalizeCoastlineOperation.h
     OceanCrustBandBuilder.cc
     OceanCrustBandBuilder.h
+    PacificPlateGeometry.cc
+    PacificPlateGeometry.h
     PlateIdReassignmentOperation.cc
     PlateIdReassignmentOperation.h
     ProposeInitialRiftsOperation.cc
@@ -138,6 +144,8 @@ set(srcs
     RenderedString.h
     RotationFileEditorOperation.cc
     RotationFileEditorOperation.h
+    RotationPlateCreation.cc
+    RotationPlateCreation.h
     RenderedSubductionTeethPolyline.h
     RenderedTangentialArrow.h
     RenderedTriangleSymbol.h

@@ -93,6 +93,19 @@ GPlatesCanvasTools::ClickGeometry::handle_left_click(
 		bool is_on_earth,
 		double proximity_inclusion_threshold)
 {
+	if (d_view_state_ptr.try_capture_pacific_void_seed(point_on_sphere, is_on_earth))
+	{
+		return;
+	}
+	focus_clicked_geometry(point_on_sphere, proximity_inclusion_threshold);
+}
+
+
+void
+GPlatesCanvasTools::ClickGeometry::focus_clicked_geometry(
+		const GPlatesMaths::PointOnSphere &point_on_sphere,
+		double proximity_inclusion_threshold)
+{
 	d_clicked_geom_seq.clear();
 
 	GPlatesGui::get_clicked_geometries(
@@ -117,10 +130,7 @@ GPlatesCanvasTools::ClickGeometry::handle_shift_left_click(
 		bool is_on_earth,
 		double proximity_inclusion_threshold)
 {
-	handle_left_click(
-			point_on_sphere,
-			is_on_earth,
-			proximity_inclusion_threshold);
+	focus_clicked_geometry(point_on_sphere, proximity_inclusion_threshold);
 
 	if (d_view_state_ptr.try_select_worldbuilding_mor())
 	{
