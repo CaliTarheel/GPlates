@@ -55,6 +55,8 @@ set(srcs
     FocusedFeatureGeometryManipulator.h
     FlowlineManagerOperation.cc
     FlowlineManagerOperation.h
+    FeatureEventVersioner.cc
+    FeatureEventVersioner.h
     GeometryBuilder.cc
     GeometryBuilder.h
     GeometryBuilderUndoCommands.cc
@@ -101,6 +103,8 @@ set(srcs
     ProposeInitialRiftsOperation.h
     PlateDirectionArrowsOperation.cc
     PlateDirectionArrowsOperation.h
+    PlateEventTransaction.cc
+    PlateEventTransaction.h
     QueryProximityThreshold.h
     RenderedArrowedPolyline.h
     RenderedCircleSymbol.h

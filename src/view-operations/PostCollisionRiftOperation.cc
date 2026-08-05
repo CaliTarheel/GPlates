@@ -18,6 +18,8 @@
 #include <QUndoCommand>
 
 #include "MORFeatureBuilder.h"
+#include "FeatureEventVersioner.h"
+#include "PlateEventTransaction.h"
 #include "RenderedGeometryFactory.h"
 #include "RenderedGeometryLayer.h"
 #include "UndoRedo.h"
@@ -126,84 +128,6 @@ namespace
 		{
 			throw std::runtime_error(QString("Unable to set required property '%1'.")
 					.arg(property_name.get_name().qstring()).toStdString());
-		}
-	}
-
-	property_seq_type clone_properties(const GPlatesModel::FeatureHandle &feature)
-	{
-		property_seq_type properties;
-		for (GPlatesModel::FeatureHandle::const_iterator property_iter = feature.begin();
-				property_iter != feature.end(); ++property_iter)
-		{
-			properties.push_back((*property_iter)->clone());
-		}
-		return properties;
-	}
-
-	property_seq_type properties_with_time(
-			const GPlatesModel::FeatureHandle::weak_ref &feature,
-			double time,
-			bool start_at_time)
-	{
-		property_seq_type properties;
-		const GPlatesModel::PropertyName valid_time_name =
-				GPlatesModel::PropertyName::create_gml("validTime");
-		GPlatesPropertyValues::GeoTimeInstant begin =
-				GPlatesPropertyValues::GeoTimeInstant::create_distant_past();
-		GPlatesPropertyValues::GeoTimeInstant end =
-				GPlatesPropertyValues::GeoTimeInstant::create_distant_future();
-		const boost::optional<GPlatesPropertyValues::GmlTimePeriod::non_null_ptr_to_const_type> valid_time =
-				GPlatesFeatureVisitors::get_property_value<GPlatesPropertyValues::GmlTimePeriod>(
-						feature, valid_time_name);
-		if (valid_time)
-		{
-			begin = (*valid_time)->begin()->get_time_position();
-			end = (*valid_time)->end()->get_time_position();
-		}
-		if (start_at_time)
-		{
-			begin = GPlatesPropertyValues::GeoTimeInstant(time);
-		}
-		else
-		{
-			end = GPlatesPropertyValues::GeoTimeInstant(time);
-		}
-		for (GPlatesModel::FeatureHandle::const_iterator property_iter = feature->begin();
-				property_iter != feature->end(); ++property_iter)
-		{
-			if ((*property_iter)->get_property_name() != valid_time_name)
-			{
-				properties.push_back((*property_iter)->clone());
-			}
-		}
-		const GPlatesPropertyValues::GmlTimePeriod::non_null_ptr_type period =
-				GPlatesModel::ModelUtils::create_gml_time_period(begin, end);
-		const boost::optional<GPlatesModel::TopLevelProperty::non_null_ptr_type> property =
-				GPlatesModel::ModelUtils::create_top_level_property(valid_time_name, period);
-		if (property)
-		{
-			properties.push_back(*property);
-		}
-		else
-		{
-			properties.push_back(GPlatesModel::TopLevelPropertyInline::create(
-					valid_time_name, period));
-		}
-		return properties;
-	}
-
-	void set_properties(
-			const GPlatesModel::FeatureHandle::weak_ref &feature,
-			const property_seq_type &properties)
-	{
-		while (feature->begin() != feature->end())
-		{
-			feature->remove(feature->begin());
-		}
-		for (property_seq_type::const_iterator property_iter = properties.begin();
-				property_iter != properties.end(); ++property_iter)
-		{
-			feature->add((*property_iter)->clone());
 		}
 	}
 
@@ -380,8 +304,18 @@ namespace
 		GPlatesFeatureVisitors::GeometrySetter setter(stored_geometry);
 		setter.set_geometry(cloned_geometry.get());
 		successor->set(geometry_property, cloned_geometry);
-		set_properties(successor->reference(),
-				properties_with_time(successor->reference(), start_time, true));
+		const QString source_id = source->feature_id().get().qstring();
+		const QString successor_id = successor->feature_id().get().qstring();
+		const GPlatesViewOperations::FeatureEventVersioner::EventRecord event =
+				GPlatesViewOperations::FeatureEventVersioner::make_event(
+						QString::fromLatin1("post-collision-rerift"), start_time,
+						QString::fromLatin1("1"), QStringList() << source_id,
+						QStringList() << successor_id, QString::fromLatin1("successor"));
+		GPlatesViewOperations::FeatureEventVersioner::set_properties(
+				successor->reference(),
+				GPlatesViewOperations::FeatureEventVersioner::properties_for_event(
+						successor->reference(),
+						GPlatesViewOperations::FeatureEventVersioner::START_AT_EVENT, event));
 		return successor;
 	}
 
@@ -514,7 +448,8 @@ namespace
 				{
 					continue;
 				}
-				set_properties(slice_iter->source, slice_iter->after);
+				GPlatesViewOperations::FeatureEventVersioner::set_properties(
+						slice_iter->source, slice_iter->after);
 				for (feature_seq_type::iterator successor_iter = slice_iter->successors.begin();
 						successor_iter != slice_iter->successors.end(); ++successor_iter)
 				{
@@ -576,7 +511,8 @@ namespace
 				}
 				if (slice_iter->source.is_valid())
 				{
-					set_properties(slice_iter->source, slice_iter->before);
+					GPlatesViewOperations::FeatureEventVersioner::set_properties(
+							slice_iter->source, slice_iter->before);
 				}
 			}
 			guard.release_guard();
@@ -1074,10 +1010,26 @@ GPlatesViewOperations::PostCollisionRiftOperation::commit(
 
 				const GPlatesModel::FeatureCollectionHandle::weak_ref collection =
 						rfg.get_feature_ref()->parent_ptr()->reference();
+				QStringList successor_ids;
+				for (feature_seq_type::const_iterator successor = successors.begin();
+					 successor != successors.end(); ++successor)
+				{
+					successor_ids.append((*successor)->feature_id().get().qstring());
+				}
+				const QString source_id = rfg.get_feature_ref()->feature_id().get().qstring();
+				const GPlatesViewOperations::FeatureEventVersioner::EventRecord source_event =
+						GPlatesViewOperations::FeatureEventVersioner::make_event(
+								QString::fromLatin1("post-collision-rerift"), current_time,
+								QString::fromLatin1("1"), QStringList() << source_id,
+								successor_ids, QString::fromLatin1("ended-source"));
 				time_slices.push_back(TimeSliceChange(
 						rfg.get_feature_ref(), collection,
-						clone_properties(*rfg.get_feature_ref()),
-						properties_with_time(rfg.get_feature_ref(), current_time, false),
+						GPlatesViewOperations::FeatureEventVersioner::clone_properties(
+								*rfg.get_feature_ref()),
+						GPlatesViewOperations::FeatureEventVersioner::properties_for_event(
+								rfg.get_feature_ref(),
+								GPlatesViewOperations::FeatureEventVersioner::END_AT_EVENT,
+								source_event),
 						successors));
 			}
 		}
@@ -1123,7 +1075,11 @@ GPlatesViewOperations::PostCollisionRiftOperation::commit(
 
 		std::unique_ptr<QUndoCommand> command(new ReriftUndoCommand(
 				d_feature_focus, d_model_interface, time_slices, groups));
-		UndoRedo::instance().get_active_undo_stack().push(command.release());
+		GPlatesViewOperations::PlateEventTransaction transaction(
+				QObject::tr("commit reviewed post-collision rerift"));
+		transaction.add_command(
+				std::move(command), GPlatesViewOperations::PlateEventTransaction::FEATURE_GEOMETRY);
+		transaction.commit();
 		name_layer(d_application_state, d_view_state,
 				mor_group.collection, QObject::tr("Active Mid-Ocean Ridges"));
 		const unsigned int rotation_count = rotations.features.size();
