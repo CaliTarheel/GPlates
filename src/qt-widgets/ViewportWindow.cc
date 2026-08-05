@@ -1118,10 +1118,17 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	event_history_dialog->setModal(false);
 	QVBoxLayout *event_history_layout = new QVBoxLayout(event_history_dialog);
 	QLabel *event_history_note = new QLabel(
-			tr("Read-only lineage for loaded features. Refresh after committing or undoing an event."),
+			tr("Read-only lineage for loaded features. Search any column; double-click an event to move the reconstruction to its time."),
 			event_history_dialog);
 	event_history_note->setWordWrap(true);
 	event_history_layout->addWidget(event_history_note);
+	QLineEdit *event_history_filter = new QLineEdit(event_history_dialog);
+	event_history_filter->setPlaceholderText(tr("Filter by event, relation, feature, plate collection, version, or ID..."));
+	event_history_filter->setClearButtonEnabled(true);
+	event_history_layout->addWidget(event_history_filter);
+	QLabel *event_history_status = new QLabel(event_history_dialog);
+	event_history_status->setWordWrap(true);
+	event_history_layout->addWidget(event_history_status);
 	QTableWidget *event_history_table = new QTableWidget(event_history_dialog);
 	event_history_table->setColumnCount(9);
 	event_history_table->setHorizontalHeaderLabels(QStringList()
@@ -1140,8 +1147,30 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	event_history_layout->addWidget(event_history_buttons);
 	QObject::connect(event_history_buttons, SIGNAL(rejected()), event_history_dialog, SLOT(hide()));
 	event_history_dialog->resize(1120, 520);
+	const auto apply_event_history_filter =
+			[event_history_table, event_history_filter, event_history_status]()
+			{
+				const QString query = event_history_filter->text().trimmed();
+				unsigned int visible_count = 0;
+				for (int row = 0; row < event_history_table->rowCount(); ++row)
+				{
+					bool matches = query.isEmpty();
+					for (int column = 0; !matches && column < event_history_table->columnCount(); ++column)
+					{
+						const QTableWidgetItem *item = event_history_table->item(row, column);
+						matches = item && item->text().contains(query, Qt::CaseInsensitive);
+					}
+					event_history_table->setRowHidden(row, !matches);
+					if (matches)
+					{
+						++visible_count;
+					}
+				}
+				event_history_status->setText(QObject::tr("Showing %1 of %2 event records.")
+						.arg(visible_count).arg(event_history_table->rowCount()));
+			};
 
-	const auto refresh_event_history = [this, event_history_table]()
+	const auto refresh_event_history = [this, event_history_table, apply_event_history_filter]()
 	{
 		event_history_table->setSortingEnabled(false);
 		event_history_table->setRowCount(0);
@@ -1167,8 +1196,9 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 				{
 					const int row = event_history_table->rowCount();
 					event_history_table->insertRow(row);
-					event_history_table->setItem(row, 0, new QTableWidgetItem(
-							QString::number(event->event_time, 'f', 3)));
+					QTableWidgetItem *time_item = new QTableWidgetItem();
+					time_item->setData(Qt::EditRole, event->event_time);
+					event_history_table->setItem(row, 0, time_item);
 					event_history_table->setItem(row, 1, new QTableWidgetItem(event->event_type));
 					event_history_table->setItem(row, 2, new QTableWidgetItem(event->relation));
 					event_history_table->setItem(row, 3, new QTableWidgetItem(
@@ -1186,7 +1216,29 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 		}
 		event_history_table->resizeColumnsToContents();
 		event_history_table->setSortingEnabled(true);
+		apply_event_history_filter();
 	};
+	QObject::connect(event_history_filter, &QLineEdit::textChanged,
+			this, [apply_event_history_filter](const QString &) { apply_event_history_filter(); });
+	QObject::connect(event_history_table, &QTableWidget::cellDoubleClicked,
+			this,
+			[this, event_history_table](int row, int)
+			{
+				const QTableWidgetItem *time_item = event_history_table->item(row, 0);
+				if (!time_item)
+				{
+					return;
+				}
+				bool valid = false;
+				const double event_time = time_item->data(Qt::EditRole).toDouble(&valid);
+				if (valid)
+				{
+					get_view_state().get_animation_controller().set_view_time(event_time);
+					status_message(tr("Moved to event time %1 Ma. Feature %2 remains selected in the ledger for review.")
+							.arg(event_time, 0, 'f', 3)
+							.arg(event_history_table->item(row, 3)->text()));
+				}
+			});
 	QObject::connect(refresh_event_history_button, &QPushButton::clicked,
 			this, refresh_event_history);
 	QObject::connect(show_event_history_button, &QPushButton::clicked, this,
