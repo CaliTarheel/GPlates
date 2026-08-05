@@ -19,6 +19,7 @@
 
 #include "MORFeatureBuilder.h"
 #include "FeatureEventVersioner.h"
+#include "CollisionAccretionGuardrails.h"
 #include "PlateEventTransaction.h"
 #include "RenderedGeometryFactory.h"
 #include "RenderedGeometryLayer.h"
@@ -39,6 +40,7 @@
 #include "app-logic/ReconstructionLayerProxy.h"
 #include "app-logic/ReconstructionTree.h"
 #include "app-logic/ReconstructionTreeCreator.h"
+#include "app-logic/ProjectTimestampSchedule.h"
 #include "app-logic/TRSUtils.h"
 
 #include "feature-visitors/GeometrySetter.h"
@@ -886,6 +888,27 @@ GPlatesViewOperations::PostCollisionRiftOperation::commit(
 		return Result(OPERATION_ERROR,
 				QObject::tr("The reconstruction time changed after preview. Re-select and preview again."));
 	}
+	const std::vector<double> &project_timestamps = d_application_state
+			.get_project_timestamp_schedule().timestamps_older_to_younger();
+	CollisionAccretionGuardrails::Request guard_request;
+	guard_request.mode = CollisionAccretionGuardrails::RERIFT;
+	guard_request.event_time = current_time;
+	guard_request.project_schedule_available = !project_timestamps.empty();
+	guard_request.event_is_project_timestamp = CollisionAccretionGuardrails::is_project_timestamp(
+			current_time, project_timestamps);
+	guard_request.incoming_plate = left_plate_id;
+	guard_request.receiving_plate = right_plate_id;
+	guard_request.survivor = CollisionAccretionGuardrails::EXPLICIT_CHILD_IDS;
+	guard_request.boolean_preview_reviewed = true;
+	guard_request.boolean_output_count = 2;
+	guard_request.craton_geometry_protected = true;
+	guard_request.lineage_will_be_recorded = true;
+	guard_request.no_rotation_jump = true;
+	const CollisionAccretionGuardrails::Report guard_report =
+			CollisionAccretionGuardrails::validate(guard_request);
+	if (!guard_report.valid)
+		return Result(OPERATION_ERROR, QObject::tr("Rerift guardrail failed:\n%1")
+				.arg(guard_report.errors.join("\n")));
 
 	try
 	{

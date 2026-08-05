@@ -20,6 +20,7 @@
 #include "RenderedGeometryFactory.h"
 #include "RenderedGeometryLayer.h"
 #include "FeatureEventVersioner.h"
+#include "CollisionAccretionGuardrails.h"
 #include "PlateEventTransaction.h"
 #include "UndoRedo.h"
 #include "WorldbuildingFeatureCollectionUtils.h"
@@ -40,6 +41,7 @@
 #include "app-logic/Reconstruction.h"
 #include "app-logic/ReconstructionTree.h"
 #include "app-logic/ReconstructionTreeCreator.h"
+#include "app-logic/ProjectTimestampSchedule.h"
 
 #include "feature-visitors/PropertyValueFinder.h"
 #include "feature-visitors/GeometrySetter.h"
@@ -761,6 +763,29 @@ GPlatesViewOperations::CollisionOrogenyOperation::preview(const Options &options
 			geometry = CollisionGeometry::generate(
 					d_incoming->polygon, d_receiving->polygon, parameters);
 		}
+		const std::vector<double> &project_timestamps = d_application_state
+				.get_project_timestamp_schedule().timestamps_older_to_younger();
+		CollisionAccretionGuardrails::Request guard_request;
+		guard_request.mode = CollisionAccretionGuardrails::COLLISION;
+		guard_request.event_time = current_time;
+		guard_request.project_schedule_available = !project_timestamps.empty();
+		guard_request.event_is_project_timestamp = CollisionAccretionGuardrails::is_project_timestamp(
+				current_time, project_timestamps);
+		guard_request.incoming_plate = d_incoming->plate_id;
+		guard_request.receiving_plate = d_receiving->plate_id;
+		guard_request.survivor = options.retire_incoming_plate
+				? CollisionAccretionGuardrails::RECEIVING_SURVIVES
+				: CollisionAccretionGuardrails::KEEP_BOTH;
+		guard_request.boolean_preview_reviewed = true;
+		guard_request.boolean_output_count = options.deform_contact_margins ? 2 : 1;
+		guard_request.craton_geometry_protected = true;
+		guard_request.lineage_will_be_recorded = true;
+		guard_request.no_rotation_jump = true;
+		const CollisionAccretionGuardrails::Report guard_report =
+				CollisionAccretionGuardrails::validate(guard_request);
+		if (!guard_report.valid)
+			return Result(OPERATION_ERROR, QObject::tr("Collision guardrail failed:\n%1")
+					.arg(guard_report.errors.join("\n")));
 
 		d_preview_layer->add_rendered_geometry(
 				RenderedGeometryFactory::create_rendered_polygon_on_sphere(
@@ -809,13 +834,14 @@ GPlatesViewOperations::CollisionOrogenyOperation::preview(const Options &options
 						.arg(d_incoming->plate_id).arg(d_receiving->plate_id)
 				: QString();
 		return Result(PREVIEW_READY,
-				QObject::tr("Previewed a %1 collision: %2 km suture, %3 km belt, %4 km present gap, relative closing speed %5. Incoming area is %6% of the receiver. Aqua is the suture; orange is the active orogeny.%7%8")
+				QObject::tr("Previewed a %1 collision: %2 km suture, %3 km belt, %4 km present gap, relative closing speed %5. Incoming area is %6% of the receiver. %7 collision/accretion guardrails confirmed. Aqua is the suture; orange is the active orogeny.%8%9")
 						.arg(collision_type_name(collision_type))
 						.arg(geometry.metrics.contact_length_km, 0, 'f', 0)
 						.arg(belt_width_km, 0, 'f', 0)
 						.arg(geometry.metrics.minimum_gap_km, 0, 'f', 0)
 						.arg(speed_text)
 						.arg(100.0 * geometry.metrics.incoming_to_receiving_area_ratio, 0, 'f', 0)
+						.arg(guard_report.confirmations.size())
 						.arg(deformation_text).arg(retirement_text));
 	}
 	catch (const std::exception &exception)

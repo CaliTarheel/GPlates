@@ -92,6 +92,8 @@ set(srcs
     BoundarySectionGraphTest.h
     SubductionLifecyclePlannerTest.cc
     SubductionLifecyclePlannerTest.h
+    CollisionAccretionGuardrailsTest.cc
+    CollisionAccretionGuardrailsTest.h
     WorldbuildingProjectManifestTest.cc
     WorldbuildingProjectManifestTest.h
     PropertyValuesTestSuite.cc
