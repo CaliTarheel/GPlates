@@ -156,6 +156,8 @@ set(srcs
     SubductionLifecyclePlanner.h
     CollisionAccretionGuardrails.cc
     CollisionAccretionGuardrails.h
+    GeologyEventLedger.cc
+    GeologyEventLedger.h
     RotationPlateCreation.cc
     RotationPlateCreation.h
     RenderedSubductionTeethPolyline.h
