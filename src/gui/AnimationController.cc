@@ -420,17 +420,25 @@ void
 GPlatesGui::AnimationController::set_view_time(
 		const double new_time)
 {
+	const double clamped_time =
+			d_application_state_ptr->clamp_reconstruction_time_to_default_view_range(new_time);
+
 	// Ensure the new reconstruction time is valid.
 	// FIXME: Move this function somewhere more appropriate and call the new version.
-	if ( ! is_valid_reconstruction_time(new_time)) {
+	if ( ! is_valid_reconstruction_time(clamped_time)) {
 		return;
 	}
 
 	// Only modify the reconstruction time and emit signals if the time has
 	// actually been changed.
-	if ( ! GPlatesMaths::are_geo_times_approximately_equal(view_time(), new_time)) {
+	if ( ! GPlatesMaths::are_geo_times_approximately_equal(view_time(), clamped_time)) {
 		// This will perform a new reconstruction.
-		d_application_state_ptr->set_reconstruction_time(new_time);
+		d_application_state_ptr->set_reconstruction_time(clamped_time);
+	}
+	else if ( ! GPlatesMaths::are_geo_times_approximately_equal(new_time, clamped_time)) {
+		// The requested value was outside the permitted range but the view was already
+		// on the relevant endpoint. Re-emit the endpoint so an edited widget snaps back.
+		Q_EMIT view_time_changed(clamped_time);
 	}
 }
 

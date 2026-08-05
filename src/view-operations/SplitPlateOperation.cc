@@ -241,18 +241,27 @@ namespace
 	{
 		SplitPolygonResult(
 				const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type &polygon1_,
-				const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type &polygon2_) :
+				const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type &polygon2_,
+				const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type &reconstructed_polygon1_,
+				const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type &reconstructed_polygon2_,
+				const GPlatesMaths::PolylineOnSphere::non_null_ptr_to_const_type &rift_polyline_) :
 			polygon1(polygon1_),
-			polygon2(polygon2_)
+			polygon2(polygon2_),
+			reconstructed_polygon1(reconstructed_polygon1_),
+			reconstructed_polygon2(reconstructed_polygon2_),
+			rift_polyline(rift_polyline_)
 		{  }
 
 		GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type polygon1;
 		GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type polygon2;
+		GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type reconstructed_polygon1;
+		GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type reconstructed_polygon2;
+		GPlatesMaths::PolylineOnSphere::non_null_ptr_to_const_type rift_polyline;
 	};
 
 
 	boost::optional<SplitPolygonResult>
-	split_polygon(
+	split_polygon_internal(
 			QString &error_message,
 			const GPlatesMaths::PolygonOnSphere &polygon,
 			const GPlatesMaths::PolylineOnSphere &polyline,
@@ -378,7 +387,10 @@ namespace
 
 		return SplitPolygonResult(
 				reverse_reconstruct_polygon(*reconstructed_polygon1, polygon_reconstruction),
-				reverse_reconstruct_polygon(*reconstructed_polygon2, polygon_reconstruction));
+				reverse_reconstruct_polygon(*reconstructed_polygon2, polygon_reconstruction),
+				reconstructed_polygon1,
+				reconstructed_polygon2,
+				GPlatesMaths::PolylineOnSphere::create(cut_path, true));
 	}
 
 
@@ -499,6 +511,26 @@ namespace
 }
 
 
+boost::optional<GPlatesViewOperations::SplitPlateGeometry::Result>
+GPlatesViewOperations::SplitPlateGeometry::split_polygon(
+		QString &error_message,
+		const GPlatesMaths::PolygonOnSphere &polygon,
+		const GPlatesMaths::PolylineOnSphere &polyline,
+		const GPlatesAppLogic::ReconstructedFeatureGeometry &polygon_reconstruction)
+{
+	const boost::optional<SplitPolygonResult> result = split_polygon_internal(
+			error_message, polygon, polyline, polygon_reconstruction);
+	if (!result)
+	{
+		return boost::none;
+	}
+	return Result(
+			result->polygon1, result->polygon2,
+			result->reconstructed_polygon1, result->reconstructed_polygon2,
+			result->rift_polyline);
+}
+
+
 GPlatesViewOperations::SplitPlateOperation::SplitPlateOperation(
 		GPlatesGui::FeatureFocus &feature_focus,
 		GPlatesAppLogic::ApplicationState &application_state) :
@@ -612,10 +644,10 @@ GPlatesViewOperations::SplitPlateOperation::trigger()
 	}
 
 	QString error_message;
-	boost::optional<SplitPolygonResult> split_result;
+	boost::optional<SplitPlateGeometry::Result> split_result;
 	try
 	{
-		split_result = split_polygon(
+		split_result = SplitPlateGeometry::split_polygon(
 				error_message,
 				*d_captured_polygon->polygon,
 				*focused_polyline,

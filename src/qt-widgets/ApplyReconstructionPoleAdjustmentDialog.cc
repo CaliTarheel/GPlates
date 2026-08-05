@@ -373,6 +373,11 @@ void
 GPlatesQtWidgets::AdjustmentApplicator::handle_pole_time_changed(
 		double new_pole_time)
 {
+	d_pole_time = new_pole_time;
+	if (d_sequence_choice_index)
+	{
+		handle_pole_sequence_choice_changed(*d_sequence_choice_index);
+	}
 }
 
 
@@ -409,6 +414,13 @@ GPlatesQtWidgets::AdjustmentApplicator::apply_adjustment()
 	// because we modified the model.
 	// Note that we do this before emitting the 'have_reconstructed' signal.
 	model_notification_guard.release_guard();
+
+	// A rotation time sample can invalidate its reconstruction-layer cache after
+	// ApplicationState's feature-store callback has already reconstructed once.
+	// Reconstruct again after all queued model notifications have been delivered
+	// so the current displayed time immediately uses the newly inserted/updated
+	// pole instead of waiting for the user to change time and come back.
+	d_application_state_ptr->reconstruct();
 
 	Q_EMIT have_reconstructed();
 }

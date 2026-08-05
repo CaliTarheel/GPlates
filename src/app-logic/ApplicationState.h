@@ -110,6 +110,14 @@ namespace GPlatesAppLogic
 			return d_reconstruction_time;
 		}
 
+		/**
+		 * Clamps a requested displayed reconstruction time to the default View range
+		 * configured in User Preferences.
+		 */
+		double
+		clamp_reconstruction_time_to_default_view_range(
+				double reconstruction_time) const;
+
 		GPlatesModel::integer_plate_id_type
 		get_current_anchored_plate_id() const
 		{

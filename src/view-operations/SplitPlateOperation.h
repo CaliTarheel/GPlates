@@ -15,6 +15,7 @@
 #include "app-logic/ReconstructedFeatureGeometry.h"
 
 #include "maths/PolygonOnSphere.h"
+#include "maths/PolylineOnSphere.h"
 
 #include "model/FeatureHandle.h"
 #include "model/ModelInterface.h"
@@ -32,6 +33,39 @@ namespace GPlatesGui
 
 namespace GPlatesViewOperations
 {
+	namespace SplitPlateGeometry
+	{
+		struct Result
+		{
+			Result(
+					const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type &polygon1_,
+					const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type &polygon2_,
+					const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type &reconstructed_polygon1_,
+					const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type &reconstructed_polygon2_,
+					const GPlatesMaths::PolylineOnSphere::non_null_ptr_to_const_type &rift_polyline_) :
+				polygon1(polygon1_),
+				polygon2(polygon2_),
+				reconstructed_polygon1(reconstructed_polygon1_),
+				reconstructed_polygon2(reconstructed_polygon2_),
+				rift_polyline(rift_polyline_)
+			{  }
+
+			GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type polygon1;
+			GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type polygon2;
+			GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type reconstructed_polygon1;
+			GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type reconstructed_polygon2;
+			GPlatesMaths::PolylineOnSphere::non_null_ptr_to_const_type rift_polyline;
+		};
+
+		/** Split a reconstructed polygon and reverse-reconstruct both results. */
+		boost::optional<Result>
+		split_polygon(
+				QString &error_message,
+				const GPlatesMaths::PolygonOnSphere &polygon,
+				const GPlatesMaths::PolylineOnSphere &polyline,
+				const GPlatesAppLogic::ReconstructedFeatureGeometry &polygon_reconstruction);
+	}
+
 	/**
 	 * A two-stage operation that captures a focused polygon and then splits it
 	 * using a subsequently focused polyline.

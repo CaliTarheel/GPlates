@@ -29,6 +29,7 @@
 #include <vector>
 #include <boost/optional.hpp>
 #include <QDebug>
+#include <QMessageBox>
 #include <QtGlobal>
 
 #include "ActionButtonBox.h"
@@ -645,6 +646,39 @@ GPlatesQtWidgets::ModifyReconstructionPoleWidget::apply()
 			*d_reconstruction_tree,
 			d_application_state_ptr->get_current_reconstruction());
 
+	// Only offer the rotation sequence that actually supplies this plate's active
+	// reconstruction-tree edge. A plate can have overlapping sequences with different
+	// fixed plates; editing an inactive one gives a valid drag preview but the plate
+	// appears to snap back as soon as the reconstruction is rebuilt.
+	const boost::optional<const GPlatesAppLogic::ReconstructionTree::Edge &> active_edge =
+			d_reconstruction_tree.get()->get_edge(*d_plate_id);
+	if (active_edge && !active_edge->is_reversed())
+	{
+		std::vector<ApplyReconstructionPoleAdjustmentDialog::PoleSequenceInfo> active_sequence_choices;
+		for (std::vector<ApplyReconstructionPoleAdjustmentDialog::PoleSequenceInfo>::const_iterator
+				choice_iter = sequence_choices.begin(); choice_iter != sequence_choices.end(); ++choice_iter)
+		{
+			if (choice_iter->d_fixed_plate == active_edge->get_fixed_plate() &&
+					choice_iter->d_moving_plate == active_edge->get_moving_plate())
+			{
+				active_sequence_choices.push_back(*choice_iter);
+			}
+		}
+		sequence_choices.swap(active_sequence_choices);
+	}
+
+	if (sequence_choices.empty())
+	{
+		QMessageBox::warning(
+				this,
+				tr("Cannot Apply Pole Adjustment"),
+				tr("No active editable rotation sequence for Plate %1 spans %2 Ma. "
+						"Load and activate the plate's .rot collection, or add a pole sequence covering this time.")
+						.arg(*d_plate_id)
+						.arg(d_application_state_ptr->get_current_reconstruction_time(), 0, 'f', 1));
+		return;
+	}
+
 	// The Applicator should be set before the dialog is set up.
 	// Why, you ask?  Because when the dialog is set up, the first row in the sequence choices
 	// table will be selected, which will send a signal which will trigger a slot in the
@@ -658,6 +692,10 @@ GPlatesQtWidgets::ModifyReconstructionPoleWidget::apply()
 			d_application_state_ptr->get_current_reconstruction_time(),
 			sequence_choices,
 			d_accum_orientation->rotation());
+	// Selecting row zero does not emit itemSelectionChanged when it was already
+	// selected from the previous use of the dialog. Recompute explicitly so Apply
+	// can never reuse a stale sequence index or stale fixed-frame adjustment.
+	d_applicator_ptr->handle_pole_sequence_choice_changed(0);
 
 	d_dialog_ptr->show();
 }
@@ -1082,6 +1120,8 @@ GPlatesQtWidgets::ModifyReconstructionPoleWidget::make_signal_slot_connections(
 		d_applicator_ptr.get(), SLOT(handle_pole_sequence_choice_changed(int)));
 	QObject::connect(d_dialog_ptr, SIGNAL(pole_sequence_choice_cleared()),
 		d_applicator_ptr.get(), SLOT(handle_pole_sequence_choice_cleared()));
+	QObject::connect(d_dialog_ptr, SIGNAL(pole_time_changed(double)),
+		d_applicator_ptr.get(), SLOT(handle_pole_time_changed(double)));
 	QObject::connect(d_dialog_ptr, SIGNAL(accepted()),
 		d_applicator_ptr.get(), SLOT(apply_adjustment()));
 
