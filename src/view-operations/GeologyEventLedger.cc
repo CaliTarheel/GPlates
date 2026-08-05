@@ -10,10 +10,13 @@ namespace
 	GPlatesViewOperations::GeologyEventLedger::Category category_for(
 			const GPlatesViewOperations::FeatureEventVersioner::EventRecord &event)
 	{
-		const QString relation = event.relation.toLower();
-		if (relation.contains("observation")) return GPlatesViewOperations::GeologyEventLedger::OBSERVATION;
-		if (relation.contains("derived-geometry")) return GPlatesViewOperations::GeologyEventLedger::DERIVED_GEOMETRY;
-		if (relation.contains("interpretation")) return GPlatesViewOperations::GeologyEventLedger::INTERPRETATION;
+		const QString relation = event.relation.trimmed().toLower();
+		if (relation == QString::fromLatin1("observation"))
+			return GPlatesViewOperations::GeologyEventLedger::OBSERVATION;
+		if (relation == QString::fromLatin1("derived-geometry"))
+			return GPlatesViewOperations::GeologyEventLedger::DERIVED_GEOMETRY;
+		if (relation == QString::fromLatin1("interpretation"))
+			return GPlatesViewOperations::GeologyEventLedger::INTERPRETATION;
 		return GPlatesViewOperations::GeologyEventLedger::MODEL_CHANGE;
 	}
 }

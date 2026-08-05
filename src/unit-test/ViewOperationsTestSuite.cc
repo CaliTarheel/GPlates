@@ -33,6 +33,7 @@
 #include "unit-test/BooleanPolygonGeometryTest.h"
 #include "unit-test/CollisionAccretionGuardrailsTest.h"
 #include "unit-test/CollisionGeometryTest.h"
+#include "unit-test/GeologyEventLedgerTest.h"
 #include "unit-test/PostCollisionRiftGeometryTest.h"
 #include "unit-test/MantleEventGeometryTest.h"
 #include "unit-test/InitialContinentGeometryTest.h"
@@ -62,6 +63,7 @@ GPlatesUnitTest::ViewOperationsTestSuite::construct_maps()
 	ADD_TESTSUITE(BooleanPolygonGeometry);
 	ADD_TESTSUITE(CollisionAccretionGuardrails);
 	ADD_TESTSUITE(CollisionGeometry);
+	ADD_TESTSUITE(GeologyEventLedger);
 	ADD_TESTSUITE(PostCollisionRiftGeometry);
 	ADD_TESTSUITE(MantleEventGeometry);
 	ADD_TESTSUITE(InitialContinentGeometry);

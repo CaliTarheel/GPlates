@@ -1133,6 +1133,9 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	QLabel *event_history_status = new QLabel(event_history_dialog);
 	event_history_status->setWordWrap(true);
 	event_history_layout->addWidget(event_history_status);
+	QLabel *event_history_warnings = new QLabel(event_history_dialog);
+	event_history_warnings->setWordWrap(true);
+	event_history_layout->addWidget(event_history_warnings);
 	QTableWidget *event_history_table = new QTableWidget(event_history_dialog);
 	event_history_table->setColumnCount(11);
 	event_history_table->setHorizontalHeaderLabels(QStringList()
@@ -1174,13 +1177,22 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 						.arg(visible_count).arg(event_history_table->rowCount()));
 			};
 
-	const auto refresh_event_history = [this, event_history_table, apply_event_history_filter]()
+	const auto refresh_event_history = [this, event_history_table, event_history_warnings,
+			apply_event_history_filter]()
 	{
 		event_history_table->setSortingEnabled(false);
 		event_history_table->setRowCount(0);
 		const std::vector<GPlatesViewOperations::GeologyEventLedger::Entry> entries =
 				GPlatesViewOperations::GeologyEventLedger::build(
 						get_application_state().get_feature_collection_file_state());
+		const QStringList ledger_warnings =
+				GPlatesViewOperations::GeologyEventLedger::transition_warnings(entries);
+		event_history_warnings->setVisible(!ledger_warnings.isEmpty());
+		event_history_warnings->setText(ledger_warnings.isEmpty()
+				? QString()
+				: tr("Ledger integrity warnings (%1):\n- %2")
+						.arg(ledger_warnings.size())
+						.arg(ledger_warnings.join(QString::fromLatin1("\n- "))));
 		for (std::vector<GPlatesViewOperations::GeologyEventLedger::Entry>::const_iterator
 				entry = entries.begin(); entry != entries.end(); ++entry)
 		{
