@@ -904,8 +904,10 @@ GPlatesViewOperations::MakeRiftOperation::cut(
 		}
 
 		GPlatesAppLogic::FeatureCollectionFileState::file_reference mor_file =
-				create_named_empty_feature_collection(
+				resolve_or_create_worldbuilding_feature_collection(
 						d_application_state.get_feature_collection_file_io(),
+						d_application_state.get_feature_collection_file_state(),
+						QString::fromLatin1("mors"),
 						QObject::tr("Active Mid-Ocean Ridges"));
 		const GPlatesModel::FeatureCollectionHandle::weak_ref mor_collection =
 				mor_file.get_file().get_feature_collection();

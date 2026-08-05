@@ -526,14 +526,18 @@ GPlatesViewOperations::CreateInitialContinentOperation::trigger(
 		}
 
 		GPlatesAppLogic::FeatureCollectionFileState::file_reference continent_file =
-				create_named_empty_feature_collection(
+				resolve_or_create_worldbuilding_feature_collection(
 						d_application_state.get_feature_collection_file_io(),
+						d_application_state.get_feature_collection_file_state(),
+						QString::fromLatin1("continental-crust"),
 						QObject::tr("Continental Crust"));
 		const GPlatesModel::FeatureCollectionHandle::weak_ref continent_collection =
 				continent_file.get_file().get_feature_collection();
 		GPlatesAppLogic::FeatureCollectionFileState::file_reference craton_file =
-				create_named_empty_feature_collection(
+				resolve_or_create_worldbuilding_feature_collection(
 						d_application_state.get_feature_collection_file_io(),
+						d_application_state.get_feature_collection_file_state(),
+						QString::fromLatin1("cratons"),
 						QObject::tr("Cratons"));
 		const GPlatesModel::FeatureCollectionHandle::weak_ref craton_collection =
 				craton_file.get_file().get_feature_collection();

@@ -1108,6 +1108,97 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			worldbuilding_pasta_palette);
 	worldbuilding_pasta_description->setWordWrap(true);
 	worldbuilding_pasta_layout->addWidget(worldbuilding_pasta_description);
+	QGroupBox *project_health_group = new QGroupBox(
+			tr("Project Health and Checkpoint"), worldbuilding_pasta_palette);
+	QVBoxLayout *project_health_layout = new QVBoxLayout(project_health_group);
+	QLabel *project_health_status = new QLabel(project_health_group);
+	project_health_status->setWordWrap(true);
+	project_health_layout->addWidget(project_health_status);
+	QHBoxLayout *project_health_buttons = new QHBoxLayout();
+	QPushButton *refresh_project_health_button = new QPushButton(
+			tr("Refresh Health"), project_health_group);
+	QPushButton *save_project_checkpoint_button = new QPushButton(
+			tr("Save Checkpoint"), project_health_group);
+	project_health_buttons->addWidget(refresh_project_health_button);
+	project_health_buttons->addWidget(save_project_checkpoint_button);
+	project_health_layout->addLayout(project_health_buttons);
+	worldbuilding_pasta_layout->addWidget(project_health_group);
+
+	const auto update_worldbuilding_project_health =
+			[this, project_health_status, save_project_checkpoint_button]()
+			{
+				if (!GPlatesAppLogic::WorldbuildingProjectManifest::has_active_manifest())
+				{
+					project_health_status->setText(tr(
+							"No reviewed worldbuilding manifest is active. Open or update a project before using role-routed generators."));
+					save_project_checkpoint_button->setEnabled(false);
+					return;
+				}
+
+				GPlatesAppLogic::FeatureCollectionFileState &file_state =
+						get_application_state().get_feature_collection_file_state();
+				const QStringList roles =
+						GPlatesAppLogic::WorldbuildingProjectManifest::active_collection_roles();
+				unsigned int loaded_count = 0;
+				unsigned int dirty_count = 0;
+				BOOST_FOREACH(const QString &role, roles)
+				{
+					const boost::optional<GPlatesAppLogic::FeatureCollectionFileState::file_reference> file =
+							GPlatesAppLogic::WorldbuildingProjectManifest::resolve_loaded_collection(
+									role, file_state);
+					if (file)
+					{
+						++loaded_count;
+						const GPlatesModel::FeatureCollectionHandle::weak_ref collection =
+								file->get_file().get_feature_collection();
+						if (collection.is_valid() && collection->contains_unsaved_changes())
+						{
+							++dirty_count;
+						}
+					}
+				}
+				project_health_status->setText(tr(
+						"Active: %1\nManaged collections loaded: %2 of %3; unsaved: %4.")
+						.arg(QDir::toNativeSeparators(
+								GPlatesAppLogic::WorldbuildingProjectManifest::active_project_directory()))
+						.arg(loaded_count)
+						.arg(roles.size())
+						.arg(dirty_count));
+				save_project_checkpoint_button->setEnabled(true);
+			};
+	QObject::connect(
+			refresh_project_health_button, &QPushButton::clicked,
+			worldbuilding_pasta_palette, update_worldbuilding_project_health);
+	QObject::connect(
+			save_project_checkpoint_button, &QPushButton::clicked,
+			worldbuilding_pasta_palette,
+			[this, update_worldbuilding_project_health]()
+			{
+				GPlatesAppLogic::FeatureCollectionFileState &file_state =
+						get_application_state().get_feature_collection_file_state();
+				std::vector<GPlatesAppLogic::FeatureCollectionFileState::file_reference> files;
+				BOOST_FOREACH(const QString &role,
+						GPlatesAppLogic::WorldbuildingProjectManifest::active_collection_roles())
+				{
+					const boost::optional<GPlatesAppLogic::FeatureCollectionFileState::file_reference> file =
+							GPlatesAppLogic::WorldbuildingProjectManifest::resolve_loaded_collection(
+									role, file_state);
+					if (file)
+					{
+						files.push_back(*file);
+					}
+				}
+				const QString project_file = QDir(
+						GPlatesAppLogic::WorldbuildingProjectManifest::active_project_directory()).
+						filePath(QString::fromLatin1("worldpasta.gproj"));
+				const bool files_saved = file_io_feedback().save_files(files, false, true);
+				const bool project_saved = files_saved && file_io_feedback().save_project(project_file);
+				status_message(project_saved
+						? tr("Worldbuilding checkpoint saved: managed collection changes and worldpasta.gproj.")
+						: tr("Worldbuilding checkpoint was not fully saved; review the file error shown above."));
+				update_worldbuilding_project_health();
+			});
+	update_worldbuilding_project_health();
 
 	QGroupBox *project_time_group = new QGroupBox(
 			tr("Project Timestamp Navigation"), worldbuilding_pasta_palette);
@@ -1906,7 +1997,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			initialize_worldpasta_structure_button,
 			&QPushButton::clicked,
 			this,
-			[this]()
+			[this, update_worldbuilding_project_health]()
 			{
 				const QString directory = QFileDialog::getExistingDirectory(
 						this,
@@ -2036,6 +2127,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 							manifest_error);
 					return;
 				}
+				GPlatesAppLogic::WorldbuildingProjectManifest::activate(directory, manifest);
 
 				QStringList created_filenames;
 				BOOST_FOREACH(const QString &collection_file_name, collection_file_names)
@@ -2097,6 +2189,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 									.arg(created_filenames.size())
 									.arg(QFileInfo(manifest_filename).fileName());
 				status_message(message);
+				update_worldbuilding_project_health();
 				QMessageBox::information(this, tr("Worldbuilding Project Updated"), message);
 			});
 	QObject::connect(

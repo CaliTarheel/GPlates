@@ -597,8 +597,10 @@ GPlatesViewOperations::GenerateInitialSubductionOperation::generate(
 				create_subduction_zone(
 						name, reconstruction_time, d_captured_continent->plate_id, geometry.trench);
 		GPlatesAppLogic::FeatureCollectionFileState::file_reference file =
-				create_named_empty_feature_collection(
+				resolve_or_create_worldbuilding_feature_collection(
 						d_application_state.get_feature_collection_file_io(),
+						d_application_state.get_feature_collection_file_state(),
+						QString::fromLatin1("trenches"),
 						QObject::tr("Active Subduction Zones"));
 		const GPlatesModel::FeatureCollectionHandle::weak_ref collection =
 				file.get_file().get_feature_collection();

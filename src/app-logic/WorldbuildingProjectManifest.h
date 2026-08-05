@@ -9,8 +9,12 @@
 
 #include <vector>
 
+#include <boost/optional.hpp>
+
 #include <QString>
 #include <QStringList>
+
+#include "FeatureCollectionFileState.h"
 
 
 namespace GPlatesAppLogic
@@ -98,6 +102,31 @@ namespace GPlatesAppLogic
 		audit(
 				const QString &project_directory,
 				const Manifest &manifest);
+
+		/** Make a reviewed manifest the active role map for generator output routing. */
+		static void
+		activate(
+				const QString &project_directory,
+				const Manifest &manifest);
+
+		static bool
+		has_active_manifest();
+
+		static QString
+		active_project_directory();
+
+		static QStringList
+		active_collection_roles();
+
+		static QString
+		managed_file_path_for_role(
+				const QString &role);
+
+		/** Resolve a role only when its exact managed file is already loaded. */
+		static boost::optional<FeatureCollectionFileState::file_reference>
+		resolve_loaded_collection(
+				const QString &role,
+				FeatureCollectionFileState &file_state);
 
 		static QString
 		default_file_name();

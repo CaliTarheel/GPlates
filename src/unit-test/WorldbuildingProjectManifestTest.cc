@@ -46,9 +46,15 @@ GPlatesUnitTest::WorldbuildingProjectManifestTest::test_default_manifest_round_t
 	ManifestType::Manifest loaded;
 	BOOST_REQUIRE_MESSAGE(ManifestType::load(path, loaded, &error), error.toStdString());
 	BOOST_CHECK_EQUAL(loaded.format_version, ManifestType::CURRENT_FORMAT_VERSION);
-	BOOST_CHECK_EQUAL(loaded.collections.size(), 16);
+	BOOST_CHECK_EQUAL(loaded.collections.size(), 21);
 	BOOST_CHECK_EQUAL(loaded.layers.size(), loaded.collections.size());
 	BOOST_CHECK_EQUAL(loaded.apply_policy.toStdString(), "missing-only");
+	ManifestType::activate(directory.path(), loaded);
+	BOOST_CHECK(ManifestType::has_active_manifest());
+	BOOST_CHECK_EQUAL(ManifestType::active_collection_roles().size(), 21);
+	BOOST_CHECK_EQUAL(
+			QDir::cleanPath(ManifestType::managed_file_path_for_role(QString::fromLatin1("mors"))).toStdString(),
+			QDir::cleanPath(QDir(directory.path()).filePath(QString::fromLatin1("mid ocean ridges.gpml"))).toStdString());
 }
 
 
@@ -67,7 +73,7 @@ GPlatesUnitTest::WorldbuildingProjectManifestTest::test_missing_files_and_rename
 
 	const ManifestType::Audit audit = ManifestType::audit(directory.path(), manifest);
 	BOOST_CHECK(!audit.has_blocking_issues());
-	BOOST_CHECK_EQUAL(audit.missing_files.size(), 15);
+	BOOST_CHECK_EQUAL(audit.missing_files.size(), 20);
 	BOOST_CHECK(audit.to_plain_text().contains(QString::fromLatin1("renamed-collection")));
 	BOOST_CHECK(audit.missing_files.contains(QString::fromLatin1("my stable cores.gpml")));
 }

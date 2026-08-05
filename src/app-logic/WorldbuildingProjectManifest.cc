@@ -21,6 +21,24 @@
 namespace
 {
 	typedef GPlatesAppLogic::WorldbuildingProjectManifest ManifestType;
+	boost::optional<ManifestType::Manifest> active_manifest;
+	QString active_project_directory_path;
+
+	const ManifestType::Collection *
+	find_collection_for_role(
+			const ManifestType::Manifest &manifest,
+			const QString &role)
+	{
+		for (std::vector<ManifestType::Collection>::const_iterator collection =
+				manifest.collections.begin(); collection != manifest.collections.end(); ++collection)
+		{
+			if (collection->role.compare(role, Qt::CaseInsensitive) == 0)
+			{
+				return &*collection;
+			}
+		}
+		return NULL;
+	}
 
 	ManifestType::Collection
 	make_collection(
@@ -142,9 +160,14 @@ GPlatesAppLogic::WorldbuildingProjectManifest::default_manifest()
 	manifest.collections.push_back(make_collection("topologies", "Plates.gpml", "Plate Topologies", "gpml:TopologicalClosedPlateBoundary"));
 	manifest.collections.push_back(make_collection("active-orogenies", "active orogenies.gpml", "Active Orogenies", "gpml:OrogenicBelt"));
 	manifest.collections.push_back(make_collection("former-orogenies", "former orogenies.gpml", "Former Orogenies", "gpml:OrogenicBelt"));
-	manifest.collections.push_back(make_collection("lips", "active LIP.gpml", "Large Igneous Provinces", "gpml:LargeIgneousProvince"));
+	manifest.collections.push_back(make_collection("collision-sutures", "collision sutures.gpml", "Collision Sutures", "gpml:Suture"));
+	manifest.collections.push_back(make_collection("old-orogenies", "old orogenies.gpml", "Old Orogenies", "gpml:OrogenicBelt"));
+	manifest.collections.push_back(make_collection("active-lips", "active LIP.gpml", "Active Large Igneous Provinces", "gpml:LargeIgneousProvince"));
+	manifest.collections.push_back(make_collection("former-lips", "former LIP.gpml", "Former Large Igneous Provinces", "gpml:LargeIgneousProvince"));
 	manifest.collections.push_back(make_collection("hotspots", "Hotspots.gpml", "Hotspots", "gpml:HotSpot"));
-	manifest.collections.push_back(make_collection("motion-paths", "Hotspot trails.gpml", "Motion Paths", "gpml:MotionPath"));
+	manifest.collections.push_back(make_collection("hotspot-trails", "Hotspot trails.gpml", "Hotspot Trails", "gpml:MotionPath"));
+	manifest.collections.push_back(make_collection("provisional-mors", "provisional mid ocean ridges.gpml", "Provisional Mid-Ocean Ridges", "gpml:MidOceanRidge"));
+	manifest.collections.push_back(make_collection("passive-margins", "passive margins.gpml", "Passive Margins", "gpml:PassiveContinentalBoundary"));
 	manifest.collections.push_back(make_collection("audit-output", "worldbuilding audit.gpml", "Worldbuilding Audit Output", "gpml:UnclassifiedFeature"));
 
 	for (std::size_t index = 0; index < manifest.collections.size(); ++index)
@@ -167,6 +190,25 @@ GPlatesAppLogic::WorldbuildingProjectManifest::default_manifest()
 		{
 			style = QString::fromLatin1("silver");
 		}
+		else if (collection.role == QString::fromLatin1("active-orogenies"))
+		{
+			style = QString::fromLatin1("black");
+		}
+		else if (collection.role == QString::fromLatin1("former-orogenies") ||
+				 collection.role == QString::fromLatin1("old-orogenies"))
+		{
+			style = QString::fromLatin1("Monochrome");
+		}
+		else if (collection.role == QString::fromLatin1("active-lips") ||
+				 collection.role == QString::fromLatin1("former-lips"))
+		{
+			style = QString::fromLatin1("orange");
+		}
+		else if (collection.role == QString::fromLatin1("hotspots") ||
+				 collection.role == QString::fromLatin1("hotspot-trails"))
+		{
+			style = QString::fromLatin1("Purple");
+		}
 		manifest.layers.push_back(make_layer(
 				collection.role.toLatin1().constData(),
 				static_cast<int>(index),
@@ -182,6 +224,93 @@ QString
 GPlatesAppLogic::WorldbuildingProjectManifest::default_file_name()
 {
 	return QString::fromLatin1("worldbuilding-project.json");
+}
+
+
+void
+GPlatesAppLogic::WorldbuildingProjectManifest::activate(
+		const QString &project_directory,
+		const Manifest &manifest)
+{
+	active_project_directory_path = QDir(project_directory).absolutePath();
+	active_manifest = manifest;
+}
+
+
+bool
+GPlatesAppLogic::WorldbuildingProjectManifest::has_active_manifest()
+{
+	return static_cast<bool>(active_manifest);
+}
+
+
+QString
+GPlatesAppLogic::WorldbuildingProjectManifest::active_project_directory()
+{
+	return active_project_directory_path;
+}
+
+
+QStringList
+GPlatesAppLogic::WorldbuildingProjectManifest::active_collection_roles()
+{
+	QStringList roles;
+	if (!active_manifest)
+	{
+		return roles;
+	}
+	for (std::vector<Collection>::const_iterator collection =
+			active_manifest->collections.begin(); collection != active_manifest->collections.end(); ++collection)
+	{
+		roles.append(collection->role);
+	}
+	return roles;
+}
+
+
+QString
+GPlatesAppLogic::WorldbuildingProjectManifest::managed_file_path_for_role(
+		const QString &role)
+{
+	if (!active_manifest)
+	{
+		return QString();
+	}
+	const Collection *collection = find_collection_for_role(*active_manifest, role);
+	if (!collection)
+	{
+		return QString();
+	}
+	return QDir(active_project_directory_path).absoluteFilePath(collection->file_name);
+}
+
+
+boost::optional<GPlatesAppLogic::FeatureCollectionFileState::file_reference>
+GPlatesAppLogic::WorldbuildingProjectManifest::resolve_loaded_collection(
+		const QString &role,
+		FeatureCollectionFileState &file_state)
+{
+	const QString managed_path = managed_file_path_for_role(role);
+	if (managed_path.isEmpty())
+	{
+		return boost::none;
+	}
+	const QString normalised_managed_path = QDir::cleanPath(
+			QFileInfo(managed_path).absoluteFilePath());
+	const std::vector<FeatureCollectionFileState::file_reference> loaded_files =
+			file_state.get_loaded_files();
+	for (std::vector<FeatureCollectionFileState::file_reference>::const_iterator file =
+			loaded_files.begin(); file != loaded_files.end(); ++file)
+	{
+		const QString loaded_path = QDir::cleanPath(
+				file->get_file().get_file_info().get_qfileinfo().absoluteFilePath());
+		if (!loaded_path.isEmpty() &&
+			loaded_path.compare(normalised_managed_path, Qt::CaseInsensitive) == 0)
+		{
+			return *file;
+		}
+	}
+	return boost::none;
 }
 
 
