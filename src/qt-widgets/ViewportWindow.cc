@@ -34,6 +34,7 @@
 #include <iostream>
 #include <iterator>
 #include <memory>
+#include <set>
 #include <boost/format.hpp>
 #include <boost/scoped_ptr.hpp>
 #include <boost/foreach.hpp>
@@ -1264,6 +1265,13 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			"Read-only diagnostics. Checking Queue only promotes a suggestion into the exported repair queue; it never mutates geometry, rotations, boundaries, or topology."), audit_dialog);
 	audit_note->setWordWrap(true);
 	audit_layout->addWidget(audit_note);
+	QLineEdit *audit_filter = new QLineEdit(audit_dialog);
+	audit_filter->setPlaceholderText(tr("Filter findings and ocean-crust records..."));
+	audit_filter->setClearButtonEnabled(true);
+	audit_layout->addWidget(audit_filter);
+	QLabel *audit_status = new QLabel(audit_dialog);
+	audit_status->setWordWrap(true);
+	audit_layout->addWidget(audit_status);
 	QFormLayout *audit_form = new QFormLayout();
 	QComboBox *audit_scope = new QComboBox(audit_dialog);
 	audit_scope->addItem(tr("Current time"));
@@ -1307,9 +1315,43 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	QObject::connect(audit_buttons, SIGNAL(rejected()), audit_dialog, SLOT(hide()));
 	std::shared_ptr<GPlatesViewOperations::WorldbuildingAuditReport::Report> audit_report(
 			new GPlatesViewOperations::WorldbuildingAuditReport::Report());
-	const auto refresh_audit = [this, audit_scope, audit_older, audit_old_crust, audit_revision,
-			audit_findings, audit_crust, audit_report]()
+	const auto apply_audit_filter = [audit_filter, audit_status, audit_findings, audit_crust]()
 	{
+		const QString query = audit_filter->text().trimmed();
+		unsigned int visible_findings = 0;
+		for (int row = 0; row < audit_findings->rowCount(); ++row)
+		{
+			bool match = query.isEmpty();
+			for (int column = 1; !match && column < audit_findings->columnCount(); ++column)
+				match = audit_findings->item(row, column) &&
+						audit_findings->item(row, column)->text().contains(query, Qt::CaseInsensitive);
+			audit_findings->setRowHidden(row, !match);
+			if (match) ++visible_findings;
+		}
+		unsigned int visible_crust = 0;
+		for (int row = 0; row < audit_crust->rowCount(); ++row)
+		{
+			bool match = query.isEmpty();
+			for (int column = 0; !match && column < audit_crust->columnCount(); ++column)
+				match = audit_crust->item(row, column) &&
+						audit_crust->item(row, column)->text().contains(query, Qt::CaseInsensitive);
+			audit_crust->setRowHidden(row, !match);
+			if (match) ++visible_crust;
+		}
+		audit_status->setText(QObject::tr(
+				"Showing %1 of %2 findings and %3 of %4 ocean-crust records.")
+				.arg(visible_findings).arg(audit_findings->rowCount())
+				.arg(visible_crust).arg(audit_crust->rowCount()));
+	};
+	const auto refresh_audit = [this, audit_scope, audit_older, audit_old_crust, audit_revision,
+			audit_findings, audit_crust, audit_report, apply_audit_filter]()
+	{
+		std::set<QString> queued_findings;
+		for (int row = 0; row < audit_findings->rowCount(); ++row)
+			if (audit_findings->item(row, 0) && audit_findings->item(row, 0)->checkState() == Qt::Checked &&
+					audit_findings->item(row, 3) && audit_findings->item(row, 4))
+				queued_findings.insert(audit_findings->item(row, 3)->text() + QString::fromLatin1("|") +
+						audit_findings->item(row, 4)->text());
 		GPlatesViewOperations::WorldbuildingAuditReport::Request request;
 		request.scope = static_cast<GPlatesViewOperations::WorldbuildingAuditReport::Scope>(audit_scope->currentIndex());
 		request.current_time = get_application_state().get_current_reconstruction_time();
@@ -1323,7 +1365,10 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 		{
 			const GPlatesViewOperations::WorldbuildingAuditReport::Finding &finding = audit_report->findings[index];
 			const int row = audit_findings->rowCount(); audit_findings->insertRow(row);
-			QTableWidgetItem *queue = new QTableWidgetItem(); queue->setCheckState(Qt::Unchecked);
+			QTableWidgetItem *queue = new QTableWidgetItem();
+			queue->setCheckState(queued_findings.count(
+					finding.code + QString::fromLatin1("|") + finding.feature_id)
+					? Qt::Checked : Qt::Unchecked);
 			audit_findings->setItem(row, 0, queue);
 			const QStringList values = QStringList() << finding.severity << finding.domain << finding.code
 					<< finding.feature_id << (finding.time ? QString::number(*finding.time, 'f', 3) : QString())
@@ -1345,6 +1390,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 				audit_crust->setItem(row, column, new QTableWidgetItem(values[column]));
 		}
 		audit_findings->resizeColumnsToContents(); audit_crust->resizeColumnsToContents();
+		apply_audit_filter();
 	};
 	const auto export_audit = [this, audit_findings, audit_report](bool json)
 	{
@@ -1367,6 +1413,24 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 		file.close();
 	};
 	QObject::connect(audit_refresh, &QPushButton::clicked, this, refresh_audit);
+	QObject::connect(audit_filter, &QLineEdit::textChanged, this,
+			[apply_audit_filter](const QString &) { apply_audit_filter(); });
+	QObject::connect(audit_findings, &QTableWidget::cellDoubleClicked, this,
+			[this, audit_findings](int row, int)
+			{
+				if (!audit_findings->item(row, 5) || audit_findings->item(row, 5)->text().isEmpty()) return;
+				bool valid = false;
+				const double time = audit_findings->item(row, 5)->text().toDouble(&valid);
+				if (valid) get_view_state().get_animation_controller().set_view_time(time);
+			});
+	QObject::connect(audit_crust, &QTableWidget::cellDoubleClicked, this,
+			[this, audit_crust](int row, int)
+			{
+				if (!audit_crust->item(row, 1)) return;
+				bool valid = false;
+				const double time = audit_crust->item(row, 1)->text().toDouble(&valid);
+				if (valid) get_view_state().get_animation_controller().set_view_time(time);
+			});
 	QObject::connect(audit_export_markdown, &QPushButton::clicked, this,
 			[export_audit]() { export_audit(false); });
 	QObject::connect(audit_export_json, &QPushButton::clicked, this,

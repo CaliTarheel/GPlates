@@ -46,6 +46,7 @@
 #include "unit-test/SubductionLifecyclePlannerTest.h"
 #include "unit-test/SubductionEffectsGeometryTest.h"
 #include "unit-test/TripleJunctionGeometryTest.h"
+#include "unit-test/WorldbuildingAuditReportTest.h"
 
 GPlatesUnitTest::ViewOperationsTestSuite::ViewOperationsTestSuite(
 		unsigned level) : 
@@ -76,6 +77,7 @@ GPlatesUnitTest::ViewOperationsTestSuite::construct_maps()
 	ADD_TESTSUITE(SubductionLifecyclePlanner);
 	ADD_TESTSUITE(SubductionEffectsGeometry);
 	ADD_TESTSUITE(TripleJunctionGeometry);
+	ADD_TESTSUITE(WorldbuildingAuditReport);
 }
 
 
