@@ -41,6 +41,7 @@
 #include "unit-test/NaturalizeCoastlineTest.h"
 #include "unit-test/OceanCrustBandBuilderTest.h"
 #include "unit-test/PacificPlateGeometryTest.h"
+#include "unit-test/SubductionLifecyclePlannerTest.h"
 #include "unit-test/SubductionEffectsGeometryTest.h"
 #include "unit-test/TripleJunctionGeometryTest.h"
 
@@ -68,6 +69,7 @@ GPlatesUnitTest::ViewOperationsTestSuite::construct_maps()
 	ADD_TESTSUITE(NaturalizeCoastline);
 	ADD_TESTSUITE(OceanCrustBandBuilder);
 	ADD_TESTSUITE(PacificPlateGeometry);
+	ADD_TESTSUITE(SubductionLifecyclePlanner);
 	ADD_TESTSUITE(SubductionEffectsGeometry);
 	ADD_TESTSUITE(TripleJunctionGeometry);
 }

@@ -20,6 +20,7 @@
 #include "RenderedGeometryLayer.h"
 #include "UndoRedo.h"
 #include "WorldbuildingFeatureCollectionUtils.h"
+#include "FeatureEventVersioner.h"
 
 #include "app-logic/ApplicationState.h"
 #include "app-logic/FeatureCollectionFileIO.h"
@@ -322,7 +323,12 @@ GPlatesViewOperations::GenerateSubductionEffectsOperation::Options::Options() :
 	trim_end_percent(0),
 	offset_km(220.0),
 	island_irregularity(0.22),
-	belt_width_km(100.0)
+	belt_width_km(100.0),
+	lifecycle_event(SubductionLifecyclePlanner::CONTINUE_SUBDUCTION),
+	subducting_plate(0),
+	migration_offset_km(0),
+	lifecycle_duration_ma(0),
+	isolates_plate_fragment(false)
 {  }
 
 
@@ -428,9 +434,20 @@ GPlatesViewOperations::GenerateSubductionEffectsOperation::capture_armed_selecti
 		{
 			start_time = (*valid_time)->begin()->get_time_position().value();
 		}
+		GPlatesModel::integer_plate_id_type subducting_plate = 0;
+		const boost::optional<GPlatesPropertyValues::GpmlPlateId::non_null_ptr_to_const_type> left_plate =
+				GPlatesFeatureVisitors::get_property_value<GPlatesPropertyValues::GpmlPlateId>(
+						d_feature_focus.focused_feature(), GPlatesModel::PropertyName::create_gpml("leftPlate"));
+		const boost::optional<GPlatesPropertyValues::GpmlPlateId::non_null_ptr_to_const_type> right_plate =
+				GPlatesFeatureVisitors::get_property_value<GPlatesPropertyValues::GpmlPlateId>(
+						d_feature_focus.focused_feature(), GPlatesModel::PropertyName::create_gpml("rightPlate"));
+		if (left_plate && (*left_plate)->get_value() != *plate_id)
+			subducting_plate = (*left_plate)->get_value();
+		else if (right_plate && (*right_plate)->get_value() != *plate_id)
+			subducting_plate = (*right_plate)->get_value();
 		d_captured_subduction = CapturedSubduction(
 				d_feature_focus.focused_feature(), polyline->get_non_null_pointer(),
-				*plate_id, declared_left, start_time, current_time);
+				*plate_id, subducting_plate, declared_left, start_time, current_time);
 		if (d_captured_continent && d_captured_continent->plate_id != *plate_id)
 		{
 			d_captured_continent = boost::none;
@@ -532,6 +549,13 @@ GPlatesViewOperations::GenerateSubductionEffectsOperation::subduction_age_ma() c
 }
 
 
+GPlatesModel::integer_plate_id_type
+GPlatesViewOperations::GenerateSubductionEffectsOperation::suggested_subducting_plate() const
+{
+	return d_captured_subduction ? d_captured_subduction->subducting_plate : 0;
+}
+
+
 QString
 GPlatesViewOperations::GenerateSubductionEffectsOperation::subduction_status() const
 {
@@ -539,8 +563,10 @@ GPlatesViewOperations::GenerateSubductionEffectsOperation::subduction_status() c
 	{
 		return QObject::tr("Subduction zone: not selected");
 	}
-	return QObject::tr("Subduction zone: Plate %1, %2 polarity, began %3 Ma (%4 Ma old)")
+	return QObject::tr("Subduction zone: overriding Plate %1, subducting Plate %2, %3 polarity, began %4 Ma (%5 Ma old)")
 			.arg(d_captured_subduction->overriding_plate)
+			.arg(d_captured_subduction->subducting_plate == 0
+					? QObject::tr("not recorded") : QString::number(d_captured_subduction->subducting_plate))
 			.arg(d_captured_subduction->declared_left ? QObject::tr("Left") : QObject::tr("Right"))
 			.arg(d_captured_subduction->start_time, 0, 'f', 1)
 			.arg(subduction_age_ma(), 0, 'f', 1);
@@ -591,6 +617,33 @@ GPlatesViewOperations::GenerateSubductionEffectsOperation::preview(const Options
 						.arg(subduction_age_ma(), 0, 'f', 1)
 						.arg(d_captured_subduction->start_time - options.island_arc_delay_ma, 0, 'f', 1));
 	}
+	SubductionLifecyclePlanner::Request lifecycle_request;
+	lifecycle_request.event_type = options.lifecycle_event;
+	lifecycle_request.event_time = current_time;
+	lifecycle_request.trench_start_time = d_captured_subduction->start_time;
+	lifecycle_request.overriding_plate = d_captured_subduction->overriding_plate;
+	lifecycle_request.subducting_plate = options.subducting_plate;
+	lifecycle_request.polarity_left = d_captured_subduction->declared_left;
+	lifecycle_request.successor_polarity_left =
+			d_captured_subduction->declared_left != options.flip_declared_polarity;
+	lifecycle_request.migration_offset_km = options.migration_offset_km;
+	lifecycle_request.duration_ma = options.lifecycle_duration_ma;
+	lifecycle_request.isolates_plate_fragment = options.isolates_plate_fragment;
+	const SubductionLifecyclePlanner::Plan lifecycle_plan =
+			SubductionLifecyclePlanner::plan(lifecycle_request);
+	if (!lifecycle_plan.valid)
+		return Result(OPERATION_ERROR, QObject::tr("Lifecycle plan is not valid:\n%1")
+				.arg(lifecycle_plan.errors.join("\n")));
+	QString lifecycle_review = QObject::tr("\nLifecycle transaction review:");
+	for (QStringList::const_iterator warning = lifecycle_plan.warnings.begin();
+			warning != lifecycle_plan.warnings.end(); ++warning)
+		lifecycle_review += QObject::tr("\nWARNING: %1").arg(*warning);
+	for (QStringList::const_iterator step = lifecycle_plan.atomic_steps.begin();
+			step != lifecycle_plan.atomic_steps.end(); ++step)
+		lifecycle_review += QObject::tr("\n- %1").arg(*step);
+	if (options.lifecycle_event != SubductionLifecyclePlanner::CONTINUE_SUBDUCTION)
+		lifecycle_review += QObject::tr(
+				"\nPLAN ONLY: this PR audits the transition but does not yet compose trench versioning, crust retirement, topology repair, or plate birth. Commit is disabled for this event.");
 
 	try
 	{
@@ -674,25 +727,31 @@ GPlatesViewOperations::GenerateSubductionEffectsOperation::preview(const Options
 					RenderedGeometryFactory::create_rendered_polygon_on_sphere(
 							*polygon_iter, proposal_colour, 3.0f, true, proposal_colour));
 		}
-		d_preview = Preview(options, geometry, land_belts);
+		d_preview = Preview(options, geometry, lifecycle_plan, land_belts);
 		const QString side = parameters.overriding_side_is_left
 				? QObject::tr("left") : QObject::tr("right");
 		if (options.effect_type == SubductionEffectsGeometry::ISLAND_ARC)
 		{
 			return Result(PREVIEW_READY,
-					QObject::tr("Previewed one editable island-arc line over %1 km on the %2/overriding side, plus %3 land-intersection mountain belt(s). Aqua is arc notation; orange is mountain-building confined to visible ContinentalCrust/terranes.")
+					QObject::tr("Previewed one editable island-arc line over %1 km on the %2/overriding side, plus %3 land-intersection mountain belt(s). Lifecycle: %4 (%5 atomic step(s)). Aqua is arc notation; orange is mountain-building confined to visible ContinentalCrust/terranes.%6")
 							.arg(geometry.metrics.selected_length_km, 0, 'f', 0)
 							.arg(side)
-							.arg(land_belts.size()));
+							.arg(land_belts.size())
+							.arg(lifecycle_plan.event_name)
+							.arg(lifecycle_plan.atomic_steps.size())
+							.arg(lifecycle_review));
 		}
 		return Result(PREVIEW_READY,
-				QObject::tr("Previewed a contained %1 km-wide %2 belt over %3 km on the %4/overriding side. Crust-side agreement is %5%.")
+				QObject::tr("Previewed a contained %1 km-wide %2 belt over %3 km on the %4/overriding side. Crust-side agreement is %5%. Lifecycle: %6 (%7 atomic step(s)).%8")
 						.arg(options.belt_width_km, 0, 'f', 0)
 						.arg(options.effect_type == SubductionEffectsGeometry::LARAMIDE_OROGENY
 								? QObject::tr("Laramide") : QObject::tr("Andean"))
 						.arg(geometry.metrics.selected_length_km, 0, 'f', 0)
 						.arg(side)
-						.arg(100.0 * geometry.metrics.overriding_containment_fraction, 0, 'f', 0));
+						.arg(100.0 * geometry.metrics.overriding_containment_fraction, 0, 'f', 0)
+						.arg(lifecycle_plan.event_name)
+						.arg(lifecycle_plan.atomic_steps.size())
+						.arg(lifecycle_review));
 	}
 	catch (const std::exception &exception)
 	{
@@ -710,6 +769,11 @@ GPlatesViewOperations::GenerateSubductionEffectsOperation::commit()
 	{
 		return Result(OPERATION_ERROR,
 				QObject::tr("Create and review a preview before committing subduction effects."));
+	}
+	if (d_preview->options.lifecycle_event != SubductionLifecyclePlanner::CONTINUE_SUBDUCTION)
+	{
+		return Result(OPERATION_ERROR, QObject::tr(
+				"This lifecycle transition is a reviewed plan only. No features were changed. Return to Continued subduction to commit ordinary arc/orogeny effects, or use the delegated crust-retirement, topology, collision, and plate-birth tools named in the plan."));
 	}
 	const double current_time =
 			d_application_state.get_current_reconstruction().get_reconstruction_time();
@@ -781,6 +845,37 @@ GPlatesViewOperations::GenerateSubductionEffectsOperation::commit()
 					d_captured_subduction->declared_left !=
 							d_preview->options.flip_declared_polarity,
 					present_belt));
+		}
+
+		QStringList output_ids;
+		for (std::vector<GPlatesModel::FeatureHandle::non_null_ptr_type>::const_iterator feature =
+				island_arc_features.begin(); feature != island_arc_features.end(); ++feature)
+		{
+			output_ids.append((*feature)->feature_id().get().qstring());
+		}
+		for (std::vector<GPlatesModel::FeatureHandle::non_null_ptr_type>::const_iterator feature =
+				active_orogeny_features.begin(); feature != active_orogeny_features.end(); ++feature)
+		{
+			output_ids.append((*feature)->feature_id().get().qstring());
+		}
+		const FeatureEventVersioner::EventRecord lifecycle_event = FeatureEventVersioner::make_event(
+				QString("subduction.%1").arg(d_preview->lifecycle_plan.event_name).replace(' ', '-'),
+				current_time, "2.0",
+				QStringList() << d_captured_subduction->feature->feature_id().get().qstring(),
+				output_ids, "subduction-effects");
+		for (std::vector<GPlatesModel::FeatureHandle::non_null_ptr_type>::const_iterator feature =
+				island_arc_features.begin(); feature != island_arc_features.end(); ++feature)
+		{
+			FeatureEventVersioner::set_properties((*feature)->reference(),
+					FeatureEventVersioner::properties_for_event(
+							(*feature)->reference(), FeatureEventVersioner::KEEP_VALID_TIME, lifecycle_event));
+		}
+		for (std::vector<GPlatesModel::FeatureHandle::non_null_ptr_type>::const_iterator feature =
+				active_orogeny_features.begin(); feature != active_orogeny_features.end(); ++feature)
+		{
+			FeatureEventVersioner::set_properties((*feature)->reference(),
+					FeatureEventVersioner::properties_for_event(
+							(*feature)->reference(), FeatureEventVersioner::KEEP_VALID_TIME, lifecycle_event));
 		}
 
 		GPlatesAppLogic::FeatureCollectionFileIO &file_io =
