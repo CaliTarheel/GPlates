@@ -20,6 +20,7 @@
 #include "RenderedGeometryLayer.h"
 #include "UndoRedo.h"
 #include "WorldbuildingFeatureCollectionUtils.h"
+#include "FeatureEventVersioner.h"
 
 #include "app-logic/ApplicationState.h"
 #include "app-logic/FeatureCollectionFileIO.h"
@@ -633,6 +634,29 @@ GPlatesViewOperations::GenerateMantleEventsOperation::commit()
 					d_continent->plate_id, present_hotspot));
 			groups.push_back(trails);
 			names.push_back(QObject::tr("Hotspot trails"));
+		}
+
+		QStringList source_ids;
+		source_ids << d_continent->feature->feature_id().get().qstring();
+		if (d_rift && d_rift->feature.is_valid())
+			source_ids << d_rift->feature->feature_id().get().qstring();
+		QStringList output_ids;
+		for (std::vector<FeatureGroup>::const_iterator group = groups.begin(); group != groups.end(); ++group)
+			for (std::vector<GPlatesModel::FeatureHandle::non_null_ptr_type>::const_iterator feature =
+					group->features.begin(); feature != group->features.end(); ++feature)
+				output_ids << (*feature)->feature_id().get().qstring();
+		for (unsigned int group_index = 0; group_index < groups.size(); ++group_index)
+		{
+			const QString ledger_type = QString("geology.%1").arg(names[group_index].toLower())
+					.replace(' ', '-');
+			const FeatureEventVersioner::EventRecord ledger_event = FeatureEventVersioner::make_event(
+					ledger_type, current_time, "2.0", source_ids, output_ids, "derived-geometry",
+					static_cast<qulonglong>(d_preview->options.random_seed));
+			for (std::vector<GPlatesModel::FeatureHandle::non_null_ptr_type>::const_iterator feature =
+					groups[group_index].features.begin(); feature != groups[group_index].features.end(); ++feature)
+				FeatureEventVersioner::set_properties((*feature)->reference(),
+						FeatureEventVersioner::properties_for_event(
+								(*feature)->reference(), FeatureEventVersioner::KEEP_VALID_TIME, ledger_event));
 		}
 
 		std::unique_ptr<QUndoCommand> command(new CreateMantleEventsUndoCommand(

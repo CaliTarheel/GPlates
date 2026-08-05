@@ -943,6 +943,27 @@ GPlatesViewOperations::CollisionOrogenyOperation::commit()
 			groups.push_back(old);
 			layer_names.push_back(QObject::tr("Old Orogenies"));
 		}
+		QStringList geology_sources;
+		geology_sources << d_incoming->feature->feature_id().get().qstring()
+				<< d_receiving->feature->feature_id().get().qstring();
+		if (d_trench && d_trench->feature.is_valid())
+			geology_sources << d_trench->feature->feature_id().get().qstring();
+		QStringList geology_outputs;
+		for (std::vector<FeatureGroup>::const_iterator group = groups.begin(); group != groups.end(); ++group)
+			for (std::vector<GPlatesModel::FeatureHandle::non_null_ptr_type>::const_iterator feature =
+					group->features.begin(); feature != group->features.end(); ++feature)
+				geology_outputs << (*feature)->feature_id().get().qstring();
+		for (unsigned int group_index = 0; group_index < groups.size(); ++group_index)
+		{
+			const FeatureEventVersioner::EventRecord geology_event = FeatureEventVersioner::make_event(
+					QString("geology.%1").arg(layer_names[group_index].toLower()).replace(' ', '-'),
+					current_time, "2.0", geology_sources, geology_outputs, "derived-geometry");
+			for (std::vector<GPlatesModel::FeatureHandle::non_null_ptr_type>::const_iterator feature =
+					groups[group_index].features.begin(); feature != groups[group_index].features.end(); ++feature)
+				FeatureEventVersioner::set_properties((*feature)->reference(),
+						FeatureEventVersioner::properties_for_event(
+								(*feature)->reference(), FeatureEventVersioner::KEEP_VALID_TIME, geology_event));
+		}
 
 		std::vector<TimeSliceChange> time_slices;
 		std::set<const GPlatesModel::FeatureHandle *> sliced_features;

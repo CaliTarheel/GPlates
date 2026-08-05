@@ -207,6 +207,7 @@
 #include "view-operations/CraterGeneratorOperation.h"
 #include "view-operations/FlowlineManagerOperation.h"
 #include "view-operations/FeatureEventVersioner.h"
+#include "view-operations/GeologyEventLedger.h"
 #include "view-operations/RenderedGeometryCollection.h"
 #include "view-operations/RenderedGeometryParameters.h"
 #include "view-operations/RotationFileEditorOperation.h"
@@ -1121,7 +1122,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	event_history_dialog->setModal(false);
 	QVBoxLayout *event_history_layout = new QVBoxLayout(event_history_dialog);
 	QLabel *event_history_note = new QLabel(
-			tr("Read-only lineage for loaded features. Search any column; double-click an event to move the reconstruction to its time."),
+			tr("Read-only chronological ledger for loaded features. Observations remain distinct from derived geometry, interpretations, and model changes. Search any column; double-click an event to move to its time."),
 			event_history_dialog);
 	event_history_note->setWordWrap(true);
 	event_history_layout->addWidget(event_history_note);
@@ -1133,9 +1134,9 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	event_history_status->setWordWrap(true);
 	event_history_layout->addWidget(event_history_status);
 	QTableWidget *event_history_table = new QTableWidget(event_history_dialog);
-	event_history_table->setColumnCount(9);
+	event_history_table->setColumnCount(11);
 	event_history_table->setHorizontalHeaderLabels(QStringList()
-			<< tr("Time (Ma)") << tr("Event") << tr("Relation") << tr("Feature ID")
+			<< tr("Time (Ma)") << tr("Category") << tr("Event") << tr("Relation") << tr("Feature Type") << tr("Feature ID")
 			<< tr("Sources") << tr("Outputs") << tr("Version") << tr("Seed")
 			<< tr("Collection"));
 	event_history_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -1177,45 +1178,28 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	{
 		event_history_table->setSortingEnabled(false);
 		event_history_table->setRowCount(0);
-		const std::vector<GPlatesAppLogic::FeatureCollectionFileState::file_reference> files =
-				get_application_state().get_feature_collection_file_state().get_loaded_files();
-		for (std::vector<GPlatesAppLogic::FeatureCollectionFileState::file_reference>::const_iterator
-			 file = files.begin(); file != files.end(); ++file)
+		const std::vector<GPlatesViewOperations::GeologyEventLedger::Entry> entries =
+				GPlatesViewOperations::GeologyEventLedger::build(
+						get_application_state().get_feature_collection_file_state());
+		for (std::vector<GPlatesViewOperations::GeologyEventLedger::Entry>::const_iterator
+				entry = entries.begin(); entry != entries.end(); ++entry)
 		{
-			const QString collection_name = file->get_file().get_file_info().get_display_name(false);
-			const GPlatesModel::FeatureCollectionHandle::weak_ref collection =
-					file->get_file().get_feature_collection();
-			if (!collection.is_valid())
-			{
-				continue;
-			}
-			for (GPlatesModel::FeatureCollectionHandle::iterator feature = collection->begin();
-				 feature != collection->end(); ++feature)
-			{
-				const std::vector<GPlatesViewOperations::FeatureEventVersioner::EventRecord> events =
-						GPlatesViewOperations::FeatureEventVersioner::events((*feature)->reference());
-				for (std::vector<GPlatesViewOperations::FeatureEventVersioner::EventRecord>::const_iterator
-					 event = events.begin(); event != events.end(); ++event)
-				{
-					const int row = event_history_table->rowCount();
-					event_history_table->insertRow(row);
-					QTableWidgetItem *time_item = new QTableWidgetItem();
-					time_item->setData(Qt::EditRole, event->event_time);
-					event_history_table->setItem(row, 0, time_item);
-					event_history_table->setItem(row, 1, new QTableWidgetItem(event->event_type));
-					event_history_table->setItem(row, 2, new QTableWidgetItem(event->relation));
-					event_history_table->setItem(row, 3, new QTableWidgetItem(
-							(*feature)->feature_id().get().qstring()));
-					event_history_table->setItem(row, 4, new QTableWidgetItem(
-							event->source_feature_ids.join(QString::fromLatin1(", "))));
-					event_history_table->setItem(row, 5, new QTableWidgetItem(
-							event->output_feature_ids.join(QString::fromLatin1(", "))));
-					event_history_table->setItem(row, 6, new QTableWidgetItem(event->operation_version));
-					event_history_table->setItem(row, 7, new QTableWidgetItem(
-							event->seed ? QString::number(*event->seed) : QString()));
-					event_history_table->setItem(row, 8, new QTableWidgetItem(collection_name));
-				}
-			}
+			const int row = event_history_table->rowCount();
+			event_history_table->insertRow(row);
+			QTableWidgetItem *time_item = new QTableWidgetItem();
+			time_item->setData(Qt::EditRole, entry->event.event_time);
+			event_history_table->setItem(row, 0, time_item);
+			const QStringList values = QStringList()
+					<< GPlatesViewOperations::GeologyEventLedger::category_name(entry->category)
+					<< entry->event.event_type << entry->event.relation << entry->feature_type
+					<< entry->feature_id
+					<< entry->event.source_feature_ids.join(QString::fromLatin1(", "))
+					<< entry->event.output_feature_ids.join(QString::fromLatin1(", "))
+					<< entry->event.operation_version
+					<< (entry->event.seed ? QString::number(*entry->event.seed) : QString())
+					<< entry->collection;
+			for (int column = 0; column < values.size(); ++column)
+				event_history_table->setItem(row, column + 1, new QTableWidgetItem(values[column]));
 		}
 		event_history_table->resizeColumnsToContents();
 		event_history_table->setSortingEnabled(true);
@@ -1239,7 +1223,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 					get_view_state().get_animation_controller().set_view_time(event_time);
 					status_message(tr("Moved to event time %1 Ma. Feature %2 remains selected in the ledger for review.")
 							.arg(event_time, 0, 'f', 3)
-							.arg(event_history_table->item(row, 3)->text()));
+							.arg(event_history_table->item(row, 5)->text()));
 				}
 			});
 	QObject::connect(refresh_event_history_button, &QPushButton::clicked,

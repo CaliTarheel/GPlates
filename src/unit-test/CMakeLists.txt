@@ -94,6 +94,8 @@ set(srcs
     SubductionLifecyclePlannerTest.h
     CollisionAccretionGuardrailsTest.cc
     CollisionAccretionGuardrailsTest.h
+    GeologyEventLedgerTest.cc
+    GeologyEventLedgerTest.h
     WorldbuildingProjectManifestTest.cc
     WorldbuildingProjectManifestTest.h
     PropertyValuesTestSuite.cc
