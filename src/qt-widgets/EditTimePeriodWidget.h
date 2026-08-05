@@ -35,6 +35,10 @@
 
 #include "property-values/GmlTimePeriod.h"
 
+namespace GPlatesAppLogic
+{
+	class ApplicationState;
+}
 
 namespace GPlatesQtWidgets
 {
@@ -48,6 +52,10 @@ namespace GPlatesQtWidgets
 		explicit
 		EditTimePeriodWidget(
 				QWidget *parent_ = NULL);
+
+		EditTimePeriodWidget(
+				QWidget *parent_,
+				GPlatesAppLogic::ApplicationState *application_state_);
 		
 		virtual
 		void
@@ -157,6 +165,8 @@ namespace GPlatesQtWidgets
 		 * adding brand new properties to the model.
 		 */
 		boost::intrusive_ptr<GPlatesPropertyValues::GmlTimePeriod> d_time_period_ptr;
+
+		GPlatesAppLogic::ApplicationState *d_application_state_ptr;
 
 		/**
 		 * "What does this mean?" blue question mark help dialog.

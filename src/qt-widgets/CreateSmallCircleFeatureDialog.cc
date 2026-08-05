@@ -108,7 +108,7 @@ GPlatesQtWidgets::CreateSmallCircleFeatureDialog::CreateSmallCircleFeatureDialog
 				d_file_io,
 				this)),
 	d_edit_time_period_widget(
-			new EditTimePeriodWidget(this)),
+			new EditTimePeriodWidget(this, app_state_ptr)),
 	d_small_circles(small_circles)
 {
 	setupUi(this);

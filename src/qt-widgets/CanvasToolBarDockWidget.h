@@ -190,6 +190,14 @@ namespace GPlatesQtWidgets
 		 */
 		GPlatesGui::CanvasToolWorkflows &d_canvas_tool_workflows;
 
+		//! Main window used by the two geological-time step tabs below Hellinger.
+		ViewportWindow &d_main_window;
+
+		//! Non-workflow tab indices that behave as compact left/right 50 Ma buttons (5 Ma with Shift).
+		int d_step_older_tab_index;
+		int d_step_younger_tab_index;
+		int d_last_workflow_tab_index;
+
 		//! A list of all workflows.
 		std::vector<Workflow> d_workflows;
 
@@ -199,6 +207,9 @@ namespace GPlatesQtWidgets
 
 		void
 		set_up_workflows();
+
+		void
+		set_up_reconstruction_time_step_tabs();
 
 		void
 		set_up_view_workflow();
