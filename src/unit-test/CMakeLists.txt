@@ -98,6 +98,8 @@ set(srcs
     GeologyEventLedgerTest.h
     WorldbuildingAuditReportTest.cc
     WorldbuildingAuditReportTest.h
+    WorldbuildingExportProfileTest.cc
+    WorldbuildingExportProfileTest.h
     WorldbuildingProjectManifestTest.cc
     WorldbuildingProjectManifestTest.h
     PropertyValuesTestSuite.cc

@@ -24,6 +24,7 @@
  */
  
 #include <QDir>
+#include <cmath>
 #include <vector>
 
 #include "ExportAnimationContext.h"
@@ -48,12 +49,33 @@ GPlatesGui::ExportAnimationContext::ExportAnimationContext(
 	d_export_animation_dialog_ptr(&export_animation_dialog_),
 	d_animation_controller_ptr(&animation_controller_),
 	d_sequence_info(animation_controller_.get_sequence()),
+	d_explicit_reconstruction_times(),
 	d_view_state(&view_state_),
 	d_viewport_window(&viewport_window_),
 	d_abort_now(false),
 	d_export_running(false)	
 
 { }
+
+void
+GPlatesGui::ExportAnimationContext::set_explicit_reconstruction_times(
+		const std::vector<double> &reconstruction_times)
+{
+	d_explicit_reconstruction_times = reconstruction_times;
+	if (reconstruction_times.empty())
+		return;
+
+	d_sequence_info.desired_start_time = d_sequence_info.actual_start_time = reconstruction_times.front();
+	d_sequence_info.desired_end_time = d_sequence_info.actual_end_time = reconstruction_times.back();
+	d_sequence_info.duration_in_frames = reconstruction_times.size();
+	d_sequence_info.duration_in_ma = std::fabs(reconstruction_times.front() - reconstruction_times.back());
+	d_sequence_info.raw_time_increment = reconstruction_times.size() > 1
+			? reconstruction_times[1] - reconstruction_times[0] : 1.0;
+	d_sequence_info.abs_time_increment = std::fabs(d_sequence_info.raw_time_increment);
+	d_sequence_info.should_finish_exactly_on_end_time = true;
+	d_sequence_info.includes_remainder_frame = false;
+	d_sequence_info.remainder_frame_length = 0;
+}
 
 const double &
 GPlatesGui::ExportAnimationContext::view_time() const
@@ -87,7 +109,8 @@ GPlatesGui::ExportAnimationContext::do_export()
 	d_abort_now = false;
 	
 	// Determine how many frames we need to iterate through.
-	std::size_t length = d_sequence_info.duration_in_frames;
+	std::size_t length = d_explicit_reconstruction_times.empty()
+			? d_sequence_info.duration_in_frames : d_explicit_reconstruction_times.size();
 
 	// Set the progress bar to 0 - we haven't finished writing frame 1 yet.
 	d_export_animation_dialog_ptr->update_progress_bar(length, 0);
@@ -103,7 +126,9 @@ GPlatesGui::ExportAnimationContext::do_export()
 		}
 		
 		// Manipulate the View to set the correct time, ready for the export strategies to do their thing.
-		double time = GPlatesUtils::AnimationSequence::calculate_time_for_frame(d_sequence_info, frame_index);
+		double time = d_explicit_reconstruction_times.empty()
+				? GPlatesUtils::AnimationSequence::calculate_time_for_frame(d_sequence_info, frame_index)
+				: d_explicit_reconstruction_times[frame_index];
 		update_status_message(QObject::tr("Reconstructing to %1 Ma...").arg(time, 0, 'f', 2 ));
 		d_animation_controller_ptr->set_view_time(time);
 		

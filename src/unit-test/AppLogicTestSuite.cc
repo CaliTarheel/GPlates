@@ -36,6 +36,7 @@
 #include "unit-test/ProjectTimestampScheduleTest.h"
 #include "unit-test/RotationMotionPlannerTest.h"
 #include "unit-test/WorldbuildingProjectManifestTest.h"
+#include "unit-test/WorldbuildingExportProfileTest.h"
 
 
 GPlatesUnitTest::AppLogicTestSuite::AppLogicTestSuite(
@@ -56,5 +57,6 @@ GPlatesUnitTest::AppLogicTestSuite::construct_maps()
 	ADD_TESTSUITE(ProjectTimestampSchedule);
 	ADD_TESTSUITE(RotationMotionPlanner);
 	ADD_TESTSUITE(WorldbuildingProjectManifest);
+	ADD_TESTSUITE(WorldbuildingExportProfile);
 }
 

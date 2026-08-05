@@ -36,6 +36,23 @@
 #include "global/GPlatesAssert.h"
 #include "global/AssertionFailureException.h"
 
+namespace
+{
+	GPlatesUtils::AnimationSequence::SequenceInfo explicit_sequence_info(
+			const std::vector<double> &times)
+	{
+		const double increment = times.size() > 1 ? std::fabs(times[1] - times[0]) : 1.0;
+		GPlatesUtils::AnimationSequence::SequenceInfo info =
+				GPlatesUtils::AnimationSequence::calculate_sequence(times.front(), times.back(), increment, true);
+		info.desired_start_time = info.actual_start_time = times.front();
+		info.desired_end_time = info.actual_end_time = times.back();
+		info.duration_in_frames = times.size();
+		info.raw_time_increment = times.size() > 1 ? times[1] - times[0] : 1.0;
+		info.abs_time_increment = std::fabs(info.raw_time_increment);
+		return info;
+	}
+}
+
 
 GPlatesFileIO::ExportTemplateFilenameSequenceImpl::ExportTemplateFilenameSequenceImpl(
 		const QString &filename_template,
@@ -47,7 +64,8 @@ GPlatesFileIO::ExportTemplateFilenameSequenceImpl::ExportTemplateFilenameSequenc
 	d_filename_template(filename_template),
 	d_begin_reconstruction_time(begin_reconstruction_time),
 	d_reconstruction_time_increment(reconstruction_time_increment),
-	d_sequence_info(sequence_info)
+	d_sequence_info(sequence_info),
+	d_explicit_reconstruction_times()
 {
 	FormatExtractor format_extractor(
 			d_filename_template,
@@ -56,6 +74,23 @@ GPlatesFileIO::ExportTemplateFilenameSequenceImpl::ExportTemplateFilenameSequenc
 			d_format_seq,
 			sequence_info);
 
+	format_extractor.extract_formats_from_filename_template();
+}
+
+GPlatesFileIO::ExportTemplateFilenameSequenceImpl::ExportTemplateFilenameSequenceImpl(
+		const QString &filename_template,
+		const GPlatesModel::integer_plate_id_type &reconstruction_anchor_plate_id,
+		const QString &default_recon_tree_layer_name,
+		const std::vector<double> &reconstruction_times) :
+	d_filename_template(filename_template),
+	d_begin_reconstruction_time(reconstruction_times.front()),
+	d_reconstruction_time_increment(reconstruction_times.size() > 1
+			? reconstruction_times[1] - reconstruction_times[0] : 1.0),
+	d_sequence_info(explicit_sequence_info(reconstruction_times)),
+	d_explicit_reconstruction_times(reconstruction_times)
+{
+	FormatExtractor format_extractor(d_filename_template, reconstruction_anchor_plate_id,
+			default_recon_tree_layer_name, d_format_seq, d_sequence_info);
 	format_extractor.extract_formats_from_filename_template();
 }
 
@@ -80,8 +115,9 @@ GPlatesFileIO::ExportTemplateFilenameSequenceImpl::get_filename(
 
 
 	// Get the reconstruction time for the current sequence index.
-	const double reconstruction_time = GPlatesUtils::AnimationSequence::calculate_time_for_frame(
-			d_sequence_info, sequence_index);
+	const double reconstruction_time = d_explicit_reconstruction_times.empty()
+			? GPlatesUtils::AnimationSequence::calculate_time_for_frame(d_sequence_info, sequence_index)
+			: d_explicit_reconstruction_times[sequence_index];
 
 	// Make a copy of the filename template as we are going to modify it.
 	QString filename(d_filename_template);

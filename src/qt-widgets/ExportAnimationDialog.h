@@ -28,6 +28,7 @@
 
 #include <QDir>	// for export settings dialog/backend.
 #include <QDialog>
+#include <vector>
 
 #include "ui_ExportAnimationDialogUi.h"
 
@@ -39,6 +40,11 @@
 #include "gui/ExportAnimationContext.h"
 #include "gui/ExportAnimationStrategy.h"
 
+class QCheckBox;
+class QComboBox;
+class QDoubleSpinBox;
+class QLineEdit;
+class QPushButton;
 
 namespace GPlatesGui
 {
@@ -230,6 +236,13 @@ namespace GPlatesQtWidgets
 		void
 		handle_export_selection_changed();
 
+		void
+		handle_project_timestamps_toggled(
+				bool enabled);
+
+		void
+		save_worldbuilding_export_manifest();
+
 	private:
 		/**
 		 * The ExportAnimationContext is the Context role of the Strategy pattern
@@ -277,6 +290,12 @@ namespace GPlatesQtWidgets
 		 */
 		QString d_range_path;
 
+		QCheckBox *d_project_timestamps_checkbox;
+		QComboBox *d_worldbuilding_profile_combo;
+		QDoubleSpinBox *d_planet_radius_spinbox;
+		QLineEdit *d_project_revision_line_edit;
+		QPushButton *d_save_export_manifest_button;
+
 		/**
 		 * Updates button label & icon.
 		 */
@@ -300,6 +319,9 @@ namespace GPlatesQtWidgets
 
 		void
 		set_export_parameters();
+
+		std::vector<double>
+		project_export_times() const;
 	};
 }
 
