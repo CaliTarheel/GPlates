@@ -41,6 +41,7 @@
 
 #include "RotationFileEditorOperation.h"
 
+#include "RotationPlateCreation.h"
 #include "UndoRedo.h"
 
 #include "app-logic/ApplicationState.h"
@@ -134,7 +135,8 @@ namespace
 	{
 		GPlatesModel::integer_plate_id_type moving_plate;
 		GPlatesModel::integer_plate_id_type fixed_plate;
-		GPlatesModel::TopLevelProperty::non_null_ptr_type sampling_property;
+		boost::optional<GPlatesModel::TopLevelProperty::non_null_ptr_type> sampling_property;
+		boost::optional<GPlatesModel::FeatureHandle::non_null_ptr_type> prepared_feature;
 	};
 
 
@@ -443,16 +445,25 @@ namespace
 
 			if (d_first_redo)
 			{
-				GPlatesModel::FeatureHandle::weak_ref feature = GPlatesModel::FeatureHandle::create(
-						d_collection, GPlatesModel::FeatureType::create_gpml("TotalReconstructionSequence"));
-				feature->add(GPlatesModel::TopLevelPropertyInline::create(
-						GPlatesModel::PropertyName::create_gpml("fixedReferenceFrame"),
-						GPlatesPropertyValues::GpmlPlateId::create(d_new_sequence.fixed_plate)));
-				feature->add(GPlatesModel::TopLevelPropertyInline::create(
-						GPlatesModel::PropertyName::create_gpml("movingReferenceFrame"),
-						GPlatesPropertyValues::GpmlPlateId::create(d_new_sequence.moving_plate)));
-				feature->add(d_new_sequence.sampling_property);
-				d_created_feature = GPlatesModel::FeatureHandle::non_null_ptr_type(feature.handle_ptr());
+				if (d_new_sequence.prepared_feature)
+				{
+					const GPlatesModel::FeatureCollectionHandle::iterator inserted =
+							d_collection->add(*d_new_sequence.prepared_feature);
+					d_created_feature = *inserted;
+				}
+				else
+				{
+					GPlatesModel::FeatureHandle::weak_ref feature = GPlatesModel::FeatureHandle::create(
+							d_collection, GPlatesModel::FeatureType::create_gpml("TotalReconstructionSequence"));
+					feature->add(GPlatesModel::TopLevelPropertyInline::create(
+							GPlatesModel::PropertyName::create_gpml("fixedReferenceFrame"),
+							GPlatesPropertyValues::GpmlPlateId::create(d_new_sequence.fixed_plate)));
+					feature->add(GPlatesModel::TopLevelPropertyInline::create(
+							GPlatesModel::PropertyName::create_gpml("movingReferenceFrame"),
+							GPlatesPropertyValues::GpmlPlateId::create(d_new_sequence.moving_plate)));
+					feature->add(*d_new_sequence.sampling_property);
+					d_created_feature = GPlatesModel::FeatureHandle::non_null_ptr_type(feature.handle_ptr());
+				}
 				d_first_redo = false;
 			}
 			else if (d_created_feature && !(*d_created_feature)->parent_ptr())
@@ -712,14 +723,11 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 			rotation_files[selected_file_index].get_file().get_feature_collection();
 	const sequence_seq_type sequences = collect_sequences(collection);
 	const std::set<GPlatesModel::integer_plate_id_type> plate_ids = collect_plate_ids(sequences);
-	std::set<GPlatesModel::integer_plate_id_type> all_loaded_plate_ids;
 	sequence_seq_type all_loaded_sequences;
 	for (size_t file_index = 0; file_index < rotation_files.size(); ++file_index)
 	{
 		const sequence_seq_type file_sequences = collect_sequences(
 				rotation_files[file_index].get_file().get_feature_collection());
-		const std::set<GPlatesModel::integer_plate_id_type> file_plate_ids = collect_plate_ids(file_sequences);
-		all_loaded_plate_ids.insert(file_plate_ids.begin(), file_plate_ids.end());
 		all_loaded_sequences.insert(
 				all_loaded_sequences.end(), file_sequences.begin(), file_sequences.end());
 	}
@@ -732,10 +740,6 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 	if (mode != FINALIZE_DRIFT_CORRECTIONS && moving_plate == fixed_plate)
 	{
 		return Result(OPERATION_ERROR, QObject::tr("A plate cannot be its own parent."));
-	}
-	if (mode == CREATE_PLATE && all_loaded_plate_ids.count(moving_plate))
-	{
-		return Result(OPERATION_ERROR, QObject::tr("Plate %1 already exists in a loaded rotation collection.").arg(moving_plate));
 	}
 	if (mode != CREATE_PLATE && mode != FINALIZE_DRIFT_CORRECTIONS && !plate_ids.count(moving_plate))
 	{
@@ -1021,8 +1025,9 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 						.arg(moving_plate).arg(current_time, 0, 'f', 2));
 	}
 
-	const std::vector<double> new_sequence_times = build_sample_times(
-			current_time, youngest_time, oldest_time, direction, all_loaded_sequences);
+	const std::vector<double> new_sequence_times = mode == CREATE_PLATE
+			? std::vector<double>()
+			: build_sample_times(current_time, youngest_time, oldest_time, direction, all_loaded_sequences);
 	std::vector<double> topology_check_times(new_sequence_times);
 	for (std::vector<double>::const_iterator time_iter = new_sequence_times.begin();
 			time_iter != new_sequence_times.end() && time_iter + 1 != new_sequence_times.end(); ++time_iter)
@@ -1120,21 +1125,22 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 		}
 	}
 
-	sample_seq_type new_samples;
+	NewSequence new_sequence = { moving_plate, fixed_plate, boost::none, boost::none };
 	if (mode == CREATE_PLATE)
 	{
-		const double other_end = direction == TOWARD_PRESENT ? 0.0 : oldest_time;
-		new_samples.push_back(create_rotation_sample(
-				std::min(current_time, other_end),
-				GPlatesMaths::FiniteRotation::create_identity_rotation(),
-				QObject::tr("GreaterPlates: new plate")));
-		new_samples.push_back(create_rotation_sample(
-				std::max(current_time, other_end),
-				GPlatesMaths::FiniteRotation::create_identity_rotation(),
-				QObject::tr("GreaterPlates: new plate")));
+		const RotationPlateCreation::Result creation =
+				RotationPlateCreation::prepare_identity_sequence(
+						d_application_state, collection, moving_plate, fixed_plate,
+						current_time, 0.0);
+		if (!creation.success || !creation.feature)
+		{
+			return Result(OPERATION_ERROR, creation.error);
+		}
+		new_sequence.prepared_feature = *creation.feature;
 	}
 	else
 	{
+		sample_seq_type new_samples;
 		try
 		{
 			for (std::vector<double>::const_iterator time_iter = new_sequence_times.begin();
@@ -1152,10 +1158,9 @@ GPlatesViewOperations::RotationFileEditorOperation::trigger(
 		{
 			return Result(OPERATION_ERROR, QString::fromUtf8(exception.what()));
 		}
+		std::sort(new_samples.begin(), new_samples.end(), sample_less_than);
+		new_sequence.sampling_property = create_sampling_property(new_samples);
 	}
-	std::sort(new_samples.begin(), new_samples.end(), sample_less_than);
-
-	const NewSequence new_sequence = { moving_plate, fixed_plate, create_sampling_property(new_samples) };
 	std::unique_ptr<QUndoCommand> command(new RotationEditUndoCommand(
 			d_model_interface,
 			collection,

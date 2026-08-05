@@ -184,6 +184,7 @@
 #include "view-operations/CreateInitialContinentOperation.h"
 #include "view-operations/CreateInitialRotationFileOperation.h"
 #include "view-operations/CreateOceanCrustOperation.h"
+#include "view-operations/CreatePacificPlateOperation.h"
 #include "view-operations/CreateTripleJunctionCrustOperation.h"
 #include "view-operations/CratonPlateIdLabels.h"
 #include "view-operations/DeleteFeatureOperation.h"
@@ -697,6 +698,12 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 					get_view_state().get_feature_focus(),
 					get_application_state(),
 					get_view_state())),
+	d_create_pacific_plate_operation_ptr(
+			new GPlatesViewOperations::CreatePacificPlateOperation(
+					*d_create_ocean_crust_operation_ptr,
+					get_view_state().get_feature_focus(),
+					get_application_state(),
+					get_view_state())),
 	d_propose_initial_rifts_operation_ptr(
 			new GPlatesViewOperations::ProposeInitialRiftsOperation(
 					get_application_state(),
@@ -1191,8 +1198,13 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	create_triple_junction_crust_button->setToolTip(tr(
 			"Shift-click three connected half-stage MORs, conservatively extend them to one junction, and fill all three plate sectors using the shared crust-band builder."));
 	active_margin_layout->addWidget(create_triple_junction_crust_button);
+	QPushButton *create_pacific_plate_button = new QPushButton(
+			tr("3.5  Create Pacific-Style Plate..."), active_margin_group);
+	create_pacific_plate_button->setToolTip(tr(
+			"Shift-click three surrounding half-stage MORs, click the local void, then atomically create its new plate, crust, bounding MORs, and rotation sequence."));
+	active_margin_layout->addWidget(create_pacific_plate_button);
 	QPushButton *retire_ocean_crust_button = new QPushButton(
-			tr("3.5  Retire Subducted Oceanic Crust..."), active_margin_group);
+			tr("3.6  Retire Subducted Oceanic Crust..."), active_margin_group);
 	retire_ocean_crust_button->setToolTip(tr(
 			"Preview where OceanicCrust first overlaps an overriding plate, split those pieces, and give them disappearance times."));
 	active_margin_layout->addWidget(retire_ocean_crust_button);
@@ -1964,6 +1976,11 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			SIGNAL(clicked()),
 			this,
 			SLOT(handle_create_triple_junction_crust()));
+	QObject::connect(
+			create_pacific_plate_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_create_pacific_plate()));
 	QObject::connect(
 			retire_ocean_crust_button,
 			SIGNAL(clicked()),
@@ -2997,6 +3014,11 @@ GPlatesQtWidgets::ViewportWindow::connect_world_building_menu_actions()
 			this,
 			SLOT(handle_create_triple_junction_crust()));
 	QObject::connect(
+			action_Create_Pacific_Plate,
+			SIGNAL(triggered()),
+			this,
+			SLOT(handle_create_pacific_plate()));
+	QObject::connect(
 			action_Naturalize_Coastline,
 			SIGNAL(triggered()),
 			this,
@@ -3332,6 +3354,38 @@ GPlatesQtWidgets::ViewportWindow::try_select_worldbuilding_mor()
 	}
 	QString message;
 	const bool handled = d_create_ocean_crust_operation_ptr->select_focused_mor(message);
+	if (handled)
+	{
+		if (d_create_pacific_plate_operation_ptr)
+		{
+			if (d_create_ocean_crust_operation_ptr->selected_mors().size() == 3)
+			{
+				d_create_pacific_plate_operation_ptr->arm_seed_capture();
+				message += tr(" The next ordinary click captures the local void seed for Pacific-style plate birth.");
+			}
+			else
+			{
+				d_create_pacific_plate_operation_ptr->clear_seed();
+			}
+		}
+		status_message(message);
+	}
+	return handled;
+}
+
+
+bool
+GPlatesQtWidgets::ViewportWindow::try_capture_pacific_void_seed(
+		const GPlatesMaths::PointOnSphere &point_on_sphere,
+		bool is_on_earth)
+{
+	if (!d_create_pacific_plate_operation_ptr)
+	{
+		return false;
+	}
+	QString message;
+	const bool handled = d_create_pacific_plate_operation_ptr->capture_seed(
+			point_on_sphere, is_on_earth, message);
 	if (handled)
 	{
 		status_message(message);
@@ -5252,6 +5306,41 @@ GPlatesQtWidgets::ViewportWindow::handle_create_triple_junction_crust()
 	else if (result.outcome == GPlatesViewOperations::CreateTripleJunctionCrustOperation::OPERATION_ERROR)
 	{
 		QMessageBox::warning(this, tr("Generate RRR Triple-Junction Crust"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_create_pacific_plate()
+{
+	const GPlatesViewOperations::CreatePacificPlateOperation::Result result =
+			d_create_pacific_plate_operation_ptr->trigger(this);
+	status_message(result.message);
+	if (result.outcome == GPlatesViewOperations::CreatePacificPlateOperation::SELECTION_REQUIRED)
+	{
+		activate_choose_feature_tool(canvas_tool_workflows());
+		QMessageBox::information(this, tr("Select MORs and Local Void"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::CreatePacificPlateOperation::OPERATION_COMPLETED)
+	{
+		QMessageBox follow_up(
+				QMessageBox::Information,
+				tr("Pacific-Style Plate Created"),
+				result.message,
+				QMessageBox::NoButton,
+				this);
+		QPushButton *open_rotation_editor = follow_up.addButton(
+				tr("Open Rotation File Editor"), QMessageBox::ActionRole);
+		follow_up.addButton(QMessageBox::Close);
+		follow_up.exec();
+		if (follow_up.clickedButton() == open_rotation_editor)
+		{
+			handle_rotation_file_editor();
+		}
+	}
+	else if (result.outcome == GPlatesViewOperations::CreatePacificPlateOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Create Pacific-Style Plate"), result.message);
 	}
 }
 

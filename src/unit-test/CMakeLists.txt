@@ -76,6 +76,8 @@ set(srcs
     NaturalizeCoastlineTest.h
     OceanCrustBandBuilderTest.cc
     OceanCrustBandBuilderTest.h
+    PacificPlateGeometryTest.cc
+    PacificPlateGeometryTest.h
     PresentationTestSuite.cc
     PresentationTestSuite.h
     ProjectMetadataTest.cc

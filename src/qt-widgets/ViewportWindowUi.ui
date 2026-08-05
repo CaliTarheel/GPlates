@@ -198,6 +198,7 @@
     <addaction name="action_Boolean_Polygons"/>
     <addaction name="action_Create_Ocean_Crust"/>
     <addaction name="action_Create_Triple_Junction_Crust"/>
+    <addaction name="action_Create_Pacific_Plate"/>
     <addaction name="action_Subduction_Cutter"/>
     <addaction name="separator"/>
     <addaction name="action_Manage_Colouring"/>
@@ -328,6 +329,17 @@
    </property>
    <property name="statusTip">
     <string>Use the shared MOR selection and crust-band builder to preview and commit one RRR junction as an atomic edit.</string>
+   </property>
+  </action>
+  <action name="action_Create_Pacific_Plate">
+   <property name="text">
+    <string>Create &amp;Pacific-Style Plate...</string>
+   </property>
+   <property name="toolTip">
+    <string>Create a new oceanic plate inside a local void bounded by three selected MORs</string>
+   </property>
+   <property name="statusTip">
+    <string>Capture a local void seed, then atomically add its plate rotation, OceanicCrust, and three naturalized half-stage MORs.</string>
    </property>
   </action>
   <action name="action_Cut">

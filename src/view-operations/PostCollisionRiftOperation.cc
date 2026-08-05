@@ -17,6 +17,7 @@
 #include <QObject>
 #include <QUndoCommand>
 
+#include "MORFeatureBuilder.h"
 #include "RenderedGeometryFactory.h"
 #include "RenderedGeometryLayer.h"
 #include "UndoRedo.h"
@@ -486,41 +487,6 @@ namespace
 			}
 		}
 		return false;
-	}
-
-	GPlatesModel::FeatureHandle::non_null_ptr_type create_half_stage_mor(
-			const QString &name,
-			double start_time,
-			GPlatesModel::integer_plate_id_type left_plate,
-			GPlatesModel::integer_plate_id_type right_plate,
-			const GPlatesMaths::PolylineOnSphere::non_null_ptr_to_const_type &polyline)
-	{
-		GPlatesModel::FeatureHandle::non_null_ptr_type feature =
-				GPlatesModel::FeatureHandle::create(
-						GPlatesModel::FeatureType::create_gpml("MidOceanRidge"));
-		const GPlatesModel::FeatureHandle::weak_ref ref = feature->reference();
-		add_or_set_property(ref, GPlatesModel::PropertyName::create_gml("name"),
-				GPlatesPropertyValues::XsString::create(
-						GPlatesUtils::make_icu_string_from_qstring(name)));
-		add_or_set_property(ref, GPlatesModel::PropertyName::create_gml("validTime"),
-				GPlatesModel::ModelUtils::create_gml_time_period(
-						GPlatesPropertyValues::GeoTimeInstant(start_time),
-						GPlatesPropertyValues::GeoTimeInstant::create_distant_future()));
-		add_or_set_property(ref, GPlatesModel::PropertyName::create_gpml("geometryImportTime"),
-				GPlatesModel::ModelUtils::create_gml_time_instant(
-						GPlatesPropertyValues::GeoTimeInstant(start_time)));
-		add_or_set_property(ref, GPlatesModel::PropertyName::create_gpml("reconstructionMethod"),
-				GPlatesPropertyValues::Enumeration::create(
-						GPlatesPropertyValues::EnumerationType::create_gpml(
-								"ReconstructionMethodEnumeration"),
-						"HalfStageRotationVersion3"));
-		add_or_set_property(ref, GPlatesModel::PropertyName::create_gpml("leftPlate"),
-				GPlatesPropertyValues::GpmlPlateId::create(left_plate));
-		add_or_set_property(ref, GPlatesModel::PropertyName::create_gpml("rightPlate"),
-				GPlatesPropertyValues::GpmlPlateId::create(right_plate));
-		add_or_set_property(ref, GPlatesModel::PropertyName::create_gpml("centerLineOf"),
-				GPlatesAppLogic::GeometryUtils::create_polyline_geometry_property_value(polyline));
-		return feature;
 	}
 
 	class ReriftUndoCommand : public QUndoCommand
@@ -1128,7 +1094,7 @@ GPlatesViewOperations::PostCollisionRiftOperation::commit(
 		FeatureGroup mor_group;
 		mor_group.collection = create_named_empty_feature_collection(
 				file_io, QObject::tr("Active Mid-Ocean Ridges")).get_file().get_feature_collection();
-		mor_group.features.push_back(create_half_stage_mor(
+		mor_group.features.push_back(MORFeatureBuilder::create_half_stage_mor(
 				QObject::tr("%1 - %2 Post-Collision Rift").arg(left_name.trimmed(), right_name.trimmed()),
 				current_time, left_plate_id, right_plate_id,
 				d_preview->host_split.rift_polyline));
