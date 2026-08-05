@@ -21,6 +21,8 @@ set(srcs
     DeleteVertexGeometryOperation.h
     FocusedFeatureGeometryManipulator.cc
     FocusedFeatureGeometryManipulator.h
+    FlowlineManagerOperation.cc
+    FlowlineManagerOperation.h
     GeometryBuilder.cc
     GeometryBuilder.h
     GeometryBuilderUndoCommands.cc

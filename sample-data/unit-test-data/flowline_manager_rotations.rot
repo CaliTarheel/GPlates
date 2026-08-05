@@ -1,0 +1,4 @@
+101  0.0    0.0    0.0   0.0  000 ! left plate present day
+101  100.0  90.0   0.0  10.0  000 ! left plate test motion
+201  0.0    0.0    0.0   0.0  000 ! right plate present day
+201  100.0 -90.0   0.0  10.0  000 ! right plate test motion
