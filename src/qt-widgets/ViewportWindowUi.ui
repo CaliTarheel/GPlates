@@ -286,13 +286,13 @@
   </action>
   <action name="action_Subduction_Cutter">
    <property name="text">
-    <string>&amp;Subduction...</string>
+    <string>Retire Subducted &amp;Oceanic Crust...</string>
    </property>
    <property name="toolTip">
-    <string>Cut overlapping subducting plate polygons through a reconstruction-time range</string>
+    <string>Split and time-hide OceanicCrust as it overlaps an overriding plate</string>
    </property>
    <property name="statusTip">
-    <string>Assign overriding and subducting plates, sample their overlap through time, and time-hide subducted pieces.</string>
+    <string>Preview OceanicCrust retirement from the current View time back to an older project timestamp, then apply it as one undoable edit.</string>
    </property>
   </action>
   <action name="action_Boolean_Polygons">
