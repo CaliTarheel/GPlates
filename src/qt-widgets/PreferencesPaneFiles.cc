@@ -139,6 +139,8 @@ GPlatesQtWidgets::PreferencesPaneFiles::PreferencesPaneFiles(
 			"session/recent/max_size", toolbutton_reset_recent_sessions_settings);
 	GPlatesGui::ConfigGuiUtils::link_widget_to_preference(checkbox_auto_save_session_on_quit, prefs,
 			"session/auto_save_on_quit", toolbutton_reset_recent_sessions_settings);
+	GPlatesGui::ConfigGuiUtils::link_widget_to_preference(checkbox_auto_load_last_project, prefs,
+			"session/auto_load_last_project", toolbutton_reset_recent_sessions_settings);
 
 
 
