@@ -1,7 +1,7 @@
 # Design: Area Select tool
 
 **Status:** design only — no implementation in this PR.
-**Target release:** 2.6.0-dev*-SR2
+**Target release:** 2.6.0-dev*-SR1a
 **Depends on:** [CaliTarheel/GPlates#5](https://github.com/CaliTarheel/GPlates/pull/5) (spherical
 lasso, selected-point rendering)
 **Consumers:** [#12](https://github.com/CaliTarheel/GPlates/pull/12) bulk Plate ID operations,
