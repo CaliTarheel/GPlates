@@ -69,7 +69,25 @@ namespace GPlatesQtWidgets
 		void
 		show_artifexia_feature_types();
 
+		/**
+		 * Write the currently checked feature types to a file chosen by the user.
+		 */
+		void
+		save_feature_type_list();
+
+		/**
+		 * Replace the checked feature types with a list read from a file chosen by the user.
+		 */
+		void
+		load_feature_type_list();
+
 	private:
+
+		/**
+		 * The qualified names of the feature types currently checked, in list order.
+		 */
+		QStringList
+		get_checked_feature_types() const;
 
 		void
 		populate_feature_types();
