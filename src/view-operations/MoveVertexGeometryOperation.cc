@@ -264,7 +264,8 @@ GPlatesViewOperations::MoveVertexGeometryOperation::end_drag(
 	d_is_vertex_selected = false;
 	d_drag_anchor_point = boost::none;
 	d_drag_original_points.clear();
-	
+	d_drag_secondary_geometries.clear();
+
 	d_geometry_builder.clear_secondary_geometries();
 	// This will clear any secondary geometry highlighting and re-draw the "normal" move vertex geometries.
 	update_rendered_geometries();
@@ -589,7 +590,8 @@ GPlatesViewOperations::MoveVertexGeometryOperation::move_selected_vertices(
 			positions,
 			is_intermediate_move,
 			QObject::tr("move selected vertices"),
-			d_move_vertex_command_id);
+			d_move_vertex_command_id,
+			d_drag_secondary_geometries);
 }
 
 
@@ -598,7 +600,8 @@ GPlatesViewOperations::MoveVertexGeometryOperation::move_selected_vertices_to(
 		const std::vector<GPlatesMaths::PointOnSphere> &positions,
 		bool is_intermediate_move,
 		const QString &undo_text,
-		UndoRedo::CommandId command_id)
+		UndoRedo::CommandId command_id,
+		const secondary_geometry_per_point_seq_type &secondary_geometries_per_point)
 {
 	if (positions.size() != d_selected_vertex_indices.size() || positions.empty())
 	{
@@ -616,10 +619,13 @@ GPlatesViewOperations::MoveVertexGeometryOperation::move_selected_vertices_to(
 		points_to_move.push_back(std::make_pair(*selected, *position));
 	}
 
+	// Carry any snapped vertices in other geometries along with the selection. This is empty when
+	// Snap Vertices is off, in which case the command behaves exactly as it did before.
 	std::unique_ptr<QUndoCommand> move_vertices_command(
 			new GeometryBuilderMovePointsUndoCommand(
 					d_geometry_builder,
 					points_to_move,
+					secondary_geometries_per_point,
 					is_intermediate_move));
 	std::unique_ptr<QUndoCommand> undo_command(
 			new GeometryOperationUndoCommand(
@@ -956,12 +962,10 @@ GPlatesViewOperations::MoveVertexGeometryOperation::update_lasso_rendered_geomet
 	}
 }
 
-void
-GPlatesViewOperations::MoveVertexGeometryOperation::update_secondary_geometries(
+boost::optional<GPlatesViewOperations::MoveVertexGeometryOperation::secondary_geometry_hit_type>
+GPlatesViewOperations::MoveVertexGeometryOperation::find_secondary_geometry_near(
 	const GPlatesMaths::PointOnSphere &point_on_sphere)
 {
-	d_geometry_builder.clear_secondary_geometries();
-
 	GPlatesViewOperations::sorted_rendered_geometry_proximity_hits_type sorted_hits;
 	
 	double proximity_inclusion_threshold = d_nearby_vertex_threshold; 
@@ -1020,9 +1024,9 @@ GPlatesViewOperations::MoveVertexGeometryOperation::update_secondary_geometries(
 		}
 	}
 	
-	// We have found a geometry with a vertex in range; add it to the geometry builder.
-	// FIXME: may want to extend this to store multiple geometries that have
-	// a vertex close to the highlighted vertex. Right now we deal only with the geometry that has 
+	// We have found a geometry with a vertex in range.
+	// FIXME: may want to extend this to return multiple geometries that have
+	// a vertex close to the highlighted vertex. Right now we deal only with the geometry that has
 	// the closest within-range vertex.
 	if (closest_non_focus_rendered_geom)
 	{
@@ -1030,7 +1034,7 @@ GPlatesViewOperations::MoveVertexGeometryOperation::update_secondary_geometries(
 		closest_non_focus_rendered_geom->accept_visitor(recon_geom_finder);
 		boost::optional<GPlatesAppLogic::ReconstructionGeometry::non_null_ptr_to_const_type>
 				recon_geom = recon_geom_finder.get_reconstruction_geometry();
-			
+
 
 		if (recon_geom)
 		{
@@ -1042,24 +1046,82 @@ GPlatesViewOperations::MoveVertexGeometryOperation::update_secondary_geometries(
 				boost::optional<GPlatesModel::integer_plate_id_type> plate_id =
 						rfg.get()->reconstruction_plate_id();
 				if (d_should_use_plate_id_filter)
-				{ 
+				{
 					if ( d_filter_plate_id &&
 						plate_id &&
 						(*plate_id == *d_filter_plate_id))
 						{
-							d_geometry_builder.add_secondary_geometry(*recon_geom,closest_vertex_index);
+							return std::make_pair(*recon_geom, closest_vertex_index);
 						}
 				}
 				else
 				{
-				// No plate-id filter selected, so add the geometry. 
-						d_geometry_builder.add_secondary_geometry(*recon_geom,closest_vertex_index);
+				// No plate-id filter selected, so accept the geometry.
+						return std::make_pair(*recon_geom, closest_vertex_index);
 				}
 			}
 		}
 	}
-	
 
+
+	return boost::none;
+}
+
+
+void
+GPlatesViewOperations::MoveVertexGeometryOperation::update_secondary_geometries(
+	const GPlatesMaths::PointOnSphere &point_on_sphere)
+{
+	d_geometry_builder.clear_secondary_geometries();
+
+	const boost::optional<secondary_geometry_hit_type> hit =
+			find_secondary_geometry_near(point_on_sphere);
+	if (hit)
+	{
+		d_geometry_builder.add_secondary_geometry(hit->first, hit->second);
+	}
+}
+
+
+void
+GPlatesViewOperations::MoveVertexGeometryOperation::update_secondary_geometries_for_selection()
+{
+	// Snapping was previously resolved only for the single highlighted vertex, so dragging a
+	// group left coincident vertices in neighbouring geometries behind. Resolve one for every
+	// vertex in the selection instead, and remember which vertex each belongs to, so the drag
+	// can carry them along.
+	d_geometry_builder.clear_secondary_geometries();
+	d_drag_secondary_geometries.clear();
+	d_drag_secondary_geometries.reserve(d_selected_vertex_indices.size());
+
+	// Iterated in the same order as 'd_drag_original_points' and the points passed to the move
+	// command, so the two stay parallel.
+	for (std::set<GeometryBuilder::PointIndex>::const_iterator selected =
+				d_selected_vertex_indices.begin();
+		selected != d_selected_vertex_indices.end();
+		++selected)
+	{
+		std::vector<SecondaryGeometry> secondary_geometries_for_vertex;
+
+		const boost::optional<secondary_geometry_hit_type> hit =
+				find_secondary_geometry_near(d_geometry_builder.get_geometry_point(0, *selected));
+		if (hit)
+		{
+			// Let the geometry builder do the conversion to SecondaryGeometry, then take a copy
+			// of what it built. It rejects anything that isn't a reconstructed feature geometry,
+			// so only record one if it actually added it.
+			const std::vector<SecondaryGeometry>::size_type num_before =
+					d_geometry_builder.get_secondary_geometries().size();
+			d_geometry_builder.add_secondary_geometry(hit->first, hit->second);
+			if (d_geometry_builder.get_secondary_geometries().size() > num_before)
+			{
+				secondary_geometries_for_vertex.push_back(
+						d_geometry_builder.get_secondary_geometries().back());
+			}
+		}
+
+		d_drag_secondary_geometries.push_back(secondary_geometries_for_vertex);
+	}
 }
 
 void
@@ -1116,14 +1178,26 @@ GPlatesViewOperations::MoveVertexGeometryOperation::left_press(
 	qDebug() << "should check: " << d_should_check_nearby_vertices;	
 #endif
 	d_geometry_builder.clear_secondary_geometries();
-	// If we're near a vertex in the focused geometry, then check other geometries in the model too. 
+	d_drag_secondary_geometries.clear();
+	// If we're near a vertex in the focused geometry, then check other geometries in the model too.
 	if (d_is_vertex_highlighted && d_should_check_nearby_vertices)
 	{
-		// Use the highlighted point (rather than the mouse point) for searching for secondary geometries.
-		const GPlatesMaths::PointOnSphere &highlight_point_on_sphere =
-			d_geometry_builder.get_geometry_point(0, d_selected_vertex_index);
-			
-		update_secondary_geometries(highlight_point_on_sphere);
+		if (d_selected_vertex_indices.size() > 1)
+		{
+			// Dragging a group. Resolve snapping for every vertex in the selection, not just the
+			// highlighted one - a group move is exactly when shared boundaries are most likely to
+			// be torn apart, and the most tedious to repair by hand afterwards.
+			update_secondary_geometries_for_selection();
+		}
+		else
+		{
+			// Use the highlighted point (rather than the mouse point) for searching for secondary geometries.
+			const GPlatesMaths::PointOnSphere &highlight_point_on_sphere =
+				d_geometry_builder.get_geometry_point(0, d_selected_vertex_index);
+
+			update_secondary_geometries(highlight_point_on_sphere);
+		}
+
 		update_rendered_secondary_geometries();
 		update_highlight_secondary_vertices();
 		//FIXME: find a better colour for highlighting the secondary geometries.

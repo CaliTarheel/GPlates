@@ -173,6 +173,17 @@ namespace GPlatesViewOperations
 		typedef std::pair<GeometryBuilder::PointIndex, GPlatesMaths::PointOnSphere> indexed_point_type;
 		typedef std::vector<indexed_point_type> indexed_point_seq_type;
 
+		//! The secondary (snapped) geometries attached to a single moved point.
+		typedef std::vector<SecondaryGeometry> secondary_geometry_seq_type;
+
+		/**
+		 * Secondary geometries per moved point, parallel to the points passed to the constructor.
+		 *
+		 * Empty - or shorter than the points sequence - means no snapping for those points, which
+		 * is the behaviour when Snap Vertices is turned off.
+		 */
+		typedef std::vector<secondary_geometry_seq_type> secondary_geometry_per_point_seq_type;
+
 		GeometryBuilderMovePointsUndoCommand(
 				GeometryBuilder &geometry_builder,
 				const indexed_point_seq_type &points_to_move,
@@ -181,6 +192,24 @@ namespace GPlatesViewOperations
 			QUndoCommand(parent),
 			d_geometry_builder(geometry_builder),
 			d_points_to_move(points_to_move),
+			d_is_intermediate_move(is_intermediate_move)
+		{
+			setText(QObject::tr("move selected vertices"));
+		}
+
+		/**
+		 * Overload that also drags snapped vertices in other geometries along with each moved point.
+		 */
+		GeometryBuilderMovePointsUndoCommand(
+				GeometryBuilder &geometry_builder,
+				const indexed_point_seq_type &points_to_move,
+				const secondary_geometry_per_point_seq_type &secondary_geometries_per_point,
+				bool is_intermediate_move,
+				QUndoCommand *parent = 0) :
+			QUndoCommand(parent),
+			d_geometry_builder(geometry_builder),
+			d_points_to_move(points_to_move),
+			d_secondary_geometries_per_point(secondary_geometries_per_point),
 			d_is_intermediate_move(is_intermediate_move)
 		{
 			setText(QObject::tr("move selected vertices"));
@@ -202,6 +231,7 @@ namespace GPlatesViewOperations
 	private:
 		GeometryBuilder &d_geometry_builder;
 		indexed_point_seq_type d_points_to_move;
+		secondary_geometry_per_point_seq_type d_secondary_geometries_per_point;
 		bool d_is_intermediate_move;
 		std::vector<GeometryBuilder::UndoOperation> d_undo_operations;
 	};
