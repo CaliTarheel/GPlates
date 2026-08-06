@@ -40,6 +40,7 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QLoggingCategory>
+#include <QObject>
 #include <QStringList>
 #include <QSurfaceFormat>
 #include <QTextStream>
@@ -69,6 +70,8 @@
 #include "opengl/GLContext.h"
 
 #include "presentation/Application.h"
+#include "presentation/SessionManagement.h"
+#include "presentation/ViewState.h"
 
 #include "qt-widgets/PythonInitFailedDialog.h"
 #include "qt-widgets/ViewportWindow.h"
@@ -983,6 +986,34 @@ internal_main(int argc, char* argv[])
 	{
 		application.get_main_window().load_feature_collections(
 				gui_command_line_options->feature_collection_filenames);
+	}
+	else
+	{
+		// Nothing was specified on the command-line, so re-open the most recently used project
+		// if the user has asked us to.
+		GPlatesPresentation::SessionManagement &session_management =
+				application.get_view_state().get_session_management();
+
+		if (session_management.is_auto_load_last_project_enabled())
+		{
+			const boost::optional<QString> last_project_filename =
+					session_management.get_last_project_filename();
+			if (last_project_filename)
+			{
+				if (QFileInfo(last_project_filename.get()).isFile())
+				{
+					application.get_main_window().load_project(last_project_filename.get());
+				}
+				else
+				{
+					// The project has been moved or deleted since it was last used. Start up with an
+					// empty session rather than an error dialog, but say why in the status bar.
+					application.get_main_window().status_message(
+							QObject::tr("Could not re-open the last project '%1' - it has been moved or deleted.")
+									.arg(last_project_filename.get()));
+				}
+			}
+		}
 	}
 
 	// Install an extra menu for developers to help debug GUI problems.

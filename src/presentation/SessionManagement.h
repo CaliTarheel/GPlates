@@ -342,6 +342,26 @@ namespace GPlatesPresentation
 		QList<InternalSessionInfo>
 		get_recent_session_list();
 
+
+		/**
+		 * Returns the filename of the project file most recently opened or saved, or none if
+		 * no project has been opened or saved on this machine.
+		 *
+		 * This is recorded whenever a project is loaded or saved, and is not cleared when the
+		 * current session stops being a project (eg, via @a clear_session). The file is not
+		 * checked for existence - it may since have been moved or deleted.
+		 */
+		boost::optional<QString>
+		get_last_project_filename() const;
+
+
+		/**
+		 * Returns true if the user has asked for the most recently used project to be re-opened
+		 * when GPlates starts (see @a get_last_project_filename).
+		 */
+		bool
+		is_auto_load_last_project_enabled() const;
+
 	public Q_SLOTS:
 
 		/**
