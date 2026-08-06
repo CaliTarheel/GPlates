@@ -1,7 +1,7 @@
 # Design: Weld Vertices tool
 
 **Status:** design only — no implementation in this PR.
-**Target release:** 2.6.0-dev*-SR2
+**Target release:** 2.6.0-dev*-SR1a
 **Depends on:** [CaliTarheel/GPlates#5](https://github.com/CaliTarheel/GPlates/pull/5) (multi-vertex
 editing: grouped undo commands, spherical lasso, selected-point rendering)
 
