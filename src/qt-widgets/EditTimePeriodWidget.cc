@@ -30,6 +30,7 @@
 #include "property-values/GmlTimePeriod.h"
 #include "property-values/GmlTimeInstant.h"
 #include "model/ModelUtils.h"
+#include "presentation/Application.h"
 #include "UninitialisedEditWidgetException.h"
 
 
@@ -120,6 +121,11 @@ GPlatesQtWidgets::EditTimePeriodWidget::EditTimePeriodWidget(
 	QObject::connect(spinbox_time_of_disappearance, SIGNAL(valueChanged(double)),
 			this, SLOT(set_dirty()));
 	
+	QObject::connect(button_begin_time_now, SIGNAL(clicked()),
+			this, SLOT(handle_set_begin_time_to_current_time()));
+	QObject::connect(button_end_time_now, SIGNAL(clicked()),
+			this, SLOT(handle_set_end_time_to_current_time()));
+
 	QObject::connect(button_help, SIGNAL(clicked()),
 			d_help_dialog, SLOT(show()));
 	
@@ -253,6 +259,43 @@ GPlatesQtWidgets::EditTimePeriodWidget::update_property_value_from_widget()
 	}
 }
 
+
+
+void
+GPlatesQtWidgets::EditTimePeriodWidget::handle_set_begin_time_to_current_time()
+{
+	// A time of appearance in the distant past or future has no numeric value, so clear those
+	// before filling one in - otherwise the spinbox would show a time the feature doesn't use.
+	checkbox_appearance_is_distant_past->setChecked(false);
+	checkbox_appearance_is_distant_future->setChecked(false);
+	enable_or_disable_spinbox(spinbox_time_of_appearance,
+			checkbox_appearance_is_distant_past,
+			checkbox_appearance_is_distant_future);
+
+	// Setting the value emits valueChanged() which sets us dirty, but only if the value actually
+	// changes - so set dirty explicitly to also cover clearing the checkboxes above.
+	set_dirty();
+	spinbox_time_of_appearance->setValue(GPlatesPresentation::current_time());
+
+	Q_EMIT commit_me();
+}
+
+
+void
+GPlatesQtWidgets::EditTimePeriodWidget::handle_set_end_time_to_current_time()
+{
+	// As above - an end time in the distant past or future has no numeric value.
+	checkbox_disappearance_is_distant_past->setChecked(false);
+	checkbox_disappearance_is_distant_future->setChecked(false);
+	enable_or_disable_spinbox(spinbox_time_of_disappearance,
+			checkbox_disappearance_is_distant_past,
+			checkbox_disappearance_is_distant_future);
+
+	set_dirty();
+	spinbox_time_of_disappearance->setValue(GPlatesPresentation::current_time());
+
+	Q_EMIT commit_me();
+}
 
 
 void

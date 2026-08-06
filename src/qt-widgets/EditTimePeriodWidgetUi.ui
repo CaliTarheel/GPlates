@@ -57,6 +57,28 @@
        </property>
       </widget>
      </item>
+     <item>
+      <widget class="QToolButton" name="button_begin_time_now" >
+       <property name="sizePolicy" >
+        <sizepolicy vsizetype="Fixed" hsizetype="Fixed" >
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="maximumSize" >
+        <size>
+         <width>22</width>
+         <height>22</height>
+        </size>
+       </property>
+       <property name="toolTip" >
+        <string>Set to the current reconstruction time</string>
+       </property>
+       <property name="text" >
+        <string>◆</string>
+       </property>
+      </widget>
+     </item>
     </layout>
    </item>
    <item row="0" column="2" >
@@ -142,6 +164,28 @@
        </property>
        <property name="text" >
         <string> Ma</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QToolButton" name="button_end_time_now" >
+       <property name="sizePolicy" >
+        <sizepolicy vsizetype="Fixed" hsizetype="Fixed" >
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="maximumSize" >
+        <size>
+         <width>22</width>
+         <height>22</height>
+        </size>
+       </property>
+       <property name="toolTip" >
+        <string>Set to the current reconstruction time</string>
+       </property>
+       <property name="text" >
+        <string>◆</string>
        </property>
       </widget>
      </item>

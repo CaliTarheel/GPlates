@@ -141,6 +141,18 @@ namespace GPlatesQtWidgets
 		void
 		handle_disappearance_is_distant_future_check();
 
+		/**
+		 * Set the begin (appearance) time to the reconstruction time currently being viewed.
+		 */
+		void
+		handle_set_begin_time_to_current_time();
+
+		/**
+		 * Set the end (disappearance) time to the reconstruction time currently being viewed.
+		 */
+		void
+		handle_set_end_time_to_current_time();
+
 	private:
 		
 		/**
