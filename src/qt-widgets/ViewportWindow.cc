@@ -37,8 +37,10 @@
 #include <boost/foreach.hpp>
 #include <boost/bind/bind.hpp>
 
+#include <QAction>
 #include <QActionGroup>
 #include <QColor>
+#include <QList>
 #include <QCoreApplication>
 #include <QCursor>
 #include <QDesktopServices>
@@ -432,10 +434,12 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	d_select_last_created_feature_action = new QAction(tr("Select Last Created Feature"), this);
 	d_select_last_created_feature_action->setObjectName("action_Select_Last_Created_Feature");
 	d_select_last_created_feature_action->setStatusTip(
-			tr("Focus the most recently created feature, including outside its valid time"));
+			tr("Focus the most recently created feature, including outside its valid time."
+				" Available once a feature has been created."));
 	d_select_last_created_feature_action->setEnabled(false);
-	menu_Features->addSeparator();
-	menu_Features->addAction(d_select_last_created_feature_action);
+	// Note: this action is added to the Edit menu in 'connect_edit_menu_actions()' rather than
+	// here, because it is positioned relative to the Redo action, which does not exist until
+	// then (it is created from the QUndoGroup at runtime).
 	QObject::connect(
 			d_select_last_created_feature_action,
 			SIGNAL(triggered()),
@@ -826,6 +830,28 @@ GPlatesQtWidgets::ViewportWindow::connect_edit_menu_actions()
 			SLOT(update_redo_action_tooltip()));
 	add_shortcut_to_tooltip(d_undo_action_ptr);
 	add_shortcut_to_tooltip(d_redo_action_ptr);
+
+	// Place "Select Last Created Feature" directly below Redo.
+	//
+	// Getting back to the feature you just made belongs with the undo/redo navigation actions,
+	// which is where a user looks for it. It is not in the Designer file for the same reason Undo
+	// and Redo are not: Redo is created from the QUndoGroup at runtime, so we have to find where
+	// it ended up and insert after it.
+	const QList<QAction *> edit_menu_actions = menu_Edit->actions();
+	const int redo_action_index = edit_menu_actions.indexOf(d_redo_action_ptr);
+	if (redo_action_index >= 0 &&
+		redo_action_index + 1 < edit_menu_actions.size())
+	{
+		menu_Edit->insertAction(
+				edit_menu_actions.at(redo_action_index + 1),
+				d_select_last_created_feature_action);
+	}
+	else
+	{
+		// Redo isn't where we expect it - better to have the action at the end of the Edit menu
+		// than to silently lose it.
+		menu_Edit->addAction(d_select_last_created_feature_action);
+	}
 	// ----
 	QObject::connect(action_Query_Feature, SIGNAL(triggered()),
 			&dialogs().feature_properties_dialog(), SLOT(choose_query_widget_and_open()));
