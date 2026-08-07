@@ -601,7 +601,10 @@
     <string>Mo&amp;ve Vertex</string>
    </property>
    <property name="toolTip">
-    <string>Move Vertex  V</string>
+    <string>&lt;b&gt;Move Vertex&lt;/b&gt; &amp;nbsp; V&lt;br/&gt;&lt;br/&gt;Drag a vertex to move it.&lt;br/&gt;&lt;b&gt;Shift+click&lt;/b&gt; a vertex to add it to the selection.&lt;br/&gt;&lt;b&gt;Shift+drag&lt;/b&gt; a lasso to select several at once.&lt;br/&gt;Then drag any selected vertex to move them all together.</string>
+   </property>
+   <property name="statusTip">
+    <string>Drag a vertex to move it. Shift+click to add vertices to a selection, or Shift+drag a lasso around several, then drag any one of them to move the whole selection together.</string>
    </property>
    <property name="shortcut">
     <string>V</string>

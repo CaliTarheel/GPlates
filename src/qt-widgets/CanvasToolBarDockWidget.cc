@@ -556,6 +556,9 @@ GPlatesQtWidgets::CanvasToolBarDockWidget::add_tool_action_to_workflow(
 	tool_action->setCheckable(original_tool_action->isCheckable());
 	tool_action->setFont(original_tool_action->font());
 	tool_action->setToolTip(original_tool_action->toolTip());
+	// Carry the status tip across too, so a tool's one-line explanation reaches the status bar
+	// when hovering the toolbar button, not only the menu entry it was copied from.
+	tool_action->setStatusTip(original_tool_action->statusTip());
 
 	// Set the shortcut to be active when any applications windows are active. This is necessary
 	// because canvas tools are in a dock widget which can be separated from the main window.
