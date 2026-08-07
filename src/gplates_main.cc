@@ -1027,21 +1027,46 @@ internal_main(int argc, char* argv[])
 
 		if (session_management.is_auto_load_last_project_enabled())
 		{
-			const boost::optional<QString> last_project_filename =
-					session_management.get_last_project_filename();
-			if (last_project_filename)
+			if (session_management.is_auto_load_attempt_pending())
 			{
-				if (QFileInfo(last_project_filename.get()).isFile())
+				// The previous attempt started and never finished, so GPlates did not shut down
+				// normally while opening this project.
+				//
+				// Left alone, that repeats forever: the failure happens during startup, so the
+				// user never reaches Preferences to switch this off, and every launch dies the
+				// same way. Turn it off ourselves and say so - a preference that can lock the
+				// user out of the application is worse than one that occasionally gives up.
+				session_management.set_auto_load_attempt_pending(false);
+				session_management.set_auto_load_last_project_enabled(false);
+
+				application.get_main_window().status_message(
+						QObject::tr("Automatically re-opening the last project has been turned off,"
+							" because the previous attempt did not finish. You can turn it back on"
+							" in Preferences, under Files/Sessions/Projects."));
+			}
+			else
+			{
+				const boost::optional<QString> last_project_filename =
+						session_management.get_last_project_filename();
+				if (last_project_filename)
 				{
-					application.get_main_window().load_project(last_project_filename.get());
-				}
-				else
-				{
-					// The project has been moved or deleted since it was last used. Start up with an
-					// empty session rather than an error dialog, but say why in the status bar.
-					application.get_main_window().status_message(
-							QObject::tr("Could not re-open the last project '%1' - it has been moved or deleted.")
-									.arg(last_project_filename.get()));
+					if (QFileInfo(last_project_filename.get()).isFile())
+					{
+						// Record the attempt before starting it, and clear it once the load
+						// returns. Whether the load succeeded does not matter here - what is
+						// being detected is not getting back at all.
+						session_management.set_auto_load_attempt_pending(true);
+						application.get_main_window().load_project(last_project_filename.get());
+						session_management.set_auto_load_attempt_pending(false);
+					}
+					else
+					{
+						// The project has been moved or deleted since it was last used. Start up with an
+						// empty session rather than an error dialog, but say why in the status bar.
+						application.get_main_window().status_message(
+								QObject::tr("Could not re-open the last project '%1' - it has been moved or deleted.")
+										.arg(last_project_filename.get()));
+					}
 				}
 			}
 		}
