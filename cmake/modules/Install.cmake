@@ -244,7 +244,7 @@ endif()
 # newer one from the repository, without needing a new build.
 #
 if (GPLATES_BUILD_GPLATES)
-    foreach (_preset_list "DN.txt" "WorldbuildingPasta.txt")
+    foreach (_preset_list "DN.txt" "WorldbuildingPasta.txt" "PROJECT-template.md")
         if (EXISTS "${PROJECT_SOURCE_DIR}/${_preset_list}")
             if (GPLATES_INSTALL_STANDALONE)
                 # For standalone we want to bundle everything together so it's relocatable.

@@ -12,6 +12,7 @@
 #define GPLATES_APP_LOGIC_PROJECTMETADATA_H
 
 #include <boost/optional.hpp>
+#include <QMap>
 #include <QString>
 
 
@@ -27,6 +28,30 @@ namespace GPlatesAppLogic
 		bool has_front_matter;
 		bool is_valid;
 		boost::optional<double> planet_radius_metres;
+
+		/**
+		 * Intended resolution in kilometres - the distance a user means to work at when
+		 * digitising, expressed as the longest segment they want a line to have.
+		 *
+		 * Optional. Absent means the project has not expressed an opinion, and consumers
+		 * should fall back to their own default rather than inventing a number here.
+		 */
+		boost::optional<double> default_resolution_km;
+
+		/**
+		 * Per-feature-type overrides of @a default_resolution_km, keyed by qualified feature
+		 * type ("gpml:MidOceanRidge").
+		 *
+		 * The document is written with bare names ("MidOceanRidge:") because a colon inside a
+		 * YAML key needs quoting, which is a trap for anyone hand-editing the file. The
+		 * "gpml:" prefix is added here so callers can look up by the qualified name they
+		 * already hold.
+		 *
+		 * A coastline wants finer detail than an ocean-floor isochron; this is how a project
+		 * says so once rather than the user remembering it every time.
+		 */
+		QMap<QString, double> resolution_km_by_feature_type;
+
 		QString diagnostic;
 	};
 
