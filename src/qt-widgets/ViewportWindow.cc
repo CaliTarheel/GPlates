@@ -158,6 +158,7 @@
 #include "view-operations/DeleteFeatureOperation.h"
 #include "view-operations/PlateDirectionArrowsOperation.h"
 #include "view-operations/PlateIdReassignmentOperation.h"
+#include "view-operations/CircularFeatureOperation.h"
 #include "view-operations/RenderedGeometryCollection.h"
 #include "view-operations/RenderedGeometryParameters.h"
 #include "view-operations/RotationFileEditorOperation.h"
@@ -492,6 +493,25 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	// Connect all the Signal/Slot relationships of ViewportWindow's
 	// toolbar buttons and menu items.
 	connect_menu_actions();
+
+	// Circular feature placement is constructed here rather than declared in the Designer file,
+	// because the operation owns runtime state. Anchored to Split Plate so it sits at the top of
+	// the World Building menu.
+	GPlatesViewOperations::CircularFeatureOperation *circular_feature_operation =
+			new GPlatesViewOperations::CircularFeatureOperation(
+					get_application_state(), *this);
+	circular_feature_operation->setParent(this);
+	QAction *place_circular_features_action = new QAction(
+			tr("Place Circular Features..."), this);
+	place_circular_features_action->setObjectName("action_Place_Circular_Features");
+	place_circular_features_action->setStatusTip(tr(
+			"Draw size-limited circular polyline or polygon features that persist to the present"));
+	menu_World_Building->insertAction(
+			action_Split_Plate,
+			place_circular_features_action);
+	QObject::connect(
+			place_circular_features_action, SIGNAL(triggered()),
+			circular_feature_operation, SLOT(trigger()));
 
 	// Duplicate the menu structure for the full-screen-mode GMenu.
 	populate_gmenu_from_menubar();

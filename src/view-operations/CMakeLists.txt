@@ -15,6 +15,8 @@ set(srcs
     ChangeLightDirectionOperation.h
     CloneOperation.cc
     CloneOperation.h
+    CircularFeatureOperation.cc
+    CircularFeatureOperation.h
     DeleteFeatureOperation.cc
     DeleteFeatureOperation.h
     DeleteVertexGeometryOperation.cc
