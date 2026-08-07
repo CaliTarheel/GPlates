@@ -272,16 +272,39 @@ GPlatesAppLogic::ProjectMetadataParser::parse(
 		}
 	}
 
-	if (!scalar_values.contains("gplates.planet.radius_m"))
-	{
-		return invalid_metadata(QObject::tr("The Primary Project Document does not define gplates.planet.radius_m."));
-	}
-
+	//
+	// Planet radius. Written in kilometres, to match every other distance a user deals with -
+	// resolution, and the distances GPlates reports.
+	//
+	// 'radius_m' is still accepted so that any document written before the change keeps working.
+	// If both are present, kilometres wins, since that is the documented form.
+	//
+	double radius_metres = 0;
 	bool radius_is_numeric = false;
-	const double radius_metres = scalar_values["gplates.planet.radius_m"].toDouble(&radius_is_numeric);
-	if (!radius_is_numeric || !std::isfinite(radius_metres) || radius_metres <= 0)
+
+	if (scalar_values.contains("gplates.planet.radius_km"))
 	{
-		return invalid_metadata(QObject::tr("gplates.planet.radius_m must be a finite positive number in metres."));
+		const double radius_km = scalar_values["gplates.planet.radius_km"].toDouble(&radius_is_numeric);
+		if (!radius_is_numeric || !std::isfinite(radius_km) || radius_km <= 0)
+		{
+			return invalid_metadata(
+					QObject::tr("gplates.planet.radius_km must be a finite positive number in kilometres."));
+		}
+		radius_metres = radius_km * 1000.0;
+	}
+	else if (scalar_values.contains("gplates.planet.radius_m"))
+	{
+		radius_metres = scalar_values["gplates.planet.radius_m"].toDouble(&radius_is_numeric);
+		if (!radius_is_numeric || !std::isfinite(radius_metres) || radius_metres <= 0)
+		{
+			return invalid_metadata(
+					QObject::tr("gplates.planet.radius_m must be a finite positive number in metres."));
+		}
+	}
+	else
+	{
+		return invalid_metadata(
+				QObject::tr("The Primary Project Document does not define gplates.planet.radius_km."));
 	}
 
 	//

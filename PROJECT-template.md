@@ -4,11 +4,13 @@ gplates:
 
   # The planet this project is built on. Required.
   #
-  # Earth is 6371000. A larger world means a degree of arc covers more ground, so this is what
-  # lets GPlates report real distances rather than angles that mean something different per
-  # project.
+  # In kilometres, like every other distance here. Earth is 6371. A larger world means a degree
+  # of arc covers more ground, so this is what lets GPlates report real distances rather than
+  # angles that quietly mean something different from one project to the next.
+  #
+  # 'radius_m' in metres is still accepted for documents written before this changed.
   planet:
-    radius_m: 6371000
+    radius_km: 6371
 
   # Intended resolution - the level of detail you mean to work at, expressed as the longest
   # segment you want a line to have, in kilometres.

@@ -95,6 +95,67 @@ GPlatesUnitTest::ProjectMetadataTest::test_front_matter_parsing()
 					"---\n");
 	BOOST_REQUIRE(floating_radius.planet_radius_metres);
 	BOOST_CHECK_CLOSE(floating_radius.planet_radius_metres.get(), 6900000.25, 1e-10);
+
+	// Kilometres is the documented form, and is converted to metres internally.
+	const GPlatesAppLogic::ProjectMetadata radius_in_km =
+			GPlatesAppLogic::ProjectMetadataParser::parse(
+					"---\n"
+					"gplates:\n"
+					"  schema_version: 1\n"
+					"  planet:\n"
+					"    radius_km: 6371\n"
+					"---\n");
+	BOOST_REQUIRE(radius_in_km.planet_radius_metres);
+	BOOST_CHECK_CLOSE(radius_in_km.planet_radius_metres.get(), 6371000.0, 1e-10);
+
+	// Kilometres wins when a document carries both, since that is the documented form.
+	const GPlatesAppLogic::ProjectMetadata radius_both =
+			GPlatesAppLogic::ProjectMetadataParser::parse(
+					"---\n"
+					"gplates:\n"
+					"  schema_version: 1\n"
+					"  planet:\n"
+					"    radius_km: 3390\n"
+					"    radius_m: 6371000\n"
+					"---\n");
+	BOOST_REQUIRE(radius_both.planet_radius_metres);
+	BOOST_CHECK_CLOSE(radius_both.planet_radius_metres.get(), 3390000.0, 1e-10);
+
+	// Intended resolution: a default, plus per-feature-type overrides that gain the "gpml:"
+	// prefix so callers can look them up by the qualified name they already hold.
+	const GPlatesAppLogic::ProjectMetadata resolution =
+			GPlatesAppLogic::ProjectMetadataParser::parse(
+					"---\n"
+					"gplates:\n"
+					"  schema_version: 1\n"
+					"  planet:\n"
+					"    radius_km: 6371\n"
+					"  resolution:\n"
+					"    default_km: 500\n"
+					"    by_feature_type:\n"
+					"      MidOceanRidge: 250\n"
+					"      Coastline: 100.5\n"
+					"---\n");
+	BOOST_CHECK(resolution.is_valid);
+	BOOST_REQUIRE(resolution.default_resolution_km);
+	BOOST_CHECK_CLOSE(resolution.default_resolution_km.get(), 500.0, 1e-10);
+	BOOST_CHECK_EQUAL(resolution.resolution_km_by_feature_type.size(), 2);
+	BOOST_REQUIRE(resolution.resolution_km_by_feature_type.contains("gpml:MidOceanRidge"));
+	BOOST_CHECK_CLOSE(resolution.resolution_km_by_feature_type.value("gpml:MidOceanRidge"), 250.0, 1e-10);
+	BOOST_CHECK_CLOSE(resolution.resolution_km_by_feature_type.value("gpml:Coastline"), 100.5, 1e-10);
+
+	// Saying nothing about resolution is valid, and is not the same as saying zero.
+	const GPlatesAppLogic::ProjectMetadata no_resolution =
+			GPlatesAppLogic::ProjectMetadataParser::parse(
+					"---\n"
+					"gplates:\n"
+					"  schema_version: 1\n"
+					"  planet:\n"
+					"    radius_km: 6371\n"
+					"---\n");
+	BOOST_CHECK(no_resolution.is_valid);
+	BOOST_CHECK(!no_resolution.default_resolution_km);
+	BOOST_CHECK(no_resolution.resolution_km_by_feature_type.isEmpty());
 }
 
 
