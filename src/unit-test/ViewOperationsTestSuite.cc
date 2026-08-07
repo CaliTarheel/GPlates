@@ -28,7 +28,6 @@
 
 #include "unit-test/ViewOperationsTestSuite.h"
 #include "unit-test/TestSuiteFilter.h"
-#include "unit-test/NaturalizeCoastlineTest.h"
 
 GPlatesUnitTest::ViewOperationsTestSuite::ViewOperationsTestSuite(
 		unsigned level) : 
@@ -41,7 +40,7 @@ GPlatesUnitTest::ViewOperationsTestSuite::ViewOperationsTestSuite(
 void 
 GPlatesUnitTest::ViewOperationsTestSuite::construct_maps()
 {
-	ADD_TESTSUITE(NaturalizeCoastline);
+	//ADD YOUR TEST SUITE HERE
 }
 
 

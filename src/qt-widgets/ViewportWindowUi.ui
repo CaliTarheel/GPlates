@@ -193,7 +193,6 @@
     <property name="title">
      <string>&amp;World Building</string>
     </property>
-    <addaction name="action_Naturalize_Coastline"/>
     <addaction name="action_Split_Plate"/>
     <addaction name="action_Subduction_Cutter"/>
     <addaction name="separator"/>
@@ -261,17 +260,6 @@
    <addaction name="menu_Help"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
-  <action name="action_Naturalize_Coastline">
-   <property name="text">
-    <string>&amp;Naturalize Coastline...</string>
-   </property>
-   <property name="toolTip">
-    <string>Add a controlled, spherical swiggle to long coastline sections</string>
-   </property>
-   <property name="statusTip">
-    <string>Preview and swiggle a selected polygon or polyline while preserving shared boundaries.</string>
-   </property>
-  </action>
   <action name="action_Split_Plate">
    <property name="text">
     <string>&amp;Split Plate</string>

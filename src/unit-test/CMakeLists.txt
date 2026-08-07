@@ -52,8 +52,6 @@ set(srcs
     ModelTestSuite.h
     MultiThreadTest.cc
     MultiThreadTest.h
-    NaturalizeCoastlineTest.cc
-    NaturalizeCoastlineTest.h
     PresentationTestSuite.cc
     PresentationTestSuite.h
     ProjectMetadataTest.cc

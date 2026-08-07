@@ -37,10 +37,6 @@ set(srcs
     MovePoleOperation.h
     MoveVertexGeometryOperation.cc
     MoveVertexGeometryOperation.h
-    NaturalizeCoastlineGeometry.cc
-    NaturalizeCoastlineGeometry.h
-    NaturalizeCoastlineOperation.cc
-    NaturalizeCoastlineOperation.h
     PlateIdReassignmentOperation.cc
     PlateIdReassignmentOperation.h
     PlateDirectionArrowsOperation.cc

@@ -443,70 +443,11 @@ GPlatesPresentation::SessionManagement::set_project(
 		current_project_filename = d_project->get_project_filename();
 	}
 
-	// Remember this as the most recently used project so it can be re-opened on the next startup.
-	//
-	// Note that we only record a project, and never clear the recorded one. Loading a plain
-	// session or clearing the session unsets the current project, but it shouldn't make GPlates
-	// forget the last project the user actually worked on.
-	if (current_project_filename)
-	{
-		d_app_state_ptr->get_user_preferences().set_value(
-				"session/last_project",
-				current_project_filename.get());
-	}
-
 	// Emit signal if project filename changed.
 	if (current_project_filename != previous_project_filename)
 	{
 		Q_EMIT changed_project_filename(current_project_filename);
 	}
-}
-
-
-boost::optional<QString>
-GPlatesPresentation::SessionManagement::get_last_project_filename() const
-{
-	const QString last_project_filename =
-			d_app_state_ptr->get_user_preferences().get_value("session/last_project").toString();
-	if (last_project_filename.isEmpty())
-	{
-		return boost::none;
-	}
-
-	return last_project_filename;
-}
-
-
-bool
-GPlatesPresentation::SessionManagement::is_auto_load_last_project_enabled() const
-{
-	return d_app_state_ptr->get_user_preferences().get_value("session/auto_load_last_project").toBool();
-}
-
-
-void
-GPlatesPresentation::SessionManagement::set_auto_load_last_project_enabled(
-		bool enabled)
-{
-	d_app_state_ptr->get_user_preferences().set_value("session/auto_load_last_project", enabled);
-}
-
-
-bool
-GPlatesPresentation::SessionManagement::is_auto_load_attempt_pending() const
-{
-	return d_app_state_ptr->get_user_preferences().get_value("session/auto_load_attempt_pending").toBool();
-}
-
-
-void
-GPlatesPresentation::SessionManagement::set_auto_load_attempt_pending(
-		bool pending)
-{
-	// UserPreferences::set_value() writes through a QSettings whose destructor calls sync(), so
-	// this reaches persistent storage before we return. That matters here: the flag exists to
-	// survive a process that dies without unwinding, so it is worthless if it is still buffered.
-	d_app_state_ptr->get_user_preferences().set_value("session/auto_load_attempt_pending", pending);
 }
 
 

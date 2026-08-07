@@ -156,7 +156,6 @@
 
 #include "view-operations/CloneOperation.h"
 #include "view-operations/DeleteFeatureOperation.h"
-#include "view-operations/NaturalizeCoastlineOperation.h"
 #include "view-operations/PlateDirectionArrowsOperation.h"
 #include "view-operations/PlateIdReassignmentOperation.h"
 #include "view-operations/RenderedGeometryCollection.h"
@@ -230,11 +229,6 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			new GPlatesViewOperations::SplitPlateOperation(
 				get_view_state().get_feature_focus(),
 				get_application_state())),
-	d_naturalize_coastline_operation_ptr(
-			new GPlatesViewOperations::NaturalizeCoastlineOperation(
-				get_view_state().get_feature_focus(),
-				get_application_state(),
-				get_view_state().get_rendered_geometry_collection())),
 	d_subduction_cutter_operation_ptr(
 			new GPlatesViewOperations::SubductionCutterOperation(
 				get_application_state(),
@@ -1228,11 +1222,6 @@ GPlatesQtWidgets::ViewportWindow::connect_world_building_menu_actions()
 			SIGNAL(triggered()),
 			this,
 			SLOT(handle_split_plate()));
-	QObject::connect(
-			action_Naturalize_Coastline,
-			SIGNAL(triggered()),
-			this,
-			SLOT(handle_naturalize_coastline()));
 	QObject::connect(
 			action_Subduction_Cutter,
 			SIGNAL(triggered()),
@@ -2421,24 +2410,6 @@ GPlatesQtWidgets::ViewportWindow::handle_split_plate()
 				tr("Split Plate"),
 				result.message);
 		break;
-	}
-}
-
-
-void
-GPlatesQtWidgets::ViewportWindow::handle_naturalize_coastline()
-{
-	const GPlatesViewOperations::NaturalizeCoastlineOperation::Result result =
-			d_naturalize_coastline_operation_ptr->trigger(this);
-	status_message(result.message);
-
-	if (result.outcome == GPlatesViewOperations::NaturalizeCoastlineOperation::OPERATION_ERROR)
-	{
-		QMessageBox::warning(this, tr("Naturalize Coastline"), result.message);
-	}
-	else if (result.outcome == GPlatesViewOperations::NaturalizeCoastlineOperation::NATURALIZE_COMPLETED)
-	{
-		QMessageBox::information(this, tr("Naturalize Coastline Complete"), result.message);
 	}
 }
 

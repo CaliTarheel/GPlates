@@ -560,16 +560,6 @@
         </property>
        </widget>
       </item>
-      <item>
-       <widget class="QCheckBox" name="checkbox_auto_load_last_project">
-        <property name="toolTip">
-         <string>A project file specified on the command-line takes precedence over this.</string>
-        </property>
-        <property name="text">
-         <string>Automatically re-open the last &amp;project when GPlates starts</string>
-        </property>
-       </widget>
-      </item>
      </layout>
     </widget>
    </item>
