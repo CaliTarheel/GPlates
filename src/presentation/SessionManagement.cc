@@ -484,6 +484,32 @@ GPlatesPresentation::SessionManagement::is_auto_load_last_project_enabled() cons
 }
 
 
+void
+GPlatesPresentation::SessionManagement::set_auto_load_last_project_enabled(
+		bool enabled)
+{
+	d_app_state_ptr->get_user_preferences().set_value("session/auto_load_last_project", enabled);
+}
+
+
+bool
+GPlatesPresentation::SessionManagement::is_auto_load_attempt_pending() const
+{
+	return d_app_state_ptr->get_user_preferences().get_value("session/auto_load_attempt_pending").toBool();
+}
+
+
+void
+GPlatesPresentation::SessionManagement::set_auto_load_attempt_pending(
+		bool pending)
+{
+	// UserPreferences::set_value() writes through a QSettings whose destructor calls sync(), so
+	// this reaches persistent storage before we return. That matters here: the flag exists to
+	// survive a process that dies without unwinding, so it is worthless if it is still buffered.
+	d_app_state_ptr->get_user_preferences().set_value("session/auto_load_attempt_pending", pending);
+}
+
+
 GPlatesPresentation::SessionManagement::ProjectInfo
 GPlatesPresentation::SessionManagement::get_project_info(
 		const QString &project_filename)
