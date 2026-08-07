@@ -38,6 +38,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QLoggingCategory>
 #include <QStringList>
 #include <QSurfaceFormat>
 #include <QTextStream>
@@ -911,6 +912,15 @@ internal_main(int argc, char* argv[])
 	// we can control when it gets destroyed (which is just after Application object gets destroyed and
 	// hence we capture any messages output during its destruction phase).
 	GPlatesAppLogic::GPlatesQtMsgHandler qt_message_handler;
+
+	// Our message handler routes *all* Qt output to the log window and log file, including Qt's
+	// own internal logging categories. One of those is noise we can neither fix nor act on:
+	// "qt.text.font.db: OpenType support missing for <family>, script <n>", emitted when Qt probes
+	// an installed font that advertises a complex script but carries no OpenType tables. Qt falls
+	// back to another font and carries on, but the warning reaches the user's log looking like a
+	// GPlates fault - and it repeats for every font Qt probes. Silence that one category only;
+	// every other Qt message still comes through.
+	QLoggingCategory::setFilterRules(QString("qt.text.font.db.warning=false"));
 	//
 	// Add the default log file to the Qt message handler.
 	//

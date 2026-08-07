@@ -23,6 +23,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#include <exception>
 #include <iostream>
 #include <boost/bind/bind.hpp>
 #include <boost/foreach.hpp>
@@ -1594,8 +1595,55 @@ GPlatesGui::FileIOFeedback::try_catch_file_or_session_load_with_feedback(
 		QMessageBox::critical(parent_widget, tr("Error Opening File"), message,
 				QMessageBox::Ok, QMessageBox::Ok);
 
-		// Rethrow the exception - we're not able to recover from general exceptions.
-		throw;
+		// Note: we deliberately do not rethrow here.
+		//
+		// This function is called from menu slots, so an exception leaving it unwinds into the Qt
+		// event loop, which terminates the process. That turns "this one project won't open" into
+		// "GPlates vanished with a Windows crash dialog", losing both the error message and any
+		// other work the user had open. The message above already says the file is being ignored,
+		// so ignore it.
+		qWarning() << message; // Also log the detailed error message.
+	}
+	catch (std::exception &exc)
+	{
+		// Nothing above catches std:: or Boost exceptions, and an uncaught one aborts the process
+		// via std::terminate. Report what() rather than dying, since it is usually the only
+		// description of the failure we get.
+		QString message;
+		QTextStream message_stream(&message);
+		if (filename)
+		{
+			message_stream << tr("Error: GPlates was unable to load '%1' - ignoring file: \n")
+						.arg(filename.get());
+		}
+		else
+		{
+			message_stream << tr("Error: GPlates was unable to load the file - ignoring file: \n");
+		}
+		message_stream << QString::fromLatin1(exc.what());
+
+		QMessageBox::critical(parent_widget, tr("Error Opening File"), message,
+				QMessageBox::Ok, QMessageBox::Ok);
+		qWarning() << message; // Also log the detailed error message.
+	}
+	catch (...)
+	{
+		QString message;
+		QTextStream message_stream(&message);
+		if (filename)
+		{
+			message_stream << tr("Error: GPlates was unable to load '%1' due to an unrecognised "
+					"error - ignoring file.").arg(filename.get());
+		}
+		else
+		{
+			message_stream << tr("Error: GPlates was unable to load the file due to an unrecognised "
+					"error - ignoring file.");
+		}
+
+		QMessageBox::critical(parent_widget, tr("Error Opening File"), message,
+				QMessageBox::Ok, QMessageBox::Ok);
+		qWarning() << message; // Also log the detailed error message.
 	}
 
 	// Failed - we got here because we caught an exception.
