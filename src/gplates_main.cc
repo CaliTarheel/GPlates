@@ -28,6 +28,8 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <exception>
+#include <typeinfo>
 #include <iostream>
 #include <string>
 #include <utility>
@@ -54,6 +56,7 @@
 
 #include "file-io/StandaloneBundle.h"
 
+#include "global/GPlatesException.h"
 #include "global/NotYetImplementedException.h"
 #include "global/python.h"
 #include "global/Version.h"
@@ -924,6 +927,50 @@ internal_main(int argc, char* argv[])
 	// GPlates fault - and it repeats for every font Qt probes. Silence that one category only;
 	// every other Qt message still comes through.
 	QLoggingCategory::setFilterRules(QString("qt.text.font.db.warning=false"));
+
+	// Name the exception before we die.
+	//
+	// Some failures reach std::terminate without ever passing a catch block: an exception thrown
+	// from a destructor, one thrown while the stack is already unwinding, or one escaping a
+	// noexcept function. In those cases terminate is called immediately, without unwinding and
+	// without looking for a handler, so even a catch(...) around the operation never runs. On
+	// Windows this surfaces as a bare "gplates.exe has stopped working" with exception code
+	// 0xC0000409 and nothing whatsoever in the log - which is a very expensive way to learn
+	// nothing.
+	//
+	// A terminate handler runs at exactly that moment and can still recover the in-flight
+	// exception, so log what it is first. Every message handler flushes on write (Qt::endl), so
+	// this reaches the log file before we abort.
+	std::set_terminate(
+			[]()
+			{
+				try
+				{
+					if (const std::exception_ptr current = std::current_exception())
+					{
+						std::rethrow_exception(current);
+					}
+					qWarning() << "GPlates is terminating, with no active exception.";
+				}
+				catch (const GPlatesGlobal::Exception &exc)
+				{
+					QString message;
+					QTextStream(&message) << "GPlates is terminating on an uncaught GPlates "
+							"exception: " << exc;
+					qWarning() << message;
+				}
+				catch (const std::exception &exc)
+				{
+					qWarning() << "GPlates is terminating on an uncaught"
+							<< typeid(exc).name() << ":" << exc.what();
+				}
+				catch (...)
+				{
+					qWarning() << "GPlates is terminating on an uncaught exception of unknown type.";
+				}
+
+				std::abort();
+			});
 	//
 	// Add the default log file to the Qt message handler.
 	//
