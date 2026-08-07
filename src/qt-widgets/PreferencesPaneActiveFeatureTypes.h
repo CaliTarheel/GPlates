@@ -66,9 +66,6 @@ namespace GPlatesQtWidgets
 		void
 		show_loaded_project_feature_types();
 
-		void
-		show_artifexia_feature_types();
-
 		/**
 		 * Write the currently checked feature types to a file chosen by the user.
 		 */

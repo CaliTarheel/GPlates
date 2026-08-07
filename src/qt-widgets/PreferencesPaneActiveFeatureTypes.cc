@@ -85,12 +85,8 @@ GPlatesQtWidgets::PreferencesPaneActiveFeatureTypes::PreferencesPaneActiveFeatur
 	QPushButton *loaded_project_button = new QPushButton(tr("Loaded Project Types"), this);
 	loaded_project_button->setToolTip(
 			tr("Show only feature types currently present in loaded feature collections."));
-	QPushButton *artifexia_button = new QPushButton(tr("Artifexia"), this);
-	artifexia_button->setToolTip(
-			tr("Show the feature types used by the Artifexia worldbuilding project."));
 	presets_layout->addWidget(presets_label);
 	presets_layout->addWidget(loaded_project_button);
-	presets_layout->addWidget(artifexia_button);
 	presets_layout->addStretch();
 	main_layout->addLayout(presets_layout);
 
@@ -131,11 +127,6 @@ GPlatesQtWidgets::PreferencesPaneActiveFeatureTypes::PreferencesPaneActiveFeatur
 			SIGNAL(clicked()),
 			this,
 			SLOT(show_loaded_project_feature_types()));
-	QObject::connect(
-			artifexia_button,
-			SIGNAL(clicked()),
-			this,
-			SLOT(show_artifexia_feature_types()));
 	QObject::connect(save_list_button, SIGNAL(clicked()), this, SLOT(save_feature_type_list()));
 	QObject::connect(load_list_button, SIGNAL(clicked()), this, SLOT(load_feature_type_list()));
 }
@@ -404,13 +395,6 @@ GPlatesQtWidgets::PreferencesPaneActiveFeatureTypes::show_loaded_project_feature
 	}
 
 	set_checked_feature_types(loaded_feature_types.values());
-}
-
-
-void
-GPlatesQtWidgets::PreferencesPaneActiveFeatureTypes::show_artifexia_feature_types()
-{
-	set_checked_feature_types(FeatureTypeDisplayPreferences::artifexia_feature_types());
 }
 
 
