@@ -32,39 +32,6 @@ namespace GPlatesQtWidgets
 			return QString("feature_type_display/hidden_feature_types");
 		}
 
-
-		/**
-		 * Feature types used by the Artifexia worldbuilding project.
-		 *
-		 * These names were inventoried from the feature collections loaded by
-		 * Artifexia's arty.gproj. Flowline is included even though its collection
-		 * was empty when the project was saved, matching the project's documented
-		 * create-then-delete flowline workflow.
-		 */
-		inline
-		QStringList
-		artifexia_feature_types()
-		{
-			return QStringList()
-					<< "gpml:ClosedPlateBoundary"
-					<< "gpml:ContinentalCrust"
-					<< "gpml:ContinentalRift"
-					<< "gpml:Craton"
-					<< "gpml:Flowline"
-					<< "gpml:HotSpot"
-					<< "gpml:IslandArc"
-					<< "gpml:LargeIgneousProvince"
-					<< "gpml:MidOceanRidge"
-					<< "gpml:MotionPath"
-					<< "gpml:OceanicCrust"
-					<< "gpml:OrogenicBelt"
-					<< "gpml:Raster"
-					<< "gpml:SubductionZone"
-					<< "gpml:TerraneBoundary"
-					<< "gpml:TopologicalClosedPlateBoundary"
-					<< "gpml:Transform"
-					<< "gpml:UnclassifiedFeature";
-		}
 	}
 }
 
