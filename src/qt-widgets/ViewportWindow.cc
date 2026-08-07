@@ -192,6 +192,7 @@
 #include "view-operations/PlateIdReassignmentOperation.h"
 #include "view-operations/PostCollisionRiftOperation.h"
 #include "view-operations/ProposeInitialRiftsOperation.h"
+#include "view-operations/CircularFeatureOperation.h"
 #include "view-operations/CraterGeneratorOperation.h"
 #include "view-operations/FlowlineManagerOperation.h"
 #include "view-operations/RenderedGeometryCollection.h"
@@ -2002,6 +2003,21 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	QObject::connect(
 			generate_craters_action, SIGNAL(triggered()),
 			crater_generator_operation, SLOT(trigger()));
+	GPlatesViewOperations::CircularFeatureOperation *circular_feature_operation =
+			new GPlatesViewOperations::CircularFeatureOperation(
+					get_application_state(), *this);
+	circular_feature_operation->setParent(this);
+	QAction *place_circular_features_action = new QAction(
+			tr("Place Circular Features..."), this);
+	place_circular_features_action->setObjectName("action_Place_Circular_Features");
+	place_circular_features_action->setStatusTip(tr(
+			"Draw size-limited circular polyline or polygon features that persist to the present"));
+	menu_World_Building->insertAction(
+			action_Naturalize_Coastline,
+			place_circular_features_action);
+	QObject::connect(
+			place_circular_features_action, SIGNAL(triggered()),
+			circular_feature_operation, SLOT(trigger()));
 
 	// Duplicate the menu structure for the full-screen-mode GMenu.
 	populate_gmenu_from_menubar();

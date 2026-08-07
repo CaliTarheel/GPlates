@@ -41,6 +41,8 @@ set(srcs
     CratonPlateIdLabels.h
     CraterGeneratorOperation.cc
     CraterGeneratorOperation.h
+    CircularFeatureOperation.cc
+    CircularFeatureOperation.h
     DeleteFeatureOperation.cc
     DeleteFeatureOperation.h
     DeleteVertexGeometryOperation.cc
