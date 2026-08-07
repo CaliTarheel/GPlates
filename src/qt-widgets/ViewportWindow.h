@@ -530,8 +530,6 @@ namespace GPlatesQtWidgets
 		handle_split_plate();
 
 		void
-
-		void
 		handle_subduction_cutter();
 
 		void
