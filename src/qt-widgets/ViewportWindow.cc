@@ -2012,9 +2012,12 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	place_circular_features_action->setObjectName("action_Place_Circular_Features");
 	place_circular_features_action->setStatusTip(tr(
 			"Draw size-limited circular polyline or polygon features that persist to the present"));
-	menu_World_Building->insertAction(
-			action_Naturalize_Coastline,
-			place_circular_features_action);
+	// Appended rather than inserted before a named sibling. Anchoring to another action ties this
+	// feature's placement to that action still existing - and if it is removed, insertAction() is
+	// given a null QAction, which Qt treats as "append" only by accident rather than by contract.
+	// The World Building menu is assembled from several independent changes, so nothing here should
+	// assume which of them are present.
+	menu_World_Building->addAction(place_circular_features_action);
 	QObject::connect(
 			place_circular_features_action, SIGNAL(triggered()),
 			circular_feature_operation, SLOT(trigger()));
