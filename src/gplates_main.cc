@@ -29,7 +29,6 @@
 #include <algorithm>
 #include <cstdlib>
 #include <exception>
-#include <typeinfo>
 #include <iostream>
 #include <string>
 #include <utility>
@@ -942,50 +941,6 @@ internal_main(int argc, char* argv[])
 	// left alone - which is the intent, since a user who sets their own rules meant to.
 	QLoggingCategory::setFilterRules(QString("qt.text.font.db=false"));
 
-	// Name the exception before we die.
-	//
-	// Some failures reach std::terminate without ever passing a catch block: an exception thrown
-	// from a destructor, one thrown while the stack is already unwinding, or one escaping a
-	// noexcept function. In those cases terminate is called immediately, without unwinding and
-	// without looking for a handler, so even a catch(...) around the operation never runs. On
-	// Windows this surfaces as a bare "gplates.exe has stopped working" with exception code
-	// 0xC0000409 and nothing whatsoever in the log - which is a very expensive way to learn
-	// nothing.
-	//
-	// A terminate handler runs at exactly that moment and can still recover the in-flight
-	// exception, so log what it is first. Every message handler flushes on write (Qt::endl), so
-	// this reaches the log file before we abort.
-	std::set_terminate(
-			[]()
-			{
-				try
-				{
-					if (const std::exception_ptr current = std::current_exception())
-					{
-						std::rethrow_exception(current);
-					}
-					qWarning() << "GPlates is terminating, with no active exception.";
-				}
-				catch (const GPlatesGlobal::Exception &exc)
-				{
-					QString message;
-					QTextStream(&message) << "GPlates is terminating on an uncaught GPlates "
-							"exception: " << exc;
-					qWarning() << message;
-				}
-				catch (const std::exception &exc)
-				{
-					qWarning() << "GPlates is terminating on an uncaught"
-							<< typeid(exc).name() << ":" << exc.what();
-				}
-				catch (...)
-				{
-					qWarning() << "GPlates is terminating on an uncaught exception of unknown type.";
-				}
-
-				std::abort();
-			});
-	//
 	// Add the default log file to the Qt message handler.
 	//
 	// We do this after QApplication is initialised (via GPlatesQApplication above) since this adds
@@ -1121,6 +1076,17 @@ internal_main(int argc, char* argv[])
 int
 main(int argc, char* argv[])
 {
+	// Log any exception that reaches 'std::terminate' before the process aborts.
+	//
+	// This complements 'call_main()' below (and 'GPlatesQApplication::notify()'), which can only
+	// catch exceptions that actually unwind the stack. An exception thrown from a destructor, or
+	// from any 'noexcept' function, invokes 'std::terminate' directly - so no handler, including
+	// the one below, ever gets a chance to see it.
+	//
+	// We do this here (rather than in 'internal_main()') so that it also covers the non-GUI
+	// command-line paths and the period before QApplication exists.
+	GPlatesGui::GPlatesQApplication::install_terminate_handler();
+
 	// The first of two reasons to wrap 'main()' around 'internal_main()' is to
 	// handle any uncaught exceptions that occur in main() but outside the Qt event thread.
 	// Any uncaught exceptions occurring in the Qt event thread will get caught by the
