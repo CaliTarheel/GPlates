@@ -114,6 +114,21 @@ GPlatesQtWidgets::ApplyReconstructionPoleAdjustmentDialog::setup_for_new_pole(
 	spinbox_current_time->setValue(current_time_);
 	spinbox_pole_time->setValue(current_time_);
 	populate_pole_sequence_table(sequence_choices_);
+
+	// Start each adjustment unticked. This writes an extra pole, so it should be asked for
+	// deliberately every time rather than inherited from whatever the last adjustment did.
+	checkbox_apply_drift_rotation->setChecked(false);
+	// Adjusting the present-day pole at present day is what the dialog already does, so the
+	// option is meaningless there and would otherwise apply the same adjustment twice.
+	checkbox_apply_drift_rotation->setEnabled(current_time_ != 0.0);
+}
+
+
+bool
+GPlatesQtWidgets::ApplyReconstructionPoleAdjustmentDialog::apply_drift_rotation() const
+{
+	return checkbox_apply_drift_rotation->isEnabled() &&
+			checkbox_apply_drift_rotation->isChecked();
 }
 
 
@@ -428,6 +443,37 @@ GPlatesQtWidgets::AdjustmentApplicator::apply_adjustment()
 				tr("Reconstruction pole was not applied"),
 				tr("The selected sequence has no editable rotation at this reconstruction time. No changes were made."));
 		return;
+	}
+
+	// Drift rotation: apply the same adjustment to the sequence's present-day pole.
+	//
+	// Adjusting a pole at some older time moves the plate at that time but leaves its present-day
+	// position where it was, so the correction has to be absorbed somewhere between the two - the
+	// plate appears to drift back. Applying the same adjustment at 0 Ma moves the whole track
+	// together instead.
+	//
+	// This is deliberately a second pass of the same inserter rather than hand-built samples, so
+	// the 0 Ma pole is composed exactly the way every other pole in this dialog is.
+	if (d_dialog_ptr->apply_drift_rotation() && d_pole_time != 0.0)
+	{
+		GPlatesFeatureVisitors::TotalReconstructionSequenceRotationInserter drift_inserter(
+				0.0,
+				*d_adjustment_rel_fixed,
+				d_application_state_ptr->get_feature_collection_file_state());
+		drift_inserter.visit_feature(chosen_pole_seq);
+
+		if ( ! drift_inserter.was_applied())
+		{
+			// The pole at the reconstruction time was already written, so this is a partial
+			// result, not a failure. Say so rather than implying nothing happened - a single
+			// Edit > Undo will not put both back.
+			QMessageBox::warning(
+					d_dialog_ptr,
+					tr("Drift rotation was not applied"),
+					tr("The pole at the current reconstruction time was applied, but the selected "
+						"sequence has no editable rotation at 0 Ma, so the drift rotation was not. "
+						"The sequence needs a present-day pole before it can be drift corrected."));
+		}
 	}
 
 	// We release the model notification guard which will cause a reconstruction to occur
