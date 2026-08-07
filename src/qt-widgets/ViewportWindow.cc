@@ -98,6 +98,7 @@
 #include "app-logic/FeatureCollectionFileIO.h"
 #include "app-logic/FeatureCollectionFileState.h"
 #include "app-logic/PlateVelocityUtils.h"
+#include "app-logic/ReconstructionFeatureProperties.h"
 #include "app-logic/ReconstructionGeometryUtils.h"
 #include "app-logic/VelocityDeltaTime.h"
 
@@ -1014,6 +1015,58 @@ GPlatesQtWidgets::ViewportWindow::select_last_created_feature()
 		return;
 	}
 
+	// Move the view into the feature's lifetime first, if it is not already there.
+	//
+	// A feature created at, say, 200 Ma simply is not drawn once the view is scrubbed to 0 Ma, so
+	// focusing it would select something the user cannot see - which is the situation this action
+	// exists to rescue them from. Adjusting the time before focusing also means the feature has
+	// been reconstructed by the time we ask for focus, so its geometry is there to be picked.
+	//
+	// Times are in Ma before present, so the feature exists when
+	// disappearance <= time <= appearance.
+	QString time_change_message;
+	GPlatesAppLogic::ReconstructionFeatureProperties feature_properties;
+	feature_properties.visit_feature(d_last_created_feature);
+
+	const double current_time = get_application_state().get_current_reconstruction_time();
+	if (!feature_properties.is_feature_defined_at_recon_time(current_time))
+	{
+		boost::optional<double> view_time;
+
+		const boost::optional<GPlatesPropertyValues::GeoTimeInstant> &appearance =
+				feature_properties.get_time_of_appearance();
+		const boost::optional<GPlatesPropertyValues::GeoTimeInstant> &disappearance =
+				feature_properties.get_time_of_disappearance();
+
+		if (appearance &&
+			appearance->is_real() &&
+			current_time > appearance->value())
+		{
+			// The view is older than the feature: it has not appeared yet.
+			view_time = appearance->value();
+		}
+		else if (disappearance &&
+			disappearance->is_real() &&
+			current_time < disappearance->value())
+		{
+			// The view is younger than the feature: it has already gone.
+			view_time = disappearance->value();
+		}
+
+		if (view_time)
+		{
+			get_application_state().set_reconstruction_time(view_time.get());
+			time_change_message = tr(" The view moved to %1 Ma to show it.")
+					.arg(view_time.get());
+		}
+		else
+		{
+			// Defined nowhere we can reach - a distant-past/future bound, or no valid time at
+			// all. Focus it anyway; say so rather than implying it is on screen.
+			time_change_message = tr(" It is outside the current view time and may not be visible.");
+		}
+	}
+
 	GPlatesGui::FeatureFocus &feature_focus = get_view_state().get_feature_focus();
 	feature_focus.set_focus(d_last_created_feature);
 	if (feature_focus.focused_feature() != d_last_created_feature)
@@ -1021,7 +1074,7 @@ GPlatesQtWidgets::ViewportWindow::select_last_created_feature()
 		status_message(tr("The last-created feature has no geometry and cannot be selected."));
 		return;
 	}
-	status_message(tr("Selected the last-created feature."));
+	status_message(tr("Selected the last-created feature.") + time_change_message);
 }
 
 
