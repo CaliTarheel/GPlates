@@ -17,6 +17,7 @@ set(srcs
     CloneOperation.h
     CircularFeatureOperation.cc
     CircularFeatureOperation.h
+    WorldbuildingFeatureCollectionUtils.h
     DeleteFeatureOperation.cc
     DeleteFeatureOperation.h
     DeleteVertexGeometryOperation.cc
