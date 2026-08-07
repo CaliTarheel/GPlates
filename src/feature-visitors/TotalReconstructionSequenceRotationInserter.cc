@@ -425,7 +425,6 @@ GPlatesFeatureVisitors::TotalReconstructionSequenceRotationInserter::update_fini
 	const GPlatesMaths::FiniteRotation original_finite_rotation =
 			gpml_finite_rotation.get_finite_rotation();
 
-
 	const GPlatesMaths::FiniteRotation updated_finite_rotation =
 			GPlatesMaths::compose(d_rotation_to_apply, original_finite_rotation);
 	gpml_finite_rotation.set_finite_rotation(updated_finite_rotation);
