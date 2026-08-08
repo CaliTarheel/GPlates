@@ -91,6 +91,28 @@ namespace GPlatesQtWidgets
 			return d_small_circles;
 		};
 
+		const small_circle_collection_type&
+		small_circle_collection() const
+		{
+			return d_small_circles;
+		}
+
+		/**
+		 * Temporarily limit interactively drawn circle radii. A missing value leaves
+		 * the ordinary Small Circle workflow unchanged.
+		 */
+		void
+		set_maximum_radius_radians(
+			boost::optional<double> maximum_radius_radians);
+
+		GPlatesMaths::SmallCircle
+		constrain_circle(
+			const GPlatesMaths::SmallCircle &circle) const;
+
+		/** Notify modeless clients after the second click commits a circle. */
+		void
+		notify_circle_completed();
+
 		void
 		update_small_circle_layer();
 
@@ -130,6 +152,9 @@ namespace GPlatesQtWidgets
 
 		void
 		clear_geometries();
+
+		void
+		circle_completed();
 
 
 	private:
@@ -173,6 +198,8 @@ namespace GPlatesQtWidgets
 		GPlatesViewOperations::RenderedGeometryLayer *d_small_circle_layer;
 
                 small_circle_collection_type d_small_circles;
+
+		boost::optional<double> d_maximum_radius_radians;
 
 	};
 }
