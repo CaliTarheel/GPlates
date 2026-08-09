@@ -49,6 +49,18 @@ gplates:
       # Ocean floor and craton interiors can be coarse without anyone minding.
       # OceanicCrust: 1000
       # Craton: 1000
+
+  # The reconstruction times, in Ma, you intend to work through in order - oldest first, strictly
+  # descending, comma-separated.
+  #
+  # This is optional. Leave it out and ordinary timeline stepping is unaffected. Set it and
+  # holding Alt on the timeline's step buttons jumps to the next older/younger entry here instead
+  # of stepping by the ordinary increment, so you cannot drift past a time you meant to stop at.
+  #
+  # Defaults to every 50 My from 1000 Ma to present - a coarse scaffold meant to be replaced with
+  # the actual timestamps your world's history calls for.
+  reconstruction:
+    required_timestamps_ma: "1000, 950, 900, 850, 800, 750, 700, 650, 600, 550, 500, 450, 400, 350, 300, 250, 200, 150, 100, 50, 0"
 ---
 
 # Project notes
