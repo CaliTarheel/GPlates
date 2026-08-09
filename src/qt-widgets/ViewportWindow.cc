@@ -202,22 +202,6 @@ namespace GPlatesQtWidgets
 						action->shortcut().toString(QKeySequence::NativeText));
 			}
 		}
-
-		QVBoxLayout *
-		create_scrollable_dialog_layout(
-				QDialog *dialog)
-		{
-			QVBoxLayout *outer_layout = new QVBoxLayout(dialog);
-			outer_layout->setContentsMargins(0, 0, 0, 0);
-			QScrollArea *scroll_area = new QScrollArea(dialog);
-			scroll_area->setWidgetResizable(true);
-			scroll_area->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-			QWidget *contents = new QWidget(scroll_area);
-			QVBoxLayout *contents_layout = new QVBoxLayout(contents);
-			scroll_area->setWidget(contents);
-			outer_layout->addWidget(scroll_area);
-			return contents_layout;
-		}
 	}
 }
 
