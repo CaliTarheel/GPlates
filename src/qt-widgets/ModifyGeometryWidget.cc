@@ -32,11 +32,15 @@
 #include "ModifyGeometryWidget.h"
 #include "LatLonCoordinatesTable.h"
 
+#include "canvas-tools/ModifyGeometryState.h"
+
 
 GPlatesQtWidgets::ModifyGeometryWidget::ModifyGeometryWidget(
 		GPlatesCanvasTools::GeometryOperationState &geometry_operation_state,
+		GPlatesCanvasTools::ModifyGeometryState &modify_geometry_state,
 		QWidget *parent_):
-	TaskPanelWidget(parent_)
+	TaskPanelWidget(parent_),
+	d_modify_geometry_state(modify_geometry_state)
 {
 	setupUi(this);
 	
@@ -47,6 +51,24 @@ GPlatesQtWidgets::ModifyGeometryWidget::ModifyGeometryWidget(
 	// and fills in the table accordingly.
 	d_lat_lon_coordinates_table.reset(
 			new LatLonCoordinatesTable(coordinates_table(), geometry_operation_state));
+
+	QObject::connect(
+			button_delete_selected_vertices,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_delete_selected_vertices()));
+	QObject::connect(
+			button_average_vertex_positions,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_average_selected_vertex_positions()));
+	QObject::connect(
+			&d_modify_geometry_state,
+			SIGNAL(vertex_selection_state_changed(unsigned int,bool)),
+			this,
+			SLOT(handle_vertex_selection_state_changed(unsigned int,bool)));
+
+	handle_vertex_selection_state_changed(0, false);
 
 }
 
@@ -61,4 +83,38 @@ void
 GPlatesQtWidgets::ModifyGeometryWidget::handle_activation()
 {
 	reload_coordinates_table_if_necessary();
+}
+
+
+void
+GPlatesQtWidgets::ModifyGeometryWidget::handle_delete_selected_vertices()
+{
+	d_modify_geometry_state.request_delete_selected_vertices();
+}
+
+
+void
+GPlatesQtWidgets::ModifyGeometryWidget::handle_average_selected_vertex_positions()
+{
+	d_modify_geometry_state.request_average_selected_vertex_positions();
+}
+
+
+void
+GPlatesQtWidgets::ModifyGeometryWidget::handle_vertex_selection_state_changed(
+		unsigned int selected_vertex_count,
+		bool can_delete_selection)
+{
+	if (selected_vertex_count == 0)
+	{
+		label_vertex_selection_count->setText(tr("No vertices selected"));
+	}
+	else
+	{
+		label_vertex_selection_count->setText(
+				tr("%1 vertices selected").arg(selected_vertex_count));
+	}
+
+	button_average_vertex_positions->setEnabled(selected_vertex_count > 1);
+	button_delete_selected_vertices->setEnabled(can_delete_selection);
 }
