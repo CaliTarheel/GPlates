@@ -236,29 +236,36 @@ endif()
 
 #
 #
-# Install the project document template (but only for the gplates target).
+# Install the files that ship beside the executable (but only for the gplates target).
 #
-# It sits beside the executable rather than in a subfolder so that someone who has never used
-# GPlates can find it without being told where to look. It is the documentation for the front
-# matter as much as it is a starting point: every supported key is written out with an
-# explanation, so the format explains itself rather than needing a manual elsewhere. Anyone can
-# edit their own copy, or replace it with a newer one from the repository, without a new build.
+# These all sit beside the executable rather than in a subfolder, so that someone who has never
+# used GPlates can find them without being told where to look, and so Load... opens in the right
+# place. Anyone can edit their own copy, or replace it with a newer one from the repository,
+# without needing a new build.
+#
+# DN.txt and WorldbuildingPasta.txt are plain text lists of feature types, loaded from
+# Preferences > Active Feature Types > Load....
+#
+# PROJECT-template.md is the documentation for a project document's front matter as much as it is
+# a starting point: every supported key is written out with an explanation, so the format explains
+# itself rather than needing a manual elsewhere.
 #
 if (GPLATES_BUILD_GPLATES)
-    if (EXISTS "${PROJECT_SOURCE_DIR}/PROJECT-template.md")
-        if (GPLATES_INSTALL_STANDALONE)
-            # For standalone we want to bundle everything together so it's relocatable.
-            if (APPLE)
-                install(FILES "${PROJECT_SOURCE_DIR}/PROJECT-template.md" DESTINATION ${STANDALONE_BASE_INSTALL_DIR}/gplates.app/Contents/Resources)
+    foreach (_preset_list "DN.txt" "WorldbuildingPasta.txt" "PROJECT-template.md")
+        if (EXISTS "${PROJECT_SOURCE_DIR}/${_preset_list}")
+            if (GPLATES_INSTALL_STANDALONE)
+                # For standalone we want to bundle everything together so it's relocatable.
+                if (APPLE)
+                    install(FILES "${PROJECT_SOURCE_DIR}/${_preset_list}" DESTINATION ${STANDALONE_BASE_INSTALL_DIR}/gplates.app/Contents/Resources)
+                else()
+                    install(FILES "${PROJECT_SOURCE_DIR}/${_preset_list}" DESTINATION ${STANDALONE_BASE_INSTALL_DIR})
+                endif()
             else()
-                install(FILES "${PROJECT_SOURCE_DIR}/PROJECT-template.md" DESTINATION ${STANDALONE_BASE_INSTALL_DIR})
+                install(FILES "${PROJECT_SOURCE_DIR}/${_preset_list}" DESTINATION share/gplates)
             endif()
-        else()
-            install(FILES "${PROJECT_SOURCE_DIR}/PROJECT-template.md" DESTINATION share/gplates)
         endif()
-    endif()
+    endforeach()
 endif()
-
 
 
 # Install Python scripts (but only for the gplates target).

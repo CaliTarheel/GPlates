@@ -11,6 +11,7 @@
 #ifndef GPLATES_QTWIDGETS_PREFERENCESPANEACTIVEFEATURETYPES_H
 #define GPLATES_QTWIDGETS_PREFERENCESPANEACTIVEFEATURETYPES_H
 
+#include <QStringList>
 #include <QWidget>
 
 
@@ -62,7 +63,28 @@ namespace GPlatesQtWidgets
 		void
 		hide_all_feature_types();
 
+		void
+		show_loaded_project_feature_types();
+
+		/**
+		 * Write the currently checked feature types to a file chosen by the user.
+		 */
+		void
+		save_feature_type_list();
+
+		/**
+		 * Replace the checked feature types with a list read from a file chosen by the user.
+		 */
+		void
+		load_feature_type_list();
+
 	private:
+
+		/**
+		 * The qualified names of the feature types currently checked, in list order.
+		 */
+		QStringList
+		get_checked_feature_types() const;
 
 		void
 		populate_feature_types();
@@ -72,11 +94,16 @@ namespace GPlatesQtWidgets
 				bool checked);
 
 		void
+		set_checked_feature_types(
+				const QStringList &checked_feature_types);
+
+		void
 		save_hidden_feature_types();
 
 		void
 		update_summary();
 
+		GPlatesAppLogic::ApplicationState &d_application_state;
 		GPlatesAppLogic::UserPreferences &d_preferences;
 		QLineEdit *d_filter_line_edit;
 		QListWidget *d_feature_type_list;

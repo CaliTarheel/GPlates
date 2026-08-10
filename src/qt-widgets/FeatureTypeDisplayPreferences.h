@@ -12,6 +12,7 @@
 #define GPLATES_QTWIDGETS_FEATURETYPEDISPLAYPREFERENCES_H
 
 #include <QString>
+#include <QStringList>
 
 
 namespace GPlatesQtWidgets
@@ -30,6 +31,7 @@ namespace GPlatesQtWidgets
 		{
 			return QString("feature_type_display/hidden_feature_types");
 		}
+
 	}
 }
 
