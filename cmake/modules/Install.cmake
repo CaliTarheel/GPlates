@@ -236,15 +236,22 @@ endif()
 
 #
 #
-# Install the feature-type preset lists (but only for the gplates target).
+# Install the files that ship beside the executable (but only for the gplates target).
 #
-# These are plain text lists loaded from Preferences > Active Feature Types > Load..., and they sit
-# beside the executable rather than in a subfolder so that someone who has never used GPlates can
-# find them without being told where to look. Anyone can edit their own copy, or replace it with a
-# newer one from the repository, without needing a new build.
+# These all sit beside the executable rather than in a subfolder, so that someone who has never
+# used GPlates can find them without being told where to look, and so Load... opens in the right
+# place. Anyone can edit their own copy, or replace it with a newer one from the repository,
+# without needing a new build.
+#
+# DN.txt and WorldbuildingPasta.txt are plain text lists of feature types, loaded from
+# Preferences > Active Feature Types > Load....
+#
+# PROJECT-template.md is the documentation for a project document's front matter as much as it is
+# a starting point: every supported key is written out with an explanation, so the format explains
+# itself rather than needing a manual elsewhere.
 #
 if (GPLATES_BUILD_GPLATES)
-    foreach (_preset_list "DN.txt" "WorldbuildingPasta.txt")
+    foreach (_preset_list "DN.txt" "WorldbuildingPasta.txt" "PROJECT-template.md")
         if (EXISTS "${PROJECT_SOURCE_DIR}/${_preset_list}")
             if (GPLATES_INSTALL_STANDALONE)
                 # For standalone we want to bundle everything together so it's relocatable.
