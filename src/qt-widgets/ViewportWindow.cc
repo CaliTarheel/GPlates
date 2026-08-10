@@ -37,8 +37,10 @@
 #include <boost/foreach.hpp>
 #include <boost/bind/bind.hpp>
 
+#include <QAction>
 #include <QActionGroup>
 #include <QColor>
+#include <QList>
 #include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDockWidget>
@@ -92,6 +94,7 @@
 #include "app-logic/AppLogicUtils.h"
 #include "app-logic/FeatureCollectionFileIO.h"
 #include "app-logic/FeatureCollectionFileState.h"
+#include "app-logic/ReconstructionFeatureProperties.h"
 #include "app-logic/ReconstructionGeometryUtils.h"
 
 #include "canvas-tools/GeometryOperationState.h"
@@ -331,6 +334,26 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			get_view_state(),
 			*this,
 			this);
+
+	d_select_last_created_feature_action = new QAction(tr("Select Last Created Feature"), this);
+	d_select_last_created_feature_action->setObjectName("action_Select_Last_Created_Feature");
+	d_select_last_created_feature_action->setStatusTip(
+			tr("Focus the most recently created feature, including outside its valid time."
+				" Available once a feature has been created."));
+	d_select_last_created_feature_action->setEnabled(false);
+	// Note: this action is added to the Edit menu in 'connect_edit_menu_actions()' rather than
+	// here, because it is positioned relative to the Redo action, which does not exist until
+	// then (it is created from the QUndoGroup at runtime).
+	QObject::connect(
+			d_select_last_created_feature_action,
+			SIGNAL(triggered()),
+			this,
+			SLOT(select_last_created_feature()));
+	QObject::connect(
+			&d_task_panel_ptr->digitisation_widget().get_create_feature_dialog(),
+			SIGNAL(feature_created(GPlatesModel::FeatureHandle::weak_ref)),
+			this,
+			SLOT(remember_created_feature(GPlatesModel::FeatureHandle::weak_ref)));
 
 	// Switch to the appropriate task panel tab when a canvas tool is activated.
 	QObject::connect(
@@ -700,6 +723,28 @@ GPlatesQtWidgets::ViewportWindow::connect_edit_menu_actions()
 			SLOT(update_redo_action_tooltip()));
 	add_shortcut_to_tooltip(d_undo_action_ptr);
 	add_shortcut_to_tooltip(d_redo_action_ptr);
+
+	// Place "Select Last Created Feature" directly below Redo.
+	//
+	// Getting back to the feature you just made belongs with the undo/redo navigation actions,
+	// which is where a user looks for it. It is not in the Designer file for the same reason Undo
+	// and Redo are not: Redo is created from the QUndoGroup at runtime, so we have to find where
+	// it ended up and insert after it.
+	const QList<QAction *> edit_menu_actions = menu_Edit->actions();
+	const int redo_action_index = edit_menu_actions.indexOf(d_redo_action_ptr);
+	if (redo_action_index >= 0 &&
+		redo_action_index + 1 < edit_menu_actions.size())
+	{
+		menu_Edit->insertAction(
+				edit_menu_actions.at(redo_action_index + 1),
+				d_select_last_created_feature_action);
+	}
+	else
+	{
+		// Redo isn't where we expect it - better to have the action at the end of the Edit menu
+		// than to silently lose it.
+		menu_Edit->addAction(d_select_last_created_feature_action);
+	}
 	// ----
 	QObject::connect(action_Query_Feature, SIGNAL(triggered()),
 			&dialogs().feature_properties_dialog(), SLOT(choose_query_widget_and_open()));
@@ -840,6 +885,88 @@ GPlatesQtWidgets::ViewportWindow::connect_features_menu_actions()
 			&dialogs(), SLOT(pop_up_velocity_domain_lat_lon_dialog()));
 	QObject::connect(action_Generate_Deforming_Mesh_Points, SIGNAL(triggered()),
 			&dialogs(), SLOT(pop_up_generate_deforming_mesh_points_dialog()));
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::remember_created_feature(
+		GPlatesModel::FeatureHandle::weak_ref feature)
+{
+	d_last_created_feature = feature;
+	d_select_last_created_feature_action->setEnabled(feature.is_valid());
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::select_last_created_feature()
+{
+	if (!d_last_created_feature.is_valid())
+	{
+		d_select_last_created_feature_action->setEnabled(false);
+		status_message(tr("The last-created feature is no longer available."));
+		return;
+	}
+
+	// Move the view into the feature's lifetime first, if it is not already there.
+	//
+	// A feature created at, say, 200 Ma simply is not drawn once the view is scrubbed to 0 Ma, so
+	// focusing it would select something the user cannot see - which is the situation this action
+	// exists to rescue them from. Adjusting the time before focusing also means the feature has
+	// been reconstructed by the time we ask for focus, so its geometry is there to be picked.
+	//
+	// Times are in Ma before present, so the feature exists when
+	// disappearance <= time <= appearance.
+	QString time_change_message;
+	GPlatesAppLogic::ReconstructionFeatureProperties feature_properties;
+	feature_properties.visit_feature(d_last_created_feature);
+
+	const double current_time = get_application_state().get_current_reconstruction_time();
+	if (!feature_properties.is_feature_defined_at_recon_time(current_time))
+	{
+		boost::optional<double> view_time;
+
+		const boost::optional<GPlatesPropertyValues::GeoTimeInstant> &appearance =
+				feature_properties.get_time_of_appearance();
+		const boost::optional<GPlatesPropertyValues::GeoTimeInstant> &disappearance =
+				feature_properties.get_time_of_disappearance();
+
+		if (appearance &&
+			appearance->is_real() &&
+			current_time > appearance->value())
+		{
+			// The view is older than the feature: it has not appeared yet.
+			view_time = appearance->value();
+		}
+		else if (disappearance &&
+			disappearance->is_real() &&
+			current_time < disappearance->value())
+		{
+			// The view is younger than the feature: it has already gone.
+			view_time = disappearance->value();
+		}
+
+		if (view_time)
+		{
+			get_application_state().set_reconstruction_time(view_time.get());
+			time_change_message = tr(" The view moved to %1 Ma to show it.")
+					.arg(view_time.get());
+		}
+		else
+		{
+			// Defined nowhere we can reach - a distant-past/future bound, or no valid time at
+			// all. Focus it anyway; say so rather than implying it is on screen.
+			time_change_message = tr(" It is outside the current view time and may not be visible.");
+		}
+	}
+
+	GPlatesGui::FeatureFocus &feature_focus = get_view_state().get_feature_focus();
+	feature_focus.set_focus(d_last_created_feature);
+	if (feature_focus.focused_feature() != d_last_created_feature)
+	{
+		status_message(tr("The last-created feature has no geometry and cannot be selected."));
+		return;
+	}
+	status_message(tr("Selected the last-created feature.") + time_change_message);
 }
 
 

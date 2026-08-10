@@ -48,6 +48,8 @@
 
 #include "gui/CanvasToolWorkflows.h"
 
+#include "model/FeatureHandle.h"
+
 
 namespace GPlatesAppLogic
 {
@@ -226,6 +228,13 @@ namespace GPlatesQtWidgets
 		void
 		enable_or_disable_feature_actions(
 				GPlatesGui::FeatureFocus &feature_focus);
+
+		void
+		remember_created_feature(
+				GPlatesModel::FeatureHandle::weak_ref feature);
+
+		void
+		select_last_created_feature();
 
 		void
 		handle_load_symbol_file();
@@ -600,6 +609,9 @@ namespace GPlatesQtWidgets
 		QPointer<QAction> d_undo_action_ptr;
 
 		QPointer<QAction> d_redo_action_ptr;
+
+		QPointer<QAction> d_select_last_created_feature_action;
+		GPlatesModel::FeatureHandle::weak_ref d_last_created_feature;
 
 		// To prevent infinite loops.
 		bool d_inside_update_undo_action_tooltip;

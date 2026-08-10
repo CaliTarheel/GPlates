@@ -270,9 +270,22 @@ GPlatesGui::FeatureFocus::set_focus(
 		d_rendered_geometry_collection,
 		new_feature_ref))
 	{
-		// None found, we cannot focus this.
+		// The feature can be outside its valid time and therefore absent from the rendered
+		// geometry collection. Keep a model-level focus on its first geometry property so
+		// feature actions can still find it.
+		for (GPlatesModel::FeatureHandle::iterator property_iter = new_feature_ref->begin();
+				property_iter != new_feature_ref->end(); ++property_iter)
+		{
+			if (GPlatesAppLogic::GeometryUtils::get_geometry_from_property(property_iter))
+			{
+				set_focus(new_feature_ref, property_iter);
+				return;
+			}
+		}
+
+		// A feature without geometry cannot be focused in the spatial feature UI.
 		unset_focus();
-		return; // I guess we need a return here?
+		return;
 	}
 
 	// Found something, just focus the first one.
