@@ -61,6 +61,44 @@ gplates:
   # the actual timestamps your world's history calls for.
   reconstruction:
     required_timestamps_ma: "1000, 950, 900, 850, 800, 750, 700, 650, 600, 550, 500, 450, 400, 350, 300, 250, 200, 150, 100, 50, 0"
+
+    # How big a step you intend to evolve the world by, in millions of years.
+    #
+    # This is a statement of how finely you mean to work, not a limit. Take it down to 1 and you
+    # will chew through a great deal more history by hand, and see processes that a coarser step
+    # skips straight over; leave it at 5 or 10 and the same processes arrive as single events.
+    # Both are legitimate ways to run a world.
+    #
+    # It matters most for anything that takes a known amount of time to happen. Subduction
+    # initiation runs about 10 My from onset to a working arc, so at 1 My steps it is something
+    # you watch unfold over ten of them, and at 10 My steps it is done the moment you place it.
+    # Tools that model a process consult this to decide which of those two they are giving you.
+    granularity_my: 5
+
+  # How quickly subduction spreads once it exists.
+  #
+  # Optional; leave the section out and tools use these same defaults. The numbers below are
+  # Earth's, and they are rules of thumb rather than constants - a world with hotter mantle or
+  # weaker lithosphere has every right to different ones. They are here so that "how long should
+  # this take?" has an answer written down in the project rather than guessed at each time.
+  subduction:
+
+    # Onset to a working volcanic arc, in My. Earth's best-dated case is the Izu-Bonin-Mariana
+    # system: forearc basalts about 52 Ma, boninites 48-45 Ma, ordinary arc volcanism by 44-43 Ma.
+    initiation_my: 10
+
+    # How fast a trench lengthens along its own strike, in km per My. New subduction far more
+    # often grows sideways from the end of a trench that already exists than it starts from
+    # nothing, and it does so at roughly the speed the plates themselves move - a few cm/yr.
+    # At this rate crossing a thousand kilometres of margin takes some tens of My.
+    propagation_km_per_my: 30
+
+    # How long a polarity reversal takes once an arc or a plateau jams a trench, in My.
+    reversal_my: 8
+
+    # How long after a continental collision the oceanic slab detaches and sinks free, in My.
+    # The surface keeps the suture; the pull that was driving the plate disappears.
+    breakoff_my: 15
 ---
 
 # Project notes

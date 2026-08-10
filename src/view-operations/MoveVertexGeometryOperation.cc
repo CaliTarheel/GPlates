@@ -25,6 +25,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#include <map>
 #include <memory>
 #include <utility> // std::move
 #include <QDebug>
@@ -42,10 +43,14 @@
 #include "RenderedGeometryUtils.h"
 #include "UndoRedo.h"
 
+#include "app-logic/ReconstructedFeatureGeometry.h"
 #include "app-logic/ReconstructionGeometryUtils.h"
+#include "app-logic/ReconstructUtils.h"
 
 #include "canvas-tools/GeometryOperationState.h"
 #include "canvas-tools/ModifyGeometryState.h"
+
+#include "feature-visitors/GeometrySetter.h"
 
 #include "gui/CanvasToolWorkflows.h"
 #include "gui/FeatureFocus.h"
@@ -59,8 +64,143 @@
 #include "maths/PolylineOnSphere.h"
 #include "maths/Vector3D.h"
 
+#include "model/TopLevelProperty.h"
+
 #include "presentation/ViewState.h"
 
+
+namespace
+{
+	GPlatesMaths::PointOnSphere
+	reverse_reconstruct_secondary_point(
+			const GPlatesMaths::PointOnSphere &point,
+			const GPlatesAppLogic::ReconstructedFeatureGeometry &reconstruction)
+	{
+		const boost::optional<GPlatesModel::integer_plate_id_type> &plate_id =
+				reconstruction.reconstruction_plate_id();
+		if (!plate_id)
+		{
+			return point;
+		}
+		return GPlatesAppLogic::ReconstructUtils::reconstruct_by_plate_id(
+				point, *plate_id, *reconstruction.get_reconstruction_tree(), true /*reverse_reconstruct*/);
+	}
+
+
+	/**
+	 * Rebuilds a secondary feature's geometry property with the vertices at @a vertex_indices
+	 * replaced by @a new_view_space_positions (same order), reverse-reconstructed through that
+	 * feature's own plate ID so the edit lands correctly regardless of whether it shares the
+	 * primary feature's plate.
+	 */
+	boost::optional<GPlatesModel::TopLevelProperty::non_null_ptr_type>
+	create_moved_secondary_property(
+			const GPlatesAppLogic::ReconstructedFeatureGeometry &reconstruction,
+			const std::vector<unsigned int> &vertex_indices,
+			const std::vector<GPlatesMaths::PointOnSphere> &new_view_space_positions)
+	{
+		const GPlatesMaths::GeometryOnSphere *geometry = reconstruction.reconstructed_geometry().get();
+
+		std::vector<GPlatesMaths::PointOnSphere> vertices;
+		if (const GPlatesMaths::PolygonOnSphere *polygon =
+				dynamic_cast<const GPlatesMaths::PolygonOnSphere *>(geometry))
+		{
+			vertices.assign(polygon->exterior_ring_vertex_begin(), polygon->exterior_ring_vertex_end());
+		}
+		else if (const GPlatesMaths::PolylineOnSphere *polyline =
+				dynamic_cast<const GPlatesMaths::PolylineOnSphere *>(geometry))
+		{
+			vertices.assign(polyline->vertex_begin(), polyline->vertex_end());
+		}
+		else
+		{
+			return boost::none;
+		}
+
+		for (std::size_t match_index = 0; match_index < vertex_indices.size(); ++match_index)
+		{
+			const unsigned int vertex_index = vertex_indices[match_index];
+			if (vertex_index >= vertices.size())
+			{
+				return boost::none;
+			}
+			vertices[vertex_index] = reverse_reconstruct_secondary_point(
+					new_view_space_positions[match_index], reconstruction);
+		}
+
+		boost::optional<GPlatesMaths::GeometryOnSphere::non_null_ptr_to_const_type> new_geometry;
+		try
+		{
+			if (dynamic_cast<const GPlatesMaths::PolygonOnSphere *>(geometry))
+			{
+				new_geometry = GPlatesMaths::PolygonOnSphere::create(vertices);
+			}
+			else
+			{
+				new_geometry = GPlatesMaths::PolylineOnSphere::create(vertices);
+			}
+		}
+		catch (...)
+		{
+			return boost::none;
+		}
+
+		GPlatesModel::TopLevelProperty::non_null_ptr_type new_property =
+				(*reconstruction.property())->clone();
+		GPlatesFeatureVisitors::GeometrySetter geometry_setter(new_geometry.get());
+		geometry_setter.set_geometry(new_property.get());
+		return new_property;
+	}
+
+
+	/**
+	 * Directly edits one other feature's geometry property so a coincident vertex follows the
+	 * primary drag. Deliberately bypasses GeometryBuilder/NotificationGuard - this command only
+	 * ever touches one feature outside the one the active tool is editing, and FeatureHandle::set
+	 * is self-sufficient without needing a Model reference threaded all the way down through the
+	 * canvas-tool-workflow constructor chain.
+	 */
+	class MoveSecondaryVertexUndoCommand :
+			public QUndoCommand
+	{
+	public:
+		MoveSecondaryVertexUndoCommand(
+				const GPlatesModel::FeatureHandle::weak_ref &feature,
+				const GPlatesModel::FeatureHandle::iterator &geometry_property,
+				const GPlatesModel::TopLevelProperty::non_null_ptr_type &new_property) :
+			d_feature(feature),
+			d_geometry_property(geometry_property),
+			d_new_property(new_property),
+			d_original_property((*geometry_property)->clone())
+		{
+			setText(QObject::tr("move snapped vertex"));
+		}
+
+		virtual void redo()
+		{
+			if (!d_feature.is_valid() || !d_geometry_property.is_still_valid())
+			{
+				return;
+			}
+			d_feature->set(d_geometry_property, d_new_property->clone());
+		}
+
+		virtual void undo()
+		{
+			if (!d_feature.is_valid() || !d_geometry_property.is_still_valid())
+			{
+				return;
+			}
+			d_feature->set(d_geometry_property, d_original_property->clone());
+		}
+
+	private:
+		GPlatesModel::FeatureHandle::weak_ref d_feature;
+		GPlatesModel::FeatureHandle::iterator d_geometry_property;
+		GPlatesModel::TopLevelProperty::non_null_ptr_type d_new_property;
+		GPlatesModel::TopLevelProperty::non_null_ptr_type d_original_property;
+	};
+}
 
 
 GPlatesViewOperations::MoveVertexGeometryOperation::MoveVertexGeometryOperation(
@@ -538,6 +678,10 @@ GPlatesViewOperations::MoveVertexGeometryOperation::move_vertex(
 		const GPlatesMaths::PointOnSphere &oriented_pos_on_sphere,
 		bool is_intermediate_move)
 {
+	// Captured before the command runs, since redo() executes synchronously inside push().
+	const GPlatesMaths::PointOnSphere original_position =
+			d_geometry_builder.get_geometry_point(0, d_selected_vertex_index);
+
 	// The command that does the actual moving of vertex.
 	std::unique_ptr<QUndoCommand> move_vertex_command(
 			new GeometryBuilderMovePointUndoCommand(
@@ -545,7 +689,7 @@ GPlatesViewOperations::MoveVertexGeometryOperation::move_vertex(
 					d_selected_vertex_index,
 					oriented_pos_on_sphere,
 					is_intermediate_move));
-					
+
 	// Command wraps move vertex command with handing canvas tool choice and
 	// move vertex tool activation.
 	std::unique_ptr<QUndoCommand> undo_command(
@@ -560,6 +704,16 @@ GPlatesViewOperations::MoveVertexGeometryOperation::move_vertex(
 	// Note: the command's redo() gets executed inside the push() call and this is where
 	// the vertex is initially moved.
 	UndoRedo::instance().get_active_undo_stack().push(undo_command.release());
+
+	// A snapped neighbouring vertex should only follow once the drag settles, not on every
+	// intermediate sample - each secondary edit is its own non-mergeable undo command.
+	if (!is_intermediate_move)
+	{
+		apply_secondary_vertex_snapping(
+				std::vector<GeometryBuilder::PointIndex>(1, d_selected_vertex_index),
+				std::vector<GPlatesMaths::PointOnSphere>(1, original_position),
+				std::vector<GPlatesMaths::PointOnSphere>(1, oriented_pos_on_sphere));
+	}
 }
 
 
@@ -600,6 +754,17 @@ GPlatesViewOperations::MoveVertexGeometryOperation::move_selected_vertices(
 			is_intermediate_move,
 			QObject::tr("move selected vertices"),
 			d_move_vertex_command_id);
+
+	// A snapped neighbouring vertex should only follow once the drag settles, not on every
+	// intermediate sample - each secondary edit is its own non-mergeable undo command.
+	if (!is_intermediate_move)
+	{
+		apply_secondary_vertex_snapping(
+				std::vector<GeometryBuilder::PointIndex>(
+						d_selected_vertex_indices.begin(), d_selected_vertex_indices.end()),
+				d_drag_original_points,
+				positions);
+	}
 }
 
 
@@ -973,6 +1138,14 @@ void
 GPlatesViewOperations::MoveVertexGeometryOperation::add_rendered_lines_for_polyline_on_sphere(
 		GeometryBuilder::GeometryIndex geom_index)
 {
+	// A polyline needs at least 2 points. Deleting selected vertices can drop a geometry
+	// below that without going all the way to empty (which GeometryBuilder does handle) -
+	// skip the connecting line rather than let PolylineOnSphere::create() throw uncaught.
+	if (d_geometry_builder.get_num_points_in_geometry(geom_index) < 2)
+	{
+		return;
+	}
+
 	// Get start and end of point sequence in current geometry.
 	GeometryBuilder::point_const_iterator_type builder_geom_begin =
 		d_geometry_builder.get_geometry_point_begin(geom_index);
@@ -995,6 +1168,14 @@ void
 GPlatesViewOperations::MoveVertexGeometryOperation::add_rendered_lines_for_polygon_on_sphere(
 		GeometryBuilder::GeometryIndex geom_index)
 {
+	// A polygon needs at least 3 points. Deleting selected vertices can drop a geometry
+	// below that without going all the way to empty (which GeometryBuilder does handle) -
+	// skip the connecting line rather than let PolygonOnSphere::create() throw uncaught.
+	if (d_geometry_builder.get_num_points_in_geometry(geom_index) < 3)
+	{
+		return;
+	}
+
 	// Get start and end of point sequence in current geometry.
 	GeometryBuilder::point_const_iterator_type builder_geom_begin =
 		d_geometry_builder.get_geometry_point_begin(geom_index);
@@ -1346,7 +1527,7 @@ void
 GPlatesViewOperations::MoveVertexGeometryOperation::update_highlight_secondary_vertices()
 {
 	boost::optional<GPlatesMaths::PointOnSphere> point = d_geometry_builder.get_secondary_vertex();
-	
+
 	if (point)
 	{
 		//qDebug() << "Found secondary highlight point";
@@ -1356,5 +1537,133 @@ GPlatesViewOperations::MoveVertexGeometryOperation::update_highlight_secondary_v
 			GeometryOperationParameters::EXTRA_LARGE_POINT_SIZE_HINT);
 
 		d_highlight_point_layer_ptr->add_rendered_geometry(rendered_geom);
+	}
+}
+
+
+void
+GPlatesViewOperations::MoveVertexGeometryOperation::apply_secondary_vertex_snapping(
+		const std::vector<GeometryBuilder::PointIndex> &primary_indices,
+		const std::vector<GPlatesMaths::PointOnSphere> &original_positions,
+		const std::vector<GPlatesMaths::PointOnSphere> &new_positions)
+{
+	if (!d_should_check_nearby_vertices ||
+			primary_indices.size() != original_positions.size() ||
+			primary_indices.size() != new_positions.size())
+	{
+		return;
+	}
+
+	const GPlatesAppLogic::ReconstructionGeometry::maybe_null_ptr_to_const_type focus_rg =
+			d_feature_focus.associated_reconstruction_geometry();
+
+	// Group matches by which secondary RFG they land on, so a feature with more than one
+	// coincident vertex among the dragged points gets a single combined edit rather than
+	// several commands each clobbering the last one's change.
+	typedef std::map<
+			GPlatesAppLogic::ReconstructionGeometry::non_null_ptr_to_const_type,
+			std::pair<std::vector<unsigned int>, std::vector<GPlatesMaths::PointOnSphere> > >
+					secondary_matches_type;
+	secondary_matches_type secondary_matches;
+
+	for (std::size_t query_index = 0; query_index < primary_indices.size(); ++query_index)
+	{
+		GPlatesViewOperations::sorted_rendered_geometry_proximity_hits_type sorted_hits;
+		GPlatesMaths::ProximityCriteria criteria(original_positions[query_index], d_nearby_vertex_threshold);
+		GPlatesViewOperations::test_vertex_proximity(
+				sorted_hits,
+				d_rendered_geometry_collection,
+				GPlatesViewOperations::RenderedGeometryCollection::RECONSTRUCTION_LAYER,
+				criteria);
+
+		boost::optional<GPlatesAppLogic::ReconstructionGeometry::non_null_ptr_to_const_type> closest_recon_geom;
+		double closest_closeness = 0.;
+		unsigned int closest_vertex_index = 0;
+
+		for (sorted_rendered_geometry_proximity_hits_type::const_iterator hit_iter = sorted_hits.begin();
+				hit_iter != sorted_hits.end(); ++hit_iter)
+		{
+			RenderedGeometry rg = hit_iter->d_rendered_geom_layer->get_rendered_geometry(
+					hit_iter->d_rendered_geom_index);
+			ReconstructionGeometryFinder finder;
+			rg.accept_visitor(finder);
+			boost::optional<GPlatesAppLogic::ReconstructionGeometry::non_null_ptr_to_const_type>
+					recon_geom = finder.get_reconstruction_geometry();
+
+			// Skip the geometry actually being dragged - it is not its own snap target.
+			if (!recon_geom || *recon_geom == focus_rg)
+			{
+				continue;
+			}
+
+			if (d_should_use_plate_id_filter)
+			{
+				const boost::optional<const GPlatesAppLogic::ReconstructedFeatureGeometry *> rfg =
+						GPlatesAppLogic::ReconstructionGeometryUtils::get_reconstruction_geometry_derived_type<
+								const GPlatesAppLogic::ReconstructedFeatureGeometry *>(recon_geom.get());
+				if (!rfg || !d_filter_plate_id || !(*rfg)->reconstruction_plate_id() ||
+						*(*rfg)->reconstruction_plate_id() != *d_filter_plate_id)
+				{
+					continue;
+				}
+			}
+
+			if (!hit_iter->d_proximity_hit_detail->index())
+			{
+				continue;
+			}
+
+			if (hit_iter->d_proximity_hit_detail->closeness() > closest_closeness)
+			{
+				closest_recon_geom = recon_geom;
+				closest_vertex_index = *(hit_iter->d_proximity_hit_detail->index());
+				closest_closeness = hit_iter->d_proximity_hit_detail->closeness();
+			}
+		}
+
+		if (closest_recon_geom)
+		{
+			std::pair<std::vector<unsigned int>, std::vector<GPlatesMaths::PointOnSphere> > &entry =
+					secondary_matches[closest_recon_geom.get()];
+			entry.first.push_back(closest_vertex_index);
+			entry.second.push_back(new_positions[query_index]);
+		}
+	}
+
+	if (secondary_matches.empty())
+	{
+		return;
+	}
+
+	for (secondary_matches_type::const_iterator match_iter = secondary_matches.begin();
+			match_iter != secondary_matches.end(); ++match_iter)
+	{
+		const boost::optional<const GPlatesAppLogic::ReconstructedFeatureGeometry *> rfg =
+				GPlatesAppLogic::ReconstructionGeometryUtils::get_reconstruction_geometry_derived_type<
+						const GPlatesAppLogic::ReconstructedFeatureGeometry *>(match_iter->first.get());
+		if (!rfg || !(*rfg)->property().is_still_valid())
+		{
+			continue;
+		}
+
+		const GPlatesModel::FeatureHandle::weak_ref secondary_feature = (*rfg)->get_feature_ref();
+		if (!secondary_feature.is_valid())
+		{
+			continue;
+		}
+
+		const boost::optional<GPlatesModel::TopLevelProperty::non_null_ptr_type> new_property =
+				create_moved_secondary_property(**rfg, match_iter->second.first, match_iter->second.second);
+		if (!new_property)
+		{
+			continue;
+		}
+
+		std::unique_ptr<QUndoCommand> secondary_command(
+				new MoveSecondaryVertexUndoCommand(
+						secondary_feature,
+						(*rfg)->property(),
+						new_property.get()));
+		UndoRedo::instance().get_active_undo_stack().push(secondary_command.release());
 	}
 }

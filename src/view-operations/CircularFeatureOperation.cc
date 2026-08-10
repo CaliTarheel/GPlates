@@ -14,15 +14,18 @@
 
 #include <boost/optional.hpp>
 
+#include <QButtonGroup>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
+#include <QFile>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QRadioButton>
 #include <QSignalBlocker>
 #include <QVBoxLayout>
 
@@ -30,6 +33,8 @@
 #include "app-logic/FeatureCollectionFileIO.h"
 #include "app-logic/GeometryUtils.h"
 #include "app-logic/PlanetaryParameters.h"
+#include "app-logic/ProjectDocumentRegistry.h"
+#include "app-logic/ProjectMetadata.h"
 
 #include "gui/CanvasToolWorkflows.h"
 
@@ -65,13 +70,84 @@
 namespace
 {
 	const double PI = 3.141592653589793238462643383279502884;
-	const unsigned int CIRCLE_VERTEX_COUNT = 96;
+	const unsigned int CIRCULAR_VERTEX_COUNT = 96;
+	const unsigned int MINIMUM_REGULAR_VERTEX_COUNT = 3;
+
+	// Used only when a Primary Project Document exists but says nothing about resolution -
+	// matches the template's own default_km, so Regular mode has a sane fallback rather than
+	// inventing an unrelated number.
+	const double FALLBACK_MAX_SEGMENT_KM = 500.0;
 
 	enum GeometryType
 	{
 		POLYLINE_GEOMETRY,
 		POLYGON_GEOMETRY
 	};
+
+	enum CircleStyle
+	{
+		CIRCULAR_STYLE,
+		REGULAR_STYLE
+	};
+
+
+	/**
+	 * The longest segment a Regular-style circle's edge should have, in kilometres.
+	 *
+	 * Reads the same gplates.resolution front matter as the project document, keyed to
+	 * gpml:TerraneBoundary if the project has an override for it, else the project's
+	 * default_km, else a hard-coded fallback if there is no readable resolution section at all.
+	 * This is a one-shot read rather than a cached/reactive value, since the dialog is
+	 * reopened fresh each time and the document could have changed since the last placement.
+	 */
+	double
+	max_segment_length_km(
+			GPlatesAppLogic::ApplicationState &application_state)
+	{
+		const QString primary_document_path =
+				application_state.get_project_document_registry().primary_document_path();
+		if (!primary_document_path.isEmpty())
+		{
+			QFile primary_document(primary_document_path);
+			if (primary_document.open(QIODevice::ReadOnly))
+			{
+				const GPlatesAppLogic::ProjectMetadata metadata =
+						GPlatesAppLogic::ProjectMetadataParser::parse(
+								QString::fromUtf8(primary_document.readAll()));
+				const QMap<QString, double>::const_iterator by_type_iter =
+						metadata.resolution_km_by_feature_type.constFind("gpml:TerraneBoundary");
+				if (by_type_iter != metadata.resolution_km_by_feature_type.constEnd())
+				{
+					return by_type_iter.value();
+				}
+				if (metadata.default_resolution_km)
+				{
+					return metadata.default_resolution_km.get();
+				}
+			}
+		}
+		return FALLBACK_MAX_SEGMENT_KM;
+	}
+
+
+	/**
+	 * How many vertices a circle of the given radius needs so every edge segment of its
+	 * circumference stays under @a max_segment_km.
+	 */
+	unsigned int
+	regular_vertex_count(
+			double radius_km,
+			double max_segment_km)
+	{
+		if (max_segment_km <= 0.0)
+		{
+			return CIRCULAR_VERTEX_COUNT;
+		}
+		const double circumference_km = 2.0 * PI * radius_km;
+		const unsigned int required_vertices = static_cast<unsigned int>(
+				std::ceil(circumference_km / max_segment_km));
+		return std::max(required_vertices, MINIMUM_REGULAR_VERTEX_COUNT);
+	}
 
 
 	void
@@ -92,7 +168,8 @@ namespace
 
 	std::vector<GPlatesMaths::PointOnSphere>
 	create_circle_vertices(
-			const GPlatesMaths::SmallCircle &circle)
+			const GPlatesMaths::SmallCircle &circle,
+			unsigned int vertex_count)
 	{
 		const GPlatesMaths::UnitVector3D centre = circle.axis_vector();
 		const GPlatesMaths::UnitVector3D tangent_x =
@@ -104,12 +181,12 @@ namespace
 		const double tangent_scale = std::sin(angular_radius);
 
 		std::vector<GPlatesMaths::PointOnSphere> vertices;
-		vertices.reserve(CIRCLE_VERTEX_COUNT);
+		vertices.reserve(vertex_count);
 		for (unsigned int vertex_index = 0;
-				vertex_index < CIRCLE_VERTEX_COUNT;
+				vertex_index < vertex_count;
 				++vertex_index)
 		{
-			const double azimuth = 2.0 * PI * vertex_index / CIRCLE_VERTEX_COUNT;
+			const double azimuth = 2.0 * PI * vertex_index / vertex_count;
 			const double tangent_x_scale = tangent_scale * std::cos(azimuth);
 			const double tangent_y_scale = tangent_scale * std::sin(azimuth);
 			const GPlatesMaths::Vector3D vertex(
@@ -234,6 +311,26 @@ GPlatesViewOperations::CircularFeatureOperation::create_dialog()
 	introduction->setWordWrap(true);
 	layout->addWidget(introduction);
 
+	QHBoxLayout *style_layout = new QHBoxLayout();
+	style_layout->addWidget(new QLabel(tr("Circle style:"), d_dialog));
+	d_circular_style_radio = new QRadioButton(tr("Circular"), d_dialog);
+	d_circular_style_radio->setChecked(true);
+	d_circular_style_radio->setToolTip(tr(
+			"A smooth true circle - the same fixed vertex count regardless of radius."));
+	d_regular_style_radio = new QRadioButton(tr("Regular"), d_dialog);
+	d_regular_style_radio->setToolTip(tr(
+			"Vertex spacing follows the project's intended resolution (gplates.resolution in the"
+			" Primary Project Document - by_feature_type: TerraneBoundary if set, else"
+			" default_km), so every edge segment of the circumference stays under that length."
+			" Larger circles get more vertices, not coarser ones."));
+	QButtonGroup *style_group = new QButtonGroup(d_dialog);
+	style_group->addButton(d_circular_style_radio);
+	style_group->addButton(d_regular_style_radio);
+	style_layout->addWidget(d_circular_style_radio);
+	style_layout->addWidget(d_regular_style_radio);
+	style_layout->addStretch();
+	layout->addLayout(style_layout);
+
 	QFormLayout *form = new QFormLayout();
 	d_appearance_time_spin = new QDoubleSpinBox(d_dialog);
 	d_appearance_time_spin->setRange(0.0, 10000.0);
@@ -263,7 +360,9 @@ GPlatesViewOperations::CircularFeatureOperation::create_dialog()
 
 	d_output_collection_combo = new QComboBox(d_dialog);
 	d_output_collection_combo->setToolTip(tr(
-			"The loaded feature collection that will own each completed circle."));
+			"The feature collection that will own each completed circle. Pick any currently "
+			"loaded layer to add circles to it, or choose \"Create a new...\" to start a fresh "
+			"collection just for this tool's output."));
 	form->addRow(tr("Output layer / collection:"), d_output_collection_combo);
 	layout->addLayout(form);
 
@@ -478,9 +577,19 @@ GPlatesViewOperations::CircularFeatureOperation::create_circular_feature(
 		throw std::runtime_error("Circle radius must be greater than zero.");
 	}
 
+	const double planet_radius_km =
+			d_application_state.get_planetary_parameters().effective_radius_kilometres();
+	const double radius_km = angular_radius * planet_radius_km;
+
+	const CircleStyle circle_style =
+			d_regular_style_radio->isChecked() ? REGULAR_STYLE : CIRCULAR_STYLE;
+	const unsigned int vertex_count = circle_style == REGULAR_STYLE
+			? regular_vertex_count(radius_km, max_segment_length_km(d_application_state))
+			: CIRCULAR_VERTEX_COUNT;
+
 	const GeometryType geometry_type = static_cast<GeometryType>(
 			d_geometry_type_combo->currentData().toInt());
-	std::vector<GPlatesMaths::PointOnSphere> vertices = create_circle_vertices(circle);
+	std::vector<GPlatesMaths::PointOnSphere> vertices = create_circle_vertices(circle, vertex_count);
 	boost::optional<GPlatesModel::PropertyValue::non_null_ptr_type> geometry_value;
 	if (geometry_type == POLYGON_GEOMETRY)
 	{
@@ -503,9 +612,6 @@ GPlatesViewOperations::CircularFeatureOperation::create_circular_feature(
 			? tr("Circular polygon")
 			: tr("Circular polyline");
 	const double appearance_time = d_appearance_time_spin->value();
-	const double planet_radius_km =
-			d_application_state.get_planetary_parameters().effective_radius_kilometres();
-	const double radius_km = angular_radius * planet_radius_km;
 	const GPlatesMaths::LatLonPoint centre = GPlatesMaths::make_lat_lon_point(
 			GPlatesMaths::PointOnSphere(circle.axis_vector()));
 
@@ -557,11 +663,14 @@ GPlatesViewOperations::CircularFeatureOperation::create_circular_feature(
 
 	d_feature_count = next_feature_number;
 	d_status_label->setText(tr(
-			"Created %1 %2 with a %3 km radius in %4, valid from %5 Ma to the present. "
-			"Save that collection or the project to keep it, then click a new centre to place another.")
+			"Created %1 %2 with a %3 km radius (%4, %5 vertices) in %6, valid from %7 Ma to the "
+			"present. Save that collection or the project to keep it, then click a new centre to "
+			"place another.")
 				.arg(geometry_label.toLower())
 				.arg(d_feature_count)
 				.arg(radius_km, 0, 'f', 1)
+				.arg(circle_style == REGULAR_STYLE ? tr("Regular") : tr("Circular"))
+				.arg(vertex_count)
 				.arg(d_output_collection_combo->currentText())
 				.arg(appearance_time, 0, 'f', 3));
 }

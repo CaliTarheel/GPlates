@@ -19,6 +19,24 @@ set(srcs
     CloneOperation.h
     CircularFeatureOperation.cc
     CircularFeatureOperation.h
+    CreateOceanCrustOperation.cc
+    CreateOceanCrustOperation.h
+    CreatePacificPlateOperation.cc
+    CreatePacificPlateOperation.h
+    CreateTripleJunctionCrustOperation.cc
+    CreateTripleJunctionCrustOperation.h
+    MORFeatureBuilder.cc
+    MORFeatureBuilder.h
+    NaturalizeCoastlineGeometry.cc
+    NaturalizeCoastlineGeometry.h
+    OceanCrustBandBuilder.cc
+    OceanCrustBandBuilder.h
+    PacificPlateGeometry.cc
+    PacificPlateGeometry.h
+    RotationPlateCreation.cc
+    RotationPlateCreation.h
+    TripleJunctionGeometry.cc
+    TripleJunctionGeometry.h
     WorldbuildingFeatureCollectionUtils.h
     DeleteFeatureOperation.cc
     DeleteFeatureOperation.h

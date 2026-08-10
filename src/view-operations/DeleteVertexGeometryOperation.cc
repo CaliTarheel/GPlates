@@ -377,6 +377,14 @@ void
 GPlatesViewOperations::DeleteVertexGeometryOperation::add_rendered_lines_for_polyline_on_sphere(
 		GeometryBuilder::GeometryIndex geom_index)
 {
+	// A polyline needs at least 2 points. Deleting a vertex can drop a geometry below that
+	// without going all the way to empty (which GeometryBuilder does handle) - skip the
+	// connecting line rather than let PolylineOnSphere::create() throw uncaught.
+	if (d_geometry_builder.get_num_points_in_geometry(geom_index) < 2)
+	{
+		return;
+	}
+
 	// Get start and end of point sequence in current geometry.
 	GeometryBuilder::point_const_iterator_type builder_geom_begin =
 		d_geometry_builder.get_geometry_point_begin(geom_index);
@@ -399,6 +407,14 @@ void
 GPlatesViewOperations::DeleteVertexGeometryOperation::add_rendered_lines_for_polygon_on_sphere(
 		GeometryBuilder::GeometryIndex geom_index)
 {
+	// A polygon needs at least 3 points. Deleting a vertex can drop a geometry below that
+	// without going all the way to empty (which GeometryBuilder does handle) - skip the
+	// connecting line rather than let PolygonOnSphere::create() throw uncaught.
+	if (d_geometry_builder.get_num_points_in_geometry(geom_index) < 3)
+	{
+		return;
+	}
+
 	// Get start and end of point sequence in current geometry.
 	GeometryBuilder::point_const_iterator_type builder_geom_begin =
 		d_geometry_builder.get_geometry_point_begin(geom_index);

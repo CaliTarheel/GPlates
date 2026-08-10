@@ -82,6 +82,7 @@
 #include "ImportScalarField3DDialog.h"
 #include "MapCanvas.h"
 #include "MapView.h"
+#include "OceanCrustCreationDialog.h"
 #include "PythonConsoleDialog.h"
 #include "QtWidgetUtils.h"
 #include "ReadErrorAccumulationDialog.h"
@@ -168,7 +169,10 @@
 #include "view-operations/RenderedGeometryCollection.h"
 #include "view-operations/RenderedGeometryParameters.h"
 #include "view-operations/RotationFileEditorOperation.h"
-#include "view-operations/SplitPlateOperation.h"
+#include "SplitPlateDialog.h"
+#include "view-operations/CreateOceanCrustOperation.h"
+#include "view-operations/CreatePacificPlateOperation.h"
+#include "view-operations/CreateTripleJunctionCrustOperation.h"
 #include "view-operations/SubductionCutterOperation.h"
 #include "view-operations/UndoRedo.h"
 
@@ -232,12 +236,25 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			new GPlatesViewOperations::DeleteFeatureOperation(
 				get_view_state().get_feature_focus(),
 				get_application_state())),
-	d_split_plate_operation_ptr(
-			new GPlatesViewOperations::SplitPlateOperation(
-				get_view_state().get_feature_focus(),
-				get_application_state())),
 	d_subduction_cutter_operation_ptr(
 			new GPlatesViewOperations::SubductionCutterOperation(
+				get_application_state(),
+				get_view_state())),
+	d_create_ocean_crust_operation_ptr(
+			new GPlatesViewOperations::CreateOceanCrustOperation(
+				get_view_state().get_feature_focus(),
+				get_application_state(),
+				get_view_state())),
+	d_create_triple_junction_crust_operation_ptr(
+			new GPlatesViewOperations::CreateTripleJunctionCrustOperation(
+				*d_create_ocean_crust_operation_ptr,
+				get_view_state().get_feature_focus(),
+				get_application_state(),
+				get_view_state())),
+	d_create_pacific_plate_operation_ptr(
+			new GPlatesViewOperations::CreatePacificPlateOperation(
+				*d_create_ocean_crust_operation_ptr,
+				get_view_state().get_feature_focus(),
 				get_application_state(),
 				get_view_state())),
 	d_rotation_file_editor_operation_ptr(
@@ -1238,6 +1255,11 @@ GPlatesQtWidgets::ViewportWindow::connect_window_menu_actions()
 	QAction *action_show_project_documents = d_project_documents_dock_ptr->toggleViewAction();
 	action_show_project_documents->setText(tr("Show Project &Documents"));
 	action_show_project_documents->setObjectName("action_Show_Project_Documents");
+	action_show_project_documents->setToolTip(tr(
+			"Associate Markdown files with this project and designate one as Primary, so"
+			" GPlates can read settings (planet radius, resolution, required timestamps) from"
+			" its front matter."));
+	action_show_project_documents->setStatusTip(action_show_project_documents->toolTip());
 	menu_Window->insertAction(action_Log_Dialog, action_show_project_documents);
 
 	QObject::connect(action_Log_Dialog, SIGNAL(triggered()),
@@ -1255,7 +1277,7 @@ GPlatesQtWidgets::ViewportWindow::connect_world_building_menu_actions()
 			action_Split_Plate,
 			SIGNAL(triggered()),
 			this,
-			SLOT(handle_split_plate()));
+			SLOT(show_split_plate_window()));
 	QObject::connect(
 			action_Boolean_Polygons,
 			SIGNAL(triggered()),
@@ -1266,6 +1288,24 @@ GPlatesQtWidgets::ViewportWindow::connect_world_building_menu_actions()
 			SIGNAL(triggered()),
 			this,
 			SLOT(handle_subduction_cutter()));
+	// All three Ocean Crust Creation tools share one Shift-click MOR selection, so all three
+	// menu entries open the same persistent window rather than each triggering its own
+	// operation directly - see show_ocean_crust_creation_window() and OceanCrustCreationDialog.
+	QObject::connect(
+			action_Create_Ocean_Crust,
+			SIGNAL(triggered()),
+			this,
+			SLOT(show_ocean_crust_creation_window()));
+	QObject::connect(
+			action_Create_Triple_Junction_Crust,
+			SIGNAL(triggered()),
+			this,
+			SLOT(show_ocean_crust_creation_window()));
+	QObject::connect(
+			action_Create_Pacific_Plate,
+			SIGNAL(triggered()),
+			this,
+			SLOT(show_ocean_crust_creation_window()));
 }
 
 
@@ -2420,36 +2460,21 @@ GPlatesQtWidgets::ViewportWindow::pop_up_python_console()
 
 
 void
-GPlatesQtWidgets::ViewportWindow::handle_split_plate()
+GPlatesQtWidgets::ViewportWindow::show_split_plate_window()
 {
-	const GPlatesViewOperations::SplitPlateOperation::Result result =
-			d_split_plate_operation_ptr->trigger();
-
-	status_message(result.message);
-
-	switch (result.outcome)
+	// Created on first use. The window owns the operation, and neither is needed until asked for.
+	if (!d_split_plate_dialog_ptr)
 	{
-	case GPlatesViewOperations::SplitPlateOperation::POLYGON_CAPTURED:
-		QMessageBox::information(
-				this,
-				tr("Split Plate — Polygon Captured"),
-				result.message);
-		break;
-
-	case GPlatesViewOperations::SplitPlateOperation::SPLIT_COMPLETED:
-		QMessageBox::information(
-				this,
-				tr("Split Plate Complete"),
-				result.message);
-		break;
-
-	case GPlatesViewOperations::SplitPlateOperation::OPERATION_ERROR:
-		QMessageBox::warning(
-				this,
-				tr("Split Plate"),
-				result.message);
-		break;
+		d_split_plate_dialog_ptr.reset(
+				new SplitPlateDialog(
+						get_view_state().get_feature_focus(),
+						get_application_state(),
+						canvas_tool_workflows(),
+						get_view_state().get_rendered_geometry_collection(),
+						this));
 	}
+
+	d_split_plate_dialog_ptr->pop_up();
 }
 
 
@@ -2463,10 +2488,92 @@ GPlatesQtWidgets::ViewportWindow::show_boolean_polygons_window()
 				new BooleanPolygonsDialog(
 						get_view_state().get_feature_focus(),
 						get_application_state(),
+						canvas_tool_workflows(),
+						get_view_state().get_rendered_geometry_collection(),
 						this));
 	}
 
 	d_boolean_polygons_dialog_ptr->pop_up();
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::show_ocean_crust_creation_window()
+{
+	// Created on first use. The window references the operations ViewportWindow already owns
+	// (unlike BooleanPolygonsDialog, it does not own its own copy) since Shift-click/click
+	// selection on the globe drives those operations directly, whether or not this window is
+	// open - see try_select_worldbuilding_mor() and try_capture_pacific_void_seed().
+	if (!d_ocean_crust_creation_dialog_ptr)
+	{
+		d_ocean_crust_creation_dialog_ptr.reset(
+				new OceanCrustCreationDialog(
+						*d_create_ocean_crust_operation_ptr,
+						*d_create_triple_junction_crust_operation_ptr,
+						*d_create_pacific_plate_operation_ptr,
+						canvas_tool_workflows(),
+						get_application_state(),
+						this));
+	}
+
+	d_ocean_crust_creation_dialog_ptr->pop_up();
+}
+
+
+bool
+GPlatesQtWidgets::ViewportWindow::try_select_worldbuilding_mor()
+{
+	if (!d_create_ocean_crust_operation_ptr)
+	{
+		return false;
+	}
+	QString message;
+	const bool handled = d_create_ocean_crust_operation_ptr->select_focused_mor(message);
+	if (handled)
+	{
+		if (d_create_pacific_plate_operation_ptr)
+		{
+			if (d_create_ocean_crust_operation_ptr->selected_mors().size() == 3)
+			{
+				d_create_pacific_plate_operation_ptr->arm_seed_capture();
+				message += tr(" The next ordinary click captures the local void seed for Pacific-style plate birth.");
+			}
+			else
+			{
+				d_create_pacific_plate_operation_ptr->clear_seed();
+			}
+		}
+		status_message(message);
+		if (d_ocean_crust_creation_dialog_ptr)
+		{
+			d_ocean_crust_creation_dialog_ptr->refresh_display();
+		}
+	}
+	return handled;
+}
+
+
+bool
+GPlatesQtWidgets::ViewportWindow::try_capture_pacific_void_seed(
+		const GPlatesMaths::PointOnSphere &point_on_sphere,
+		bool is_on_earth)
+{
+	if (!d_create_pacific_plate_operation_ptr)
+	{
+		return false;
+	}
+	QString message;
+	const bool handled = d_create_pacific_plate_operation_ptr->capture_seed(
+			point_on_sphere, is_on_earth, message);
+	if (handled)
+	{
+		status_message(message);
+		if (d_ocean_crust_creation_dialog_ptr)
+		{
+			d_ocean_crust_creation_dialog_ptr->refresh_display();
+		}
+	}
+	return handled;
 }
 
 
@@ -2479,11 +2586,11 @@ GPlatesQtWidgets::ViewportWindow::handle_subduction_cutter()
 
 	if (result.outcome == GPlatesViewOperations::SubductionCutterOperation::OPERATION_ERROR)
 	{
-		QMessageBox::warning(this, tr("Subduction Cutter"), result.message);
+		QMessageBox::warning(this, tr("Retire Subducted Oceanic Crust"), result.message);
 	}
 	else if (result.outcome == GPlatesViewOperations::SubductionCutterOperation::CUT_COMPLETED)
 	{
-		QMessageBox::information(this, tr("Subduction Cutter Complete"), result.message);
+		QMessageBox::information(this, tr("Retire Subducted Oceanic Crust Complete"), result.message);
 	}
 }
 

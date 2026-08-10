@@ -59,6 +59,16 @@ GPlatesQtWidgets::ModifyGeometryWidget::ModifyGeometryWidget(
 			SIGNAL(clicked()),
 			this,
 			SLOT(handle_delete_selected_vertices()));
+
+	// Window-scoped (not limited to this panel having focus) since lassoing on the globe
+	// leaves the globe canvas focused, not this dock - the shortcut needs to fire from there.
+	d_delete_selected_vertices_shortcut = new QShortcut(QKeySequence(Qt::Key_Backspace), this);
+	d_delete_selected_vertices_shortcut->setContext(Qt::WindowShortcut);
+	QObject::connect(
+			d_delete_selected_vertices_shortcut,
+			SIGNAL(activated()),
+			this,
+			SLOT(handle_delete_selected_vertices()));
 	QObject::connect(
 			button_average_vertex_positions,
 			SIGNAL(clicked()),

@@ -18,8 +18,10 @@
 #include "SubductionCutterGeometry.h"
 
 #include "maths/AngularDistance.h"
+#include "maths/AngularExtent.h"
 #include "maths/GeometryDistance.h"
 #include "maths/PointOnSphere.h"
+#include "maths/SmallCircleBounds.h"
 #include "maths/UnitVector3D.h"
 
 
@@ -54,6 +56,11 @@ namespace
 	double dot(const Vec3 &lhs, const Vec3 &rhs)
 	{
 		return lhs.x * rhs.x + lhs.y * rhs.y + lhs.z * rhs.z;
+	}
+
+	Vec3 subtract(const Vec3 &lhs, const Vec3 &rhs)
+	{
+		return Vec3(lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z);
 	}
 
 	Vec3 cross(const Vec3 &lhs, const Vec3 &rhs)
@@ -150,22 +157,74 @@ namespace
 		return projection;
 	}
 
-	template <typename VertexIterator>
+	typedef std::vector<GPlatesMaths::BoundingSmallCircle> regions_of_interest_type;
+
+	// An edge nowhere near any other polygon in the operation cannot participate in the clip
+	// result at all - the fine 0.25 degree tessellation exists purely to give the projection
+	// enough resolution near a genuine crossing, so an edge with no crossing to resolve gets no
+	// benefit from it, only extra points that the post-clip simplification pass then has to
+	// clean up (imperfectly - see MAX_STRAIGHT_ANGLE_RADIANS below). Expanded by a wide safety
+	// margin (each region is already a superset of the other polygon's true extent, so this is
+	// generous, not tight) so under-tessellating a genuinely relevant edge is not a risk.
+	const double REGION_OF_INTEREST_MARGIN_RADIANS = 5.0 * 3.14159265358979323846 / 180.0;
+
+	bool arc_is_near_a_region_of_interest(
+			const GPlatesMaths::GreatCircleArc &arc,
+			const regions_of_interest_type *regions_of_interest)
+	{
+		if (!regions_of_interest)
+		{
+			// No other polygon to compare against - tessellate everything, as before.
+			return true;
+		}
+		for (regions_of_interest_type::const_iterator region_iter = regions_of_interest->begin();
+				region_iter != regions_of_interest->end(); ++region_iter)
+		{
+			if (region_iter->test(arc) != GPlatesMaths::BoundingSmallCircle::OUTSIDE_BOUNDS)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	template <typename RingConstIterator>
 	bool add_projected_ring(
 			QPainterPath &path,
-			VertexIterator begin,
-			VertexIterator end,
-			const Projection &projection)
+			RingConstIterator arc_begin,
+			RingConstIterator arc_end,
+			const Projection &projection,
+			const regions_of_interest_type *regions_of_interest)
 	{
 		QPolygonF ring;
-		for (VertexIterator vertex_iter = begin; vertex_iter != end; ++vertex_iter)
+		std::vector<GPlatesMaths::PointOnSphere> arc_points;
+		for (RingConstIterator arc_iter = arc_begin; arc_iter != arc_end; ++arc_iter)
 		{
-			QPointF projected_point;
-			if (!projection.project(*vertex_iter, projected_point))
+			arc_points.clear();
+			if (arc_is_near_a_region_of_interest(*arc_iter, regions_of_interest))
 			{
-				return false;
+				GPlatesMaths::tessellate(arc_points, *arc_iter, MAX_TESSELLATION_RADIANS);
 			}
-			ring.push_back(projected_point);
+			else
+			{
+				// Far from every other polygon - the original two endpoints are all the
+				// resolution this edge could possibly need.
+				arc_points.push_back(arc_iter->start_point());
+				arc_points.push_back(arc_iter->end_point());
+			}
+
+			// Skip the last point of every arc - it is the same point as the next arc's
+			// first point (or the ring's own first point, on the final arc), and the ring
+			// gets closed explicitly below.
+			for (std::size_t point_index = 0; point_index + 1 < arc_points.size(); ++point_index)
+			{
+				QPointF projected_point;
+				if (!projection.project(arc_points[point_index], projected_point))
+				{
+					return false;
+				}
+				ring.push_back(projected_point);
+			}
 		}
 		if (ring.size() < 3)
 		{
@@ -179,32 +238,41 @@ namespace
 	bool create_projected_path(
 			QPainterPath &path,
 			const GPlatesMaths::PolygonOnSphere &polygon,
-			const Projection &projection)
+			const Projection &projection,
+			const regions_of_interest_type *regions_of_interest = NULL)
 	{
-		const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type tessellated_polygon =
-				GPlatesMaths::tessellate(polygon, MAX_TESSELLATION_RADIANS);
 		path.setFillRule(Qt::OddEvenFill);
 		if (!add_projected_ring(
 				path,
-				tessellated_polygon->exterior_ring_vertex_begin(),
-				tessellated_polygon->exterior_ring_vertex_end(),
-				projection))
+				polygon.exterior_ring_begin(),
+				polygon.exterior_ring_end(),
+				projection,
+				regions_of_interest))
 		{
 			return false;
 		}
 		for (unsigned int ring_index = 0;
-				ring_index < tessellated_polygon->number_of_interior_rings(); ++ring_index)
+				ring_index < polygon.number_of_interior_rings(); ++ring_index)
 		{
 			if (!add_projected_ring(
 					path,
-					tessellated_polygon->interior_ring_vertex_begin(ring_index),
-					tessellated_polygon->interior_ring_vertex_end(ring_index),
-					projection))
+					polygon.interior_ring_begin(ring_index),
+					polygon.interior_ring_end(ring_index),
+					projection,
+					regions_of_interest))
 			{
 				return false;
 			}
 		}
 		return true;
+	}
+
+	/** The polygon's own bounding small circle, expanded by the safety margin. */
+	GPlatesMaths::BoundingSmallCircle region_of_interest_for(
+			const GPlatesMaths::PolygonOnSphere &polygon)
+	{
+		return polygon.get_bounding_small_circle().expand(
+				GPlatesMaths::AngularExtent::create_from_angle(REGION_OF_INTEREST_MARGIN_RADIANS));
 	}
 
 	double signed_area(const QPolygonF &ring)
@@ -252,6 +320,144 @@ namespace
 	bool polygon_contains_point(const QPolygonF &polygon, const QPointF &point)
 	{
 		return polygon.containsPoint(point, Qt::OddEvenFill);
+	}
+
+	const double COINCIDENT_POINT_LENGTH_THRESHOLD = 1e-9;
+
+	// A vertex whose incoming and outgoing directions differ by less than this counts as "on a
+	// straight line" and gets dropped. MAX_TESSELLATION_RADIANS (0.25 degrees) means untouched
+	// edges have near-zero direction change between consecutive points; real clip-boundary
+	// corners are typically many degrees, so this threshold clears out tessellation debris
+	// without touching genuine shape.
+	const double MAX_STRAIGHT_ANGLE_RADIANS = 1.0 * 3.14159265358979323846 / 180.0;
+
+	/**
+	 * Drops points coincident with the point already kept, including the closing point of a
+	 * ring that duplicates its start.
+	 */
+	std::vector<GPlatesMaths::PointOnSphere>
+	remove_coincident_ring_points(
+			const std::vector<GPlatesMaths::PointOnSphere> &points)
+	{
+		if (points.size() <= 1)
+		{
+			return points;
+		}
+
+		std::vector<GPlatesMaths::PointOnSphere> result;
+		result.reserve(points.size());
+		for (std::size_t index = 0; index < points.size(); ++index)
+		{
+			if (result.empty() ||
+					length(subtract(to_vec3(points[index]), to_vec3(result.back())))
+							> COINCIDENT_POINT_LENGTH_THRESHOLD)
+			{
+				result.push_back(points[index]);
+			}
+		}
+		if (result.size() > 1 &&
+				length(subtract(to_vec3(result.back()), to_vec3(result.front())))
+						<= COINCIDENT_POINT_LENGTH_THRESHOLD)
+		{
+			result.pop_back();
+		}
+		return result;
+	}
+
+	/**
+	 * Collapses the dense tessellation used for projection accuracy back down to what the clip
+	 * actually needed - a point is dropped if its neighbours' directions barely change at it,
+	 * i.e. it lies on what is effectively a straight run along an edge the clip never touched.
+	 * Always keeps at least 3 points.
+	 */
+	std::vector<GPlatesMaths::PointOnSphere>
+	remove_collinear_ring_points(
+			const std::vector<GPlatesMaths::PointOnSphere> &points)
+	{
+		const std::size_t n = points.size();
+		if (n <= 3)
+		{
+			return points;
+		}
+
+		const double cos_straight_threshold = std::cos(MAX_STRAIGHT_ANGLE_RADIANS);
+
+		std::vector<bool> keep(n, true);
+		unsigned int kept_count = static_cast<unsigned int>(n);
+
+		for (std::size_t index = 0; index < n && kept_count > 3; ++index)
+		{
+			if (!keep[index])
+			{
+				continue;
+			}
+
+			std::size_t previous = (index + n - 1) % n;
+			while (previous != index && !keep[previous])
+			{
+				previous = (previous + n - 1) % n;
+			}
+			std::size_t next = (index + 1) % n;
+			while (next != index && !keep[next])
+			{
+				next = (next + 1) % n;
+			}
+			if (previous == index || next == index || previous == next)
+			{
+				continue;
+			}
+
+			const Vec3 incoming = subtract(to_vec3(points[index]), to_vec3(points[previous]));
+			const Vec3 outgoing = subtract(to_vec3(points[next]), to_vec3(points[index]));
+			const double incoming_length = length(incoming);
+			const double outgoing_length = length(outgoing);
+			if (incoming_length < MIN_VECTOR_LENGTH || outgoing_length < MIN_VECTOR_LENGTH)
+			{
+				continue;
+			}
+
+			const double cos_angle = dot(incoming, outgoing) / (incoming_length * outgoing_length);
+			if (cos_angle > cos_straight_threshold)
+			{
+				keep[index] = false;
+				--kept_count;
+			}
+		}
+
+		std::vector<GPlatesMaths::PointOnSphere> result;
+		result.reserve(kept_count);
+		for (std::size_t index = 0; index < n; ++index)
+		{
+			if (keep[index])
+			{
+				result.push_back(points[index]);
+			}
+		}
+		return result;
+	}
+
+	std::vector<GPlatesMaths::PointOnSphere>
+	simplify_ring(
+			const std::vector<GPlatesMaths::PointOnSphere> &points)
+	{
+		std::vector<GPlatesMaths::PointOnSphere> result = remove_coincident_ring_points(points);
+
+		// remove_collinear_ring_points() only looks at each point's *original* neighbours within
+		// one forward pass, in increasing index order. A point just before one that turns out to
+		// be removable does not get to re-check itself against that neighbour's replacement until
+		// a later pass - so a long straight run left over from tessellating an edge the clip never
+		// touched can take more than one pass to fully collapse to its two real endpoints. Repeat
+		// until a pass removes nothing, rather than assuming one pass is enough.
+		for (;;)
+		{
+			const std::vector<GPlatesMaths::PointOnSphere> simplified =
+					remove_collinear_ring_points(result);
+			if (simplified.size() == result.size())
+			{
+				return simplified;
+			}
+			result = simplified;
+		}
 	}
 
 	GPlatesViewOperations::SubductionCutterGeometry::polygon_seq_type
@@ -323,6 +529,10 @@ namespace
 			{
 				exterior_points.push_back(projection.unproject(*point_iter));
 			}
+			// The tessellation that made the projection accurate (one point every 0.25 degrees
+			// of arc) leaves far more points than the resulting shape needs along any edge the
+			// clip didn't touch - collapse that back down now, before it reaches the model.
+			exterior_points = simplify_ring(exterior_points);
 
 			std::vector< std::vector<GPlatesMaths::PointOnSphere> > interior_rings;
 			for (unsigned int hole_index = 0; hole_index < rings.size(); ++hole_index)
@@ -338,6 +548,7 @@ namespace
 				{
 					interior_rings.back().push_back(projection.unproject(*point_iter));
 				}
+				interior_rings.back() = simplify_ring(interior_rings.back());
 			}
 
 			if (GPlatesMaths::PolygonOnSphere::evaluate_construction_parameter_validity(
@@ -381,8 +592,23 @@ GPlatesViewOperations::SubductionCutterGeometry::cut_polygon(
 	}
 
 	const Projection projection = create_projection(target);
+
+	// Same reasoning as apply_polygon_boolean(): an edge of "target" only needs fine
+	// tessellation near a cutter that actually touches it, and a cutter only needs it near
+	// "target" - cutter-versus-cutter accuracy elsewhere cannot affect target_path's own
+	// intersection/subtraction result, since that only depends on cutter_path's shape within
+	// target's own extent.
+	const GPlatesMaths::BoundingSmallCircle target_region = region_of_interest_for(target);
+	regions_of_interest_type cutter_regions;
+	cutter_regions.reserve(relevant_cutters.size());
+	for (polygon_seq_type::const_iterator cutter_iter = relevant_cutters.begin();
+			cutter_iter != relevant_cutters.end(); ++cutter_iter)
+	{
+		cutter_regions.push_back(region_of_interest_for(**cutter_iter));
+	}
+
 	QPainterPath target_path;
-	if (!create_projected_path(target_path, target, projection))
+	if (!create_projected_path(target_path, target, projection, &cutter_regions))
 	{
 		result.success = false;
 		result.error = QObject::tr(
@@ -390,13 +616,14 @@ GPlatesViewOperations::SubductionCutterGeometry::cut_polygon(
 		return result;
 	}
 
+	const regions_of_interest_type target_region_only(1, target_region);
 	QPainterPath cutter_path;
 	cutter_path.setFillRule(Qt::OddEvenFill);
 	for (polygon_seq_type::const_iterator cutter_iter = relevant_cutters.begin();
 			cutter_iter != relevant_cutters.end(); ++cutter_iter)
 	{
 		QPainterPath projected_cutter;
-		if (!create_projected_path(projected_cutter, **cutter_iter, projection))
+		if (!create_projected_path(projected_cutter, **cutter_iter, projection, &target_region_only))
 		{
 			result.success = false;
 			result.error = QObject::tr(
@@ -444,8 +671,22 @@ GPlatesViewOperations::SubductionCutterGeometry::apply_polygon_boolean(
 	}
 
 	const Projection projection = create_projection(first);
+
+	// Each polygon only needs fine tessellation on the edges that could plausibly meet
+	// *some other* polygon in this operation - see arc_is_near_a_region_of_interest(). "First"
+	// is compared against every operand; each operand is compared against "first" and every
+	// other operand (but not itself).
+	const GPlatesMaths::BoundingSmallCircle first_region = region_of_interest_for(first);
+	regions_of_interest_type operand_regions;
+	operand_regions.reserve(operands.size());
+	for (polygon_seq_type::const_iterator operand_iter = operands.begin();
+			operand_iter != operands.end(); ++operand_iter)
+	{
+		operand_regions.push_back(region_of_interest_for(**operand_iter));
+	}
+
 	QPainterPath first_path;
-	if (!create_projected_path(first_path, first, projection))
+	if (!create_projected_path(first_path, first, projection, &operand_regions))
 	{
 		result.success = false;
 		result.error = QObject::tr(
@@ -455,11 +696,21 @@ GPlatesViewOperations::SubductionCutterGeometry::apply_polygon_boolean(
 
 	QPainterPath operand_path;
 	operand_path.setFillRule(Qt::OddEvenFill);
-	for (polygon_seq_type::const_iterator operand_iter = operands.begin();
-			operand_iter != operands.end(); ++operand_iter)
+	for (std::size_t operand_index = 0; operand_index < operands.size(); ++operand_index)
 	{
+		regions_of_interest_type other_regions;
+		other_regions.reserve(operands.size());
+		other_regions.push_back(first_region);
+		for (std::size_t other_index = 0; other_index < operand_regions.size(); ++other_index)
+		{
+			if (other_index != operand_index)
+			{
+				other_regions.push_back(operand_regions[other_index]);
+			}
+		}
+
 		QPainterPath projected_operand;
-		if (!create_projected_path(projected_operand, **operand_iter, projection))
+		if (!create_projected_path(projected_operand, *operands[operand_index], projection, &other_regions))
 		{
 			result.success = false;
 			result.error = QObject::tr(

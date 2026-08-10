@@ -127,6 +127,19 @@ namespace GPlatesQtWidgets
 		bool
 		valid();
 
+	protected:
+
+		/**
+		 * Double-clicking a Begin/End spinbox or its label both do the same thing as the
+		 * adjacent (Recommended) button - fill in the current reconstruction time. The label
+		 * is a fair-sized, easy target next to a small spinbox, so it is worth being able to
+		 * hit either.
+		 */
+		bool
+		eventFilter(
+				QObject *watched,
+				QEvent *event) override;
+
 	private Q_SLOTS:
 	
 		void

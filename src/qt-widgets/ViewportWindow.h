@@ -100,11 +100,13 @@ namespace GPlatesPresentation
 namespace GPlatesViewOperations
 {
 	class CloneOperation;
+	class CreateOceanCrustOperation;
+	class CreatePacificPlateOperation;
+	class CreateTripleJunctionCrustOperation;
 	class DeleteFeatureOperation;
 	class PlateDirectionArrowsOperation;
 	class PlateIdReassignmentOperation;
 	class RotationFileEditorOperation;
-	class SplitPlateOperation;
 	class SubductionCutterOperation;
 }
 
@@ -115,8 +117,10 @@ namespace GPlatesQtWidgets
 	class DockWidget;
 	class GlobeCanvas;
 	class MapView;
+	class OceanCrustCreationDialog;
 	class PythonConsoleDialog;
 	class ReconstructionViewWidget;
+	class SplitPlateDialog;
 	class SearchResultsDockWidget;
 	class ProjectDocumentsDockWidget;
 	class SmallCircleManager;
@@ -175,6 +179,20 @@ namespace GPlatesQtWidgets
 		//! Returns the view state.
 		GPlatesPresentation::ViewState &
 		get_view_state();
+
+		/**
+		 * Gives Generate Oceanic Crust from MOR first refusal on a Shift-click. Returns false
+		 * so other Shift-click behaviour can continue when the focused feature is not a
+		 * supported half-stage MOR.
+		 */
+		bool
+		try_select_worldbuilding_mor();
+
+		/** Gives an armed Pacific-plate seed capture first refusal on an ordinary click. */
+		bool
+		try_capture_pacific_void_seed(
+				const GPlatesMaths::PointOnSphere &point_on_sphere,
+				bool is_on_earth);
 
 		ReconstructionViewWidget &
 		reconstruction_view_widget();
@@ -528,10 +546,13 @@ namespace GPlatesQtWidgets
 		pop_up_python_console();
 
 		void
-		handle_split_plate();
+		show_split_plate_window();
 
 		void
 		show_boolean_polygons_window();
+
+		void
+		show_ocean_crust_creation_window();
 
 		void
 		handle_subduction_cutter();
@@ -580,8 +601,13 @@ namespace GPlatesQtWidgets
 		//! For deleting a feature.
 		boost::scoped_ptr<GPlatesViewOperations::DeleteFeatureOperation> d_delete_feature_operation_ptr;
 
-		//! For splitting a polygon feature with a selected polyline.
-		boost::scoped_ptr<GPlatesViewOperations::SplitPlateOperation> d_split_plate_operation_ptr;
+		/**
+		 * For splitting a polygon feature with a selected polyline.
+		 *
+		 * Created on first use rather than at startup, since the window owns the dialog and
+		 * neither is needed until the user asks for it.
+		 */
+		boost::scoped_ptr<SplitPlateDialog> d_split_plate_dialog_ptr;
 
 		/**
 		 * For combining polygons with a Boolean operation.
@@ -591,10 +617,32 @@ namespace GPlatesQtWidgets
 		 */
 		boost::scoped_ptr<BooleanPolygonsDialog> d_boolean_polygons_dialog_ptr;
 
+		/**
+		 * Persistent window for the Ocean Crust Creation tool family (MOR fill, RRR
+		 * triple-junction, Pacific-style plate birth) - shows the live Shift-click MOR
+		 * selection shared by all three instead of each tool popping its own "Shift-click a
+		 * MOR" message and vanishing.
+		 *
+		 * Unlike @a d_boolean_polygons_dialog_ptr, this window does not own the underlying
+		 * operations - it references the ones ViewportWindow already owns, since those are also
+		 * driven directly by Shift-click/click handling in @a try_select_worldbuilding_mor and
+		 * @a try_capture_pacific_void_seed, independent of whether this window is open.
+		 */
+		boost::scoped_ptr<OceanCrustCreationDialog> d_ocean_crust_creation_dialog_ptr;
+
 		//! For roughening long coastline sections while preserving shared geometry.
 
 		//! For chronologically cutting subducting plate polygons beneath an overriding plate.
 		boost::scoped_ptr<GPlatesViewOperations::SubductionCutterOperation> d_subduction_cutter_operation_ptr;
+
+		//! For filling open ocean space on each side of a Shift-clicked half-stage MOR.
+		boost::scoped_ptr<GPlatesViewOperations::CreateOceanCrustOperation> d_create_ocean_crust_operation_ptr;
+
+		//! RRR mode sharing the MOR selection and ocean-crust builder with the basic workflow.
+		boost::scoped_ptr<GPlatesViewOperations::CreateTripleJunctionCrustOperation> d_create_triple_junction_crust_operation_ptr;
+
+		//! Local seeded plate-birth mode sharing the MOR selection and geometry services.
+		boost::scoped_ptr<GPlatesViewOperations::CreatePacificPlateOperation> d_create_pacific_plate_operation_ptr;
 
 		//! For motion-preserving plate circuit edits in loaded rotation collections.
 		boost::scoped_ptr<GPlatesViewOperations::RotationFileEditorOperation> d_rotation_file_editor_operation_ptr;

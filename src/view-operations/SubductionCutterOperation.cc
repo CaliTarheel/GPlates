@@ -9,6 +9,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <stdexcept>
 #include <vector>
 
 #include <boost/optional.hpp>
@@ -242,6 +243,23 @@ namespace
 								*point_iter, *rfg.reconstruction_plate_id(),
 								*rfg.get_reconstruction_tree(), reverse_reconstruct));
 			}
+		}
+
+		// A tracked fragment can be a sliver that barely validated at the projection/time it was
+		// cut at; rotating it to a different reconstruction time can push already-close vertices
+		// to become genuinely indistinct. Check before constructing rather than let the
+		// constructor's own stricter runtime assertion throw a bare library exception type name
+		// that tells the user nothing about what actually happened.
+		if (GPlatesMaths::PolygonOnSphere::evaluate_construction_parameter_validity(
+					exterior.begin(), exterior.end(),
+					interior_rings.begin(), interior_rings.end(), true) !=
+				GPlatesMaths::PolygonOnSphere::VALID)
+		{
+			throw std::runtime_error(
+					"A tracked crust fragment became too thin to represent after reconstructing "
+					"to a different time - likely a sliver left over from an earlier cut. "
+					"Try a coarser check cadence, or clean up narrow slivers before retiring "
+					"this crust.");
 		}
 
 		return GPlatesMaths::PolygonOnSphere::create(
@@ -533,7 +551,7 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 	}
 
 	QDialog dialog(parent_widget);
-	dialog.setWindowTitle(QObject::tr("Subduction Cutter"));
+	dialog.setWindowTitle(QObject::tr("Retire Subducted Oceanic Crust"));
 	dialog.setModal(true);
 	QVBoxLayout *dialog_layout = new QVBoxLayout(&dialog);
 
@@ -642,7 +660,7 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 
 	if (dialog.exec() != QDialog::Accepted)
 	{
-		return Result(CUT_CANCELLED, QObject::tr("Subduction Cutter cancelled; no data changed."));
+		return Result(CUT_CANCELLED, QObject::tr("Retire Subducted Oceanic Crust cancelled; no data changed."));
 	}
 
 	const double selected_older_time = older_time->value();
@@ -658,7 +676,7 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 	QProgressDialog progress(
 			QObject::tr("Rewinding to %1 Ma...").arg(selected_older_time, 0, 'f', 2),
 			QObject::tr("Cancel"), 0, static_cast<int>(selected_checks), parent_widget);
-	progress.setWindowTitle(QObject::tr("Subduction Cutter"));
+	progress.setWindowTitle(QObject::tr("Retire Subducted Oceanic Crust"));
 	progress.setWindowModality(Qt::WindowModal);
 	progress.setMinimumDuration(0);
 	progress.setAutoClose(false);
@@ -679,7 +697,7 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 			{
 				d_application_state.set_reconstruction_time(original_time);
 				return Result(CUT_CANCELLED,
-						QObject::tr("Subduction Cutter cancelled; no data changed."));
+						QObject::tr("Retire Subducted Oceanic Crust cancelled; no data changed."));
 			}
 
 			const double check_time = check_index + 1 == selected_checks
@@ -804,13 +822,13 @@ GPlatesViewOperations::SubductionCutterOperation::trigger(
 	{
 		d_application_state.set_reconstruction_time(original_time);
 		return Result(OPERATION_ERROR,
-				QObject::tr("Subduction Cutter stopped without changing data: %1").arg(exception.what()));
+				QObject::tr("Retire Subducted Oceanic Crust stopped without changing data: %1").arg(exception.what()));
 	}
 	catch (...)
 	{
 		d_application_state.set_reconstruction_time(original_time);
 		return Result(OPERATION_ERROR,
-				QObject::tr("Subduction Cutter stopped on an unexpected geometry error; no data changed."));
+				QObject::tr("Retire Subducted Oceanic Crust stopped on an unexpected geometry error; no data changed."));
 	}
 
 	progress.close();

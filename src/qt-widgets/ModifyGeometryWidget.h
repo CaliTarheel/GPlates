@@ -28,6 +28,7 @@
 #define GPLATES_QTWIDGETS_MODIFYGEOMETRYWIDGET_H
 
 #include <QDebug>
+#include <QShortcut>
 #include <QWidget>
 #include <QTreeWidget>
 #include <boost/scoped_ptr.hpp>
@@ -113,7 +114,17 @@ namespace GPlatesQtWidgets
 		boost::scoped_ptr<LatLonCoordinatesTable> d_lat_lon_coordinates_table;
 
 		GPlatesCanvasTools::ModifyGeometryState &d_modify_geometry_state;
-		
+
+		/**
+		 * Lets Backspace trigger "Delete Selected" without having to click into this panel -
+		 * lassoing on the globe leaves the globe canvas focused, not this dock, and X/Del are
+		 * already claimed by the separate Delete Vertex tool and Delete Feature respectively.
+		 * Safe to fire regardless of which tool is active: the request is a no-op unless Move
+		 * Vertex is the active geometry operation (see
+		 * MoveVertexGeometryOperation::handle_delete_selected_vertices_requested).
+		 */
+		QShortcut *d_delete_selected_vertices_shortcut;
+
 	};
 }
 

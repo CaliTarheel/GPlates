@@ -29,6 +29,7 @@
 #include "app-logic/ApplicationState.h"
 #include "app-logic/PlanetaryParameters.h"
 #include "app-logic/ProjectDocumentRegistry.h"
+#include "app-logic/ProjectMetadata.h"
 
 #include "presentation/SessionManagement.h"
 #include "presentation/ViewState.h"
@@ -66,6 +67,14 @@ GPlatesQtWidgets::ProjectDocumentsDockWidget::ProjectDocumentsDockWidget(
 	QVBoxLayout *layout = new QVBoxLayout(contents);
 	layout->setContentsMargins(4, 4, 4, 4);
 
+	QLabel *introduction = new QLabel(
+			tr("Associate ordinary Markdown files with this project. Create or Add one, then Set"
+				" Primary on the one whose front matter GPlates should read (planet radius,"
+				" resolution, required timestamps) - Save it whenever you edit that front matter."),
+			contents);
+	introduction->setWordWrap(true);
+	layout->addWidget(introduction);
+
 	QToolBar *toolbar = new QToolBar(contents);
 	toolbar->setIconSize(QSize(16, 16));
 	d_create_action = toolbar->addAction(tr("Create"), this, SLOT(create_document()));
@@ -76,6 +85,10 @@ GPlatesQtWidgets::ProjectDocumentsDockWidget::ProjectDocumentsDockWidget(
 	d_remove_action->setToolTip(tr("Remove from Project (does not delete the file)"));
 	toolbar->addSeparator();
 	d_set_primary_action = toolbar->addAction(tr("Set Primary"), this, SLOT(set_primary_document()));
+	d_set_primary_action->setToolTip(tr(
+			"Make this the Primary Project Document - the one whose front matter GPlates reads"
+			" for planet radius, digitising resolution, and the required timestamp schedule."
+			" A project can have other associated documents, but only one primary."));
 	d_save_action = toolbar->addAction(tr("Save"), this, SLOT(save_document()));
 	d_save_action->setShortcut(QKeySequence::Save);
 	d_save_action->setShortcutContext(Qt::WidgetWithChildrenShortcut);
@@ -85,6 +98,11 @@ GPlatesQtWidgets::ProjectDocumentsDockWidget::ProjectDocumentsDockWidget(
 	d_locate_action = toolbar->addAction(tr("Locate"), this, SLOT(locate_missing_document()));
 	d_external_editor_action = toolbar->addAction(tr("External Editor"), this, SLOT(open_in_external_editor()));
 	d_file_browser_action = toolbar->addAction(tr("Show File"), this, SLOT(show_in_file_browser()));
+	toolbar->addSeparator();
+	d_validate_action = toolbar->addAction(tr("Validate"), this, SLOT(validate_current_document()));
+	d_validate_action->setToolTip(tr(
+			"Check the front matter currently in the editor - including unsaved edits - and report"
+			" exactly what GPlates would read from it as the Primary Project Document."));
 	layout->addWidget(toolbar);
 
 	QSplitter *splitter = new QSplitter(Qt::Vertical, contents);
@@ -116,6 +134,14 @@ GPlatesQtWidgets::ProjectDocumentsDockWidget::ProjectDocumentsDockWidget(
 	d_metadata_status->setWordWrap(true);
 	d_metadata_status->setTextInteractionFlags(Qt::TextSelectableByMouse);
 	layout->addWidget(d_metadata_status);
+
+	// Separate from d_metadata_status above: that one shows what is currently applied (the
+	// saved Primary Project Document); this one is on-demand, reads whichever document is
+	// selected - saved or not, primary or not - so a mistake can be caught before saving.
+	d_validation_status = new QLabel(contents);
+	d_validation_status->setWordWrap(true);
+	d_validation_status->setTextInteractionFlags(Qt::TextSelectableByMouse);
+	layout->addWidget(d_validation_status);
 
 	d_file_watcher = new QFileSystemWatcher(this);
 	setWidget(contents);
@@ -593,6 +619,61 @@ GPlatesQtWidgets::ProjectDocumentsDockWidget::update_metadata_status()
 
 
 void
+GPlatesQtWidgets::ProjectDocumentsDockWidget::validate_current_document()
+{
+	if (current_document_index() < 0)
+	{
+		d_validation_status->setText(tr("No document selected."));
+		d_validation_status->setStyleSheet(QString());
+		return;
+	}
+
+	// Deliberately parses whatever is in the editor right now, not the file on disk - so a
+	// mistake (like a stray character breaking the whole front matter) can be caught before
+	// Save, and so a document that is not yet Primary can still be checked before promoting it.
+	const GPlatesAppLogic::ProjectMetadata metadata =
+			GPlatesAppLogic::ProjectMetadataParser::parse(d_editor->toPlainText());
+
+	QStringList lines;
+	bool has_problem = false;
+
+	if (!metadata.has_front_matter)
+	{
+		lines << tr("No front matter found - as a Primary Project Document this would have no"
+				" effect (GPlates would fall back to Earth defaults).");
+	}
+	else if (!metadata.is_valid)
+	{
+		lines << tr("Invalid: %1").arg(metadata.diagnostic);
+		has_problem = true;
+	}
+	else
+	{
+		lines << tr("Front matter is well-formed.");
+		lines << tr("  Planet radius: %1 m")
+				.arg(metadata.planet_radius_metres.get(), 0, 'g', 15);
+		lines << (metadata.default_resolution_km
+				? tr("  Default resolution: %1 km").arg(metadata.default_resolution_km.get())
+				: tr("  Default resolution: not set"));
+		if (!metadata.resolution_km_by_feature_type.isEmpty())
+		{
+			lines << tr("  Per-feature-type resolution overrides: %1")
+					.arg(metadata.resolution_km_by_feature_type.size());
+		}
+		lines << (metadata.required_timestamps_ma
+				? tr("  Required timestamps: %1 entries, %2 to %3 Ma")
+						.arg(metadata.required_timestamps_ma->size())
+						.arg(metadata.required_timestamps_ma->front(), 0, 'f', 2)
+						.arg(metadata.required_timestamps_ma->back(), 0, 'f', 2)
+				: tr("  Required timestamps: not set"));
+	}
+
+	d_validation_status->setText(lines.join("\n"));
+	d_validation_status->setStyleSheet(has_problem ? "QLabel { color: #a05000; }" : QString());
+}
+
+
+void
 GPlatesQtWidgets::ProjectDocumentsDockWidget::update_actions()
 {
 	const int index = current_document_index();
@@ -607,6 +688,7 @@ GPlatesQtWidgets::ProjectDocumentsDockWidget::update_actions()
 	d_locate_action->setEnabled(has_document && !file_exists);
 	d_external_editor_action->setEnabled(has_document && file_exists);
 	d_file_browser_action->setEnabled(has_document && file_exists);
+	d_validate_action->setEnabled(has_document);
 }
 
 

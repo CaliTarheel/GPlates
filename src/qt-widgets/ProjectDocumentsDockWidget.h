@@ -67,6 +67,7 @@ namespace GPlatesQtWidgets
 		void locate_missing_document();
 		void open_in_external_editor();
 		void show_in_file_browser();
+		void validate_current_document();
 		void handle_current_document_changed(QTreeWidgetItem *current, QTreeWidgetItem *previous);
 		void handle_editor_text_changed();
 		void handle_tab_changed(int index);
@@ -94,6 +95,7 @@ namespace GPlatesQtWidgets
 		QPointer<QTextBrowser> d_preview;
 		QPointer<QTabWidget> d_editor_tabs;
 		QPointer<QLabel> d_metadata_status;
+		QPointer<QLabel> d_validation_status;
 		QPointer<QFileSystemWatcher> d_file_watcher;
 
 		QPointer<QAction> d_create_action;
@@ -106,6 +108,7 @@ namespace GPlatesQtWidgets
 		QPointer<QAction> d_locate_action;
 		QPointer<QAction> d_external_editor_action;
 		QPointer<QAction> d_file_browser_action;
+		QPointer<QAction> d_validate_action;
 
 		QSet<QString> d_ignore_next_file_change;
 		bool d_updating_editor;

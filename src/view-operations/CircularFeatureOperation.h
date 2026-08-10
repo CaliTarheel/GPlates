@@ -18,6 +18,7 @@ class QComboBox;
 class QDialog;
 class QDoubleSpinBox;
 class QLabel;
+class QRadioButton;
 
 namespace GPlatesAppLogic
 {
@@ -93,6 +94,8 @@ namespace GPlatesViewOperations
 		QPointer<QComboBox> d_geometry_type_combo;
 		QPointer<QDoubleSpinBox> d_maximum_radius_spin;
 		QPointer<QComboBox> d_output_collection_combo;
+		QPointer<QRadioButton> d_circular_style_radio;
+		QPointer<QRadioButton> d_regular_style_radio;
 		QPointer<QLabel> d_status_label;
 
 		std::vector<GPlatesModel::FeatureCollectionHandle::weak_ref> d_output_collections;

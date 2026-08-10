@@ -21,6 +21,8 @@
 #ifndef GPLATES_VIEWOPERATIONS_SPLITPLATEOPERATION_H
 #define GPLATES_VIEWOPERATIONS_SPLITPLATEOPERATION_H
 
+#include <vector>
+
 #include <boost/noncopyable.hpp>
 #include <boost/optional.hpp>
 #include <QString>
@@ -28,6 +30,7 @@
 #include "app-logic/ReconstructedFeatureGeometry.h"
 
 #include "maths/PolygonOnSphere.h"
+#include "maths/PolylineOnSphere.h"
 
 #include "model/FeatureHandle.h"
 #include "model/ModelInterface.h"
@@ -46,17 +49,30 @@ namespace GPlatesGui
 namespace GPlatesViewOperations
 {
 	/**
-	 * A two-stage operation that captures a focused polygon and then splits it
-	 * using a subsequently focused polyline.
+	 * A picker-driven operation: arm polygon selection, capture a click (repeatable, to split
+	 * more than one polygon with the same cutter), arm polyline selection, capture a click,
+	 * then commit the split(s) as one explicit, atomic step - mirroring BooleanPolygonOperation's
+	 * shape rather than the old single trigger() that captured the polyline and performed the
+	 * split in the same call.
 	 */
 	class SplitPlateOperation :
 			private boost::noncopyable
 	{
 	public:
+		enum SelectionMode
+		{
+			NOT_SELECTING,
+			SELECTING_POLYGON,
+			SELECTING_POLYLINE
+		};
+
 		enum Outcome
 		{
+			SELECTION_ARMED,
 			POLYGON_CAPTURED,
+			POLYLINE_CAPTURED,
 			SPLIT_COMPLETED,
+			OPERATION_CANCELLED,
 			OPERATION_ERROR
 		};
 
@@ -77,20 +93,60 @@ namespace GPlatesViewOperations
 				GPlatesGui::FeatureFocus &feature_focus,
 				GPlatesAppLogic::ApplicationState &application_state);
 
+		Result arm_polygon_selection();
+		Result arm_polyline_selection();
+
 		/**
-		 * Capture the focused polygon, or use the focused polyline to split a
-		 * polygon captured by a previous call.
+		 * The globe's feature focus changed. If a selection is armed, capture it as another
+		 * polygon (added to the running set) or the polyline according to @a selection_mode;
+		 * otherwise does nothing.
 		 */
-		Result
-		trigger();
+		Result capture_armed_selection();
 
-		void
-		reset();
+		/** Forgets every captured polygon, keeping any captured polyline. */
+		void clear_polygons();
 
-		bool
-		has_captured_polygon() const
+		/**
+		 * Perform the split on every captured polygon using the captured polyline, as one
+		 * undoable edit. Requires at least one polygon and a polyline to be captured first.
+		 */
+		Result commit();
+
+		void reset();
+
+		SelectionMode selection_mode() const { return d_selection_mode; }
+		bool has_polygon() const { return !d_captured_polygons.empty(); }
+		unsigned int polygon_count() const { return static_cast<unsigned int>(d_captured_polygons.size()); }
+		bool has_polyline() const { return static_cast<bool>(d_captured_polyline); }
+		QString polygon_status() const;
+		QString polyline_status() const;
+
+		/**
+		 * The captured polygons' geometries, for a caller that wants to highlight them.
+		 */
+		std::vector<GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type>
+		polygons() const
 		{
-			return static_cast<bool>(d_captured_polygon);
+			std::vector<GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type> result;
+			result.reserve(d_captured_polygons.size());
+			for (std::vector<CapturedPolygon>::const_iterator polygon_iter = d_captured_polygons.begin();
+					polygon_iter != d_captured_polygons.end(); ++polygon_iter)
+			{
+				result.push_back(polygon_iter->polygon);
+			}
+			return result;
+		}
+
+		/**
+		 * The captured polyline's geometry, for a caller that wants to highlight it.
+		 */
+		boost::optional<GPlatesMaths::PolylineOnSphere::non_null_ptr_to_const_type>
+		polyline() const
+		{
+			return d_captured_polyline
+					? boost::optional<GPlatesMaths::PolylineOnSphere::non_null_ptr_to_const_type>(
+							d_captured_polyline->polyline)
+					: boost::none;
 		}
 
 	private:
@@ -116,10 +172,25 @@ namespace GPlatesViewOperations
 			double reconstruction_time;
 		};
 
+		struct CapturedPolyline
+		{
+			CapturedPolyline(
+					const GPlatesMaths::PolylineOnSphere::non_null_ptr_to_const_type &polyline_,
+					double reconstruction_time_) :
+				polyline(polyline_),
+				reconstruction_time(reconstruction_time_)
+			{  }
+
+			GPlatesMaths::PolylineOnSphere::non_null_ptr_to_const_type polyline;
+			double reconstruction_time;
+		};
+
 		GPlatesGui::FeatureFocus &d_feature_focus;
 		GPlatesAppLogic::ApplicationState &d_application_state;
 		GPlatesModel::ModelInterface d_model_interface;
-		boost::optional<CapturedPolygon> d_captured_polygon;
+		SelectionMode d_selection_mode;
+		std::vector<CapturedPolygon> d_captured_polygons;
+		boost::optional<CapturedPolyline> d_captured_polyline;
 	};
 }
 

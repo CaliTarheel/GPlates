@@ -114,6 +114,8 @@ set(srcs
     CreateFeaturePropertiesPageUi.ui
     BooleanPolygonsDialog.cc
     BooleanPolygonsDialog.h
+    OceanCrustCreationDialog.cc
+    OceanCrustCreationDialog.h
     CreateSmallCircleDialog.cc
     CreateSmallCircleDialog.h
     CreateSmallCircleDialogUi.ui
@@ -566,6 +568,8 @@ set(srcs
     SpecifyAnchoredPlateIdDialog.cc
     SpecifyAnchoredPlateIdDialog.h
     SpecifyAnchoredPlateIdDialogUi.ui
+    SplitPlateDialog.cc
+    SplitPlateDialog.h
     SymbolManagerDialog.cc
     SymbolManagerDialog.h
     SymbolManagerDialogUi.ui

@@ -78,7 +78,28 @@ namespace GPlatesViewOperations
 		Result arm_first_selection();
 		Result arm_operand_selection();
 		Result capture_armed_selection();
+
+		/**
+		 * Applies the given Boolean operation, replacing the first polygon's geometry with the
+		 * result.
+		 *
+		 * For POLYGON_UNION specifically, the operands are fully absorbed into the result, so
+		 * they are also removed from their feature collection (undoable, like everything else
+		 * here). Subtract/Intersect/Symmetric-Difference leave every operand untouched, since
+		 * none of those absorb an operand the way Union does - a Subtract operand is a cutting
+		 * tool, not something becoming part of the result.
+		 */
 		Result apply(SubductionCutterGeometry::BooleanOperation operation);
+
+		/**
+		 * Finds every other polygon in the first polygon's own feature collection that shares
+		 * its Plate ID and valid-time range exactly, adds them all as operands in one step, and
+		 * applies a union - without the user having to click each one individually.
+		 *
+		 * Requires only a captured first polygon; any operands already added manually are
+		 * replaced by the matched set.
+		 */
+		Result apply_unify();
 
 		void clear_operands();
 		void reset();
@@ -91,6 +112,33 @@ namespace GPlatesViewOperations
 		}
 		QString first_status() const;
 		QString operands_status() const;
+
+		/**
+		 * The captured first polygon's geometry, for a caller that wants to highlight it -
+		 * boost::none if nothing has been captured yet.
+		 */
+		boost::optional<GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type>
+		first_polygon() const
+		{
+			return d_first ? boost::optional<GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type>(d_first->polygon)
+					: boost::none;
+		}
+
+		/**
+		 * The captured operand polygons' geometries, for a caller that wants to highlight them.
+		 */
+		std::vector<GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type>
+		operand_polygons() const
+		{
+			std::vector<GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type> polygons;
+			polygons.reserve(d_operands.size());
+			for (std::vector<CapturedPolygon>::const_iterator operand_iter = d_operands.begin();
+					operand_iter != d_operands.end(); ++operand_iter)
+			{
+				polygons.push_back(operand_iter->polygon);
+			}
+			return polygons;
+		}
 
 	private:
 		struct CapturedPolygon

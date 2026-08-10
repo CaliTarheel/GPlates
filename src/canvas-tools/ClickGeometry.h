@@ -126,6 +126,11 @@ namespace GPlatesCanvasTools
 
 	private:
 
+		void
+		focus_clicked_geometry(
+				const GPlatesMaths::PointOnSphere &point_on_sphere,
+				double proximity_inclusion_threshold);
+
 		/**
 		 * Create a ClickGeometry instance.
 		 */

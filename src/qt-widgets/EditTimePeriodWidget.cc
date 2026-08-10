@@ -23,7 +23,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#include <QEvent>
 #include <QMessageBox>
+#include <QMouseEvent>
 
 #include "EditTimePeriodWidget.h"
 
@@ -125,6 +127,19 @@ GPlatesQtWidgets::EditTimePeriodWidget::EditTimePeriodWidget(
 			this, SLOT(handle_set_begin_time_to_current_time()));
 	QObject::connect(button_end_time_now, SIGNAL(clicked()),
 			this, SLOT(handle_set_end_time_to_current_time()));
+
+	// The visible diamond button is redundant now that double-clicking the spinbox or its
+	// label does the same thing - hidden rather than removed, so the slot and layout it drives
+	// stay intact if it's ever wanted back.
+	button_begin_time_now->setVisible(false);
+	button_end_time_now->setVisible(false);
+
+	// Double-clicking either the spinbox or its label is the same action as the (now hidden)
+	// button beside it - the label is a bigger, easier target next to a small spinbox.
+	spinbox_time_of_appearance->installEventFilter(this);
+	label_begin_time->installEventFilter(this);
+	spinbox_time_of_disappearance->installEventFilter(this);
+	label_end_time->installEventFilter(this);
 
 	QObject::connect(button_help, SIGNAL(clicked()),
 			d_help_dialog, SLOT(show()));
@@ -295,6 +310,28 @@ GPlatesQtWidgets::EditTimePeriodWidget::handle_set_end_time_to_current_time()
 	spinbox_time_of_disappearance->setValue(GPlatesPresentation::current_time());
 
 	Q_EMIT commit_me();
+}
+
+
+bool
+GPlatesQtWidgets::EditTimePeriodWidget::eventFilter(
+		QObject *watched,
+		QEvent *event)
+{
+	if (event->type() == QEvent::MouseButtonDblClick)
+	{
+		if (watched == spinbox_time_of_appearance || watched == label_begin_time)
+		{
+			handle_set_begin_time_to_current_time();
+			return true;
+		}
+		if (watched == spinbox_time_of_disappearance || watched == label_end_time)
+		{
+			handle_set_end_time_to_current_time();
+			return true;
+		}
+	}
+	return AbstractEditWidget::eventFilter(watched, event);
 }
 
 

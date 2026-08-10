@@ -528,10 +528,26 @@ namespace GPlatesViewOperations
 		
 		
 		/**
-		 * Highlight any secondary geometry vertices which might be moved.                                                                    
+		 * Highlight any secondary geometry vertices which might be moved.
 		 */
 		void
 		update_highlight_secondary_vertices();
+
+		/**
+		 * For each dragged vertex (by original position, before the move), finds the closest
+		 * coincident vertex in another loaded feature's geometry (reusing the same proximity
+		 * search as @a update_secondary_geometries) and, if found, edits that other feature's
+		 * geometry directly so the coincident vertex follows to the same new position - in the
+		 * same undo step as the primary move.
+		 *
+		 * Only called on the final placement of a drag, not on intermediate moves while the
+		 * mouse is still down, since each secondary edit is its own non-mergeable undo command.
+		 */
+		void
+		apply_secondary_vertex_snapping(
+				const std::vector<GeometryBuilder::PointIndex> &primary_indices,
+				const std::vector<GPlatesMaths::PointOnSphere> &original_positions,
+				const std::vector<GPlatesMaths::PointOnSphere> &new_positions);
 	};
 }
 
