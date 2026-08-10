@@ -291,10 +291,6 @@ find_package(Boost ${_GPLATES_MIN_BOOST_VERSION} REQUIRED
 		# These components are optional...
 		OPTIONAL_COMPONENTS
 			#
-			# Unit test framework is optional because we only need it for the GPlates unit-test executable and
-			# it is possible to compile the GUI version of GPlates without it.
-			unit_test_framework
-			#
 			# Boost.Python.Numpy is optional because we actually haven't started using it yet and
 			# it requires Boost >= 1.63 (which is above our current minimum Boost requirement).
 			#
@@ -428,16 +424,51 @@ if (GPLATES_BUILD_GPLATES)
 	#
 	# Add 'gplates-unit-test' executable (linked to gplates-lib).
 	#
-	# It's only added if we have a Boost unit test framework.
+	# It's only added if GoogleTest is available (eg, the conda-forge 'gtest' package, which provides
+	# 'GTestConfig.cmake' with imported targets GTest::gtest and GTest::gtest_main).
+	# GoogleTest remains optional so that GPlates can still be built without it, but CI builds the
+	# 'gplates-unit-test' target explicitly and therefore fails loudly if GoogleTest is missing.
 	# It will be populated by source files from the 'unit-test/' sub-directory.
-	if (TARGET Boost::unit_test_framework)
+	find_package(GTest QUIET)
+	if (TARGET GTest::gtest)
 		add_executable(gplates-unit-test EXCLUDE_FROM_ALL gplates_unit_test_main.cc ScribeExportGPlatesUnitTest.cc)
-		target_link_libraries(gplates-unit-test PRIVATE gplates-lib)
+		# Note: We link GTest::gtest (not GTest::gtest_main) because we provide our own main()
+		#       (in 'gplates_unit_test_main.cc') that sets up Qt before running the tests.
+		target_link_libraries(gplates-unit-test PRIVATE gplates-lib GTest::gtest)
+
+		# Tests that read data files from 'src/unit-test/data/' get its absolute path from this
+		# compile definition, so the tests do not depend on the current working directory
+		# (they can be run from anywhere, and CTest does not need to set a working directory).
+		target_compile_definitions(gplates-unit-test PRIVATE
+			"GPLATES_UNIT_TEST_DATA_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/unit-test/data\"")
+
+		# Register each GoogleTest test case as an individual CTest test.
+		#
+		# Tests are not registered for Debug builds: GPlatesGlobal::Assert calls std::abort() in
+		# Debug builds (GPLATES_DEBUG) instead of throwing, which kills the tests that exercise
+		# error paths. This mirrors the pyGPlates tests (registered with CONFIGURATIONS Release
+		# MinSizeRel). Note: gtest_discover_tests() cannot attach CONFIGURATIONS to the discovered
+		# tests, so for multi-config generators (Visual Studio/Xcode) the tests are discovered for
+		# whichever config was built - run 'ctest -C Release' (a Debug test run is unsupported).
+		#
+		# Note: Do not pass WORKING_DIRECTORY (or a PROPERTIES WORKING_DIRECTORY - the keyword
+		# would be re-parsed as the WORKING_DIRECTORY argument): discovery leaves a
+		# 'cmake_test_discovery_*.json' scratch file in its working directory, which must
+		# therefore remain the build directory. The tests themselves are working-directory
+		# independent (see GPLATES_UNIT_TEST_DATA_DIR above).
+		if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+			include(GoogleTest)
+			gtest_discover_tests(gplates-unit-test
+				# Discovery (running the executable with '--gtest_list_tests' after building it) can
+				# be slow on a busy CI runner since the executable links the entire gplates-lib.
+				DISCOVERY_TIMEOUT 120
+				PROPERTIES TIMEOUT 600)
+		endif()
 	else()
 		# Only print status message if this is not a public release.
-		# Because it'll only confuse users (because gplate-unit-test is not part of public release).
+		# Because it'll only confuse users (because gplates-unit-test is not part of public release).
 		if (NOT GPLATES_PUBLIC_RELEASE)
-			message(STATUS "Warning: boost unit_test_framework not found so GPlates unit-test executable gplates-unit-test will not be available.")
+			message(STATUS "Warning: GoogleTest (gtest) not found so GPlates unit-test executable gplates-unit-test will not be available.")
 		endif()
 	endif()
 
@@ -468,6 +499,35 @@ else()  # pygplates ...
 	#
 	# Note that module libraries default to position-independent code, but we'll set it anyway.
 	set_target_properties(pygplates PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+	#
+	# Build the pygplates module library into a 'pygplates/' sub-directory of the build output directory.
+	#
+	# This gives the build tree the same shape as the installed Python package, which is a 'pygplates/' package
+	# directory containing the pygplates module library and an '__init__.py' (see 'cmake/modules/Install.cmake',
+	# which also generates that '__init__.py', and the type stub, into this same directory).
+	#
+	# So '<build_dir>/bin' (or '<build_dir>/bin/<config>' for a multi-config generator) is a directory you can
+	# put on 'sys.path' (or PYTHONPATH) to "import pygplates" exactly as an end user would - which is what our
+	# tests, and the type stub generator, do. Note this is the same directory as before this became a package,
+	# so an existing "PYTHONPATH=<build_dir>/bin/Release" still works (it now finds the package, not the library).
+	#
+	# Note: a multi-config generator (eg, Visual Studio) normally appends a per-configuration sub-directory to
+	#       LIBRARY_OUTPUT_DIRECTORY, but it does *not* do that when the value contains a generator expression -
+	#       so we have to interpose '$<CONFIG>' ourselves. And only for a multi-config generator, since a
+	#       single-config generator (eg, Ninja, Unix Makefiles) has no per-configuration sub-directory.
+	#
+	# Note: a MODULE library uses LIBRARY_OUTPUT_DIRECTORY on *all* platforms (unlike a SHARED library, whose
+	#       DLL on Windows uses RUNTIME_OUTPUT_DIRECTORY), and has no import library, so this is the only
+	#       output directory that needs redirecting.
+	#
+	if (CMAKE_CONFIGURATION_TYPES)  # multi-config generator (eg, Visual Studio, Xcode) ...
+		set(_pygplates_package_build_dir "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/$<CONFIG>/pygplates")
+	else()  # single-config generator (eg, Ninja, Unix Makefiles) ...
+		set(_pygplates_package_build_dir "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/pygplates")
+	endif()
+	set_target_properties(pygplates PROPERTIES LIBRARY_OUTPUT_DIRECTORY "${_pygplates_package_build_dir}")
+	unset(_pygplates_package_build_dir)
 	target_sources_util(pygplates PRIVATE
 		${PROJECT_BINARY_DIR}/src/global/Version.cc
 		${PROJECT_BINARY_DIR}/src/global/License.cc
@@ -936,13 +996,6 @@ target_link_libraries(${SOURCE_TARGET} PUBLIC Boost::disable_autolinking)
 # Add optional Boost.Python.Numpy component (if found).
 if (TARGET Boost::${GPLATES_BOOST_PYTHON_NUMPY_COMPONENT_NAME})
 	target_link_libraries(${SOURCE_TARGET} PUBLIC Boost::${GPLATES_BOOST_PYTHON_NUMPY_COMPONENT_NAME})
-endif()
-if (TARGET gplates-unit-test)
-	# Link to the Boost unit test framework.
-	target_link_libraries(gplates-unit-test PRIVATE Boost::unit_test_framework)
-	# Boost unit test framework is now dynamically linked (Boost_USE_STATIC_LIBS is OFF for all boost components) so
-	# we define the BOOST_TEST_DYN_LINK compiler flag here to avoid having to define it in every unit test source file...
-	target_compile_definitions(gplates-unit-test PRIVATE BOOST_TEST_DYN_LINK)
 endif()
 
 #
