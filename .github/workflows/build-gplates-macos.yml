@@ -24,6 +24,10 @@ on:
         description: "Attach the .dmg to the release for this tag (leave blank to just keep the artifact)"
         required: false
         default: ""
+      check_released_dmg:
+        description: "Skip the build and just check the .dmg already attached to this tag (eg, 2.6.0-dev8-SR1)"
+        required: false
+        default: ""
   push:
     tags:
       - "*-SR*"
@@ -33,6 +37,8 @@ permissions:
 
 jobs:
   build-macos:
+    # Skipped when the run was dispatched purely to check an already-published .dmg.
+    if: inputs.check_released_dmg == ''
     runs-on: macos-latest
 
     defaults:
@@ -85,38 +91,28 @@ jobs:
       - name: Show what was produced
         run: ls -lh "$GITHUB_WORKSPACE/packages"/*.dmg
 
-      # Catch an unsigned or partially signed bundle here, in CI, rather than leaving a Mac user to
-      # discover it as "GPlates is damaged and can't be opened". Verifying the app *inside the .dmg*
-      # (rather than the staged install tree) is what matters, since that is what the user receives.
-      #
-      # Note: we deliberately do not run 'spctl --assess' - that asks whether Gatekeeper would admit
-      #       the app without prompting, which is a question about notarisation, and it will always
-      #       fail for an ad-hoc signature. What we need to know is that the signature is *valid*.
-      - name: Verify the app in the .dmg is validly signed
-        run: |
-          DMG=$(ls "$GITHUB_WORKSPACE"/packages/*.dmg | head -1)
-          MOUNT=$(mktemp -d)
-          hdiutil attach "$DMG" -mountpoint "$MOUNT" -nobrowse -readonly
-          trap 'hdiutil detach "$MOUNT" || true' EXIT
-
-          APP=$(find "$MOUNT" -maxdepth 1 -name "*.app" | head -1)
-          if [ -z "$APP" ]; then
-            echo "No .app found in $DMG"
-            exit 1
-          fi
-          echo "Verifying $APP"
-
-          codesign --verify --deep --strict --verbose=2 "$APP"
-          codesign --display --verbose=2 "$APP"
-
       # Keep the artifact regardless, so a manual run is useful on its own and a failed upload does
       # not throw away an hour of build time.
+      #
+      # Note this deliberately runs *before* the check below rather than after it: a .dmg that fails
+      # the check is exactly the one worth having on hand to diagnose, so it should be preserved
+      # even though it must not be published.
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: gplates-macos-dmg
           path: packages/*.dmg
           if-no-files-found: error
+
+      # Catch a bundle a Mac user could not open here, in CI, rather than leaving them to discover
+      # it as "GPlates is damaged and can't be opened" - a dialog that offers them no way forward.
+      #
+      # This gates the release upload below, so such a bundle never reaches a user. The .dmg is
+      # checked rather than the staged install tree, because the .dmg is what the user receives.
+      - name: Check the .dmg is something a Mac user can open
+        run: |
+          DMG=$(ls "$GITHUB_WORKSPACE"/packages/*.dmg | head -1)
+          bash .github/scripts/check-macos-app.sh "$DMG"
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/') || inputs.upload_to_release != ''
@@ -128,3 +124,31 @@ jobs:
             TAG="${GITHUB_REF#refs/tags/}"
           fi
           gh release upload "$TAG" "$GITHUB_WORKSPACE"/packages/*.dmg --clobber --repo "$GITHUB_REPOSITORY"
+
+  # Checks the .dmg already attached to a release - the exact bytes a user downloads, rather than a
+  # freshly built copy of them.
+  #
+  # The build job above runs the same check on what it produces, but getting there costs the best
+  # part of an hour. This runs in a couple of minutes, which makes it practical to re-check a
+  # published release at any time - after a re-upload, or when a user reports a problem with it.
+  check-released-dmg:
+    if: inputs.check_released_dmg != ''
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Download the .dmg attached to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p released
+          gh release download "${{ inputs.check_released_dmg }}" \
+            --repo "$GITHUB_REPOSITORY" --pattern "*.dmg" --dir released
+          ls -lh released
+
+      - name: Check it is something a Mac user can open
+        run: |
+          DMG=$(ls released/*.dmg | head -1)
+          bash .github/scripts/check-macos-app.sh "$DMG"
