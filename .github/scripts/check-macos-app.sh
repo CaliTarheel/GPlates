@@ -52,9 +52,22 @@ if [ "${TARGET##*.}" = "dmg" ]; then
         exit 1
     fi
 
-    SRC=$(find "$MOUNT" -maxdepth 1 -name "*.app" | head -1)
+    # Where the app sits inside the image depends on CPack's layout - whether a top-level directory
+    # or a packaging prefix is in play - so search shallow-first rather than assuming the volume
+    # root. Taking the shallowest match matters: bundles nest (helper apps live inside Contents),
+    # and it is the outermost one that the user drags to Applications.
+    SRC=""
+    for depth in 1 2 3 4; do
+        SRC=$(find "$MOUNT" -maxdepth "$depth" -type d -name "*.app" 2>/dev/null | head -1)
+        [ -n "$SRC" ] && break
+    done
+
     if [ -z "$SRC" ]; then
+        # Print the layout rather than just the failure: "no .app found" on its own tells whoever
+        # reads this log nothing about what the image actually contains, or what changed.
         echo "FAIL: no .app found in $TARGET"
+        echo "      contents of the mounted image:"
+        find "$MOUNT" -maxdepth 3 2>/dev/null | head -40 | sed 's/^/        /'
         exit 1
     fi
 
