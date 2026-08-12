@@ -6,9 +6,15 @@
 # Run it by hand from the Actions tab, or let it fire on a version tag - in which case the .dmg is
 # attached to the matching release.
 #
-# Note: the .dmg is NOT code signed or notarised. macOS Gatekeeper will refuse to open it on a
-# first attempt; the user has to right-click the app and choose Open, or clear the quarantine
-# attribute. Signing requires a paid Apple Developer account.
+# Note: the .dmg is ad-hoc signed but NOT notarised, because notarisation requires a paid Apple
+# Developer account. Ad-hoc signing is free and is what keeps macOS from reporting the bundle as
+# "damaged and can't be opened" - see the configure step below. Gatekeeper will still stop the app
+# on first launch, but with the ordinary unidentified-developer prompt that the user can approve
+# via Right-click > Open, or by clearing the quarantine attribute:
+#
+#     xattr -dr com.apple.quarantine /Applications/gplates.app
+#
+# Neither of those requires the user to disable any system protection.
 name: GPlates macOS build
 
 on:
@@ -16,6 +22,10 @@ on:
     inputs:
       upload_to_release:
         description: "Attach the .dmg to the release for this tag (leave blank to just keep the artifact)"
+        required: false
+        default: ""
+      check_released_dmg:
+        description: "Skip the build and just check the .dmg already attached to this tag (eg, 2.6.0-dev8-SR1)"
         required: false
         default: ""
   push:
@@ -27,6 +37,8 @@ permissions:
 
 jobs:
   build-macos:
+    # Skipped when the run was dispatched purely to check an already-published .dmg.
+    if: inputs.check_released_dmg == ''
     runs-on: macos-latest
 
     defaults:
@@ -54,10 +66,19 @@ jobs:
 
       - name: Configure
         run: |
+          # GPLATES_APPLE_CODE_SIGN_IDENTITY=- selects ad-hoc signing.
+          #
+          # The standalone install rewrites the dependency paths of every bundled dylib, plugin and
+          # framework with 'install_name_tool', and then signs each one. Left unset, that signing step
+          # is silently skipped and we ship a bundle macOS considers unsigned - which it reports to the
+          # user as "damaged", with no way past it short of turning off system protections. Ad-hoc
+          # signing costs nothing and avoids that. Replace with a "Developer ID Application: ..."
+          # identity (and add a notarisation step) if this fork ever gets an Apple developer account.
           cmake -S . -B build-gplates -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$CONDA_PREFIX" \
-            -DGPLATES_INSTALL_STANDALONE=ON
+            -DGPLATES_INSTALL_STANDALONE=ON \
+            -DGPLATES_APPLE_CODE_SIGN_IDENTITY=-
 
       - name: Build
         run: cmake --build build-gplates --target gplates
@@ -72,12 +93,26 @@ jobs:
 
       # Keep the artifact regardless, so a manual run is useful on its own and a failed upload does
       # not throw away an hour of build time.
+      #
+      # Note this deliberately runs *before* the check below rather than after it: a .dmg that fails
+      # the check is exactly the one worth having on hand to diagnose, so it should be preserved
+      # even though it must not be published.
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: gplates-macos-dmg
           path: packages/*.dmg
           if-no-files-found: error
+
+      # Catch a bundle a Mac user could not open here, in CI, rather than leaving them to discover
+      # it as "GPlates is damaged and can't be opened" - a dialog that offers them no way forward.
+      #
+      # This gates the release upload below, so such a bundle never reaches a user. The .dmg is
+      # checked rather than the staged install tree, because the .dmg is what the user receives.
+      - name: Check the .dmg is something a Mac user can open
+        run: |
+          DMG=$(ls "$GITHUB_WORKSPACE"/packages/*.dmg | head -1)
+          bash .github/scripts/check-macos-app.sh "$DMG"
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/') || inputs.upload_to_release != ''
@@ -89,3 +124,31 @@ jobs:
             TAG="${GITHUB_REF#refs/tags/}"
           fi
           gh release upload "$TAG" "$GITHUB_WORKSPACE"/packages/*.dmg --clobber --repo "$GITHUB_REPOSITORY"
+
+  # Checks the .dmg already attached to a release - the exact bytes a user downloads, rather than a
+  # freshly built copy of them.
+  #
+  # The build job above runs the same check on what it produces, but getting there costs the best
+  # part of an hour. This runs in a couple of minutes, which makes it practical to re-check a
+  # published release at any time - after a re-upload, or when a user reports a problem with it.
+  check-released-dmg:
+    if: inputs.check_released_dmg != ''
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Download the .dmg attached to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p released
+          gh release download "${{ inputs.check_released_dmg }}" \
+            --repo "$GITHUB_REPOSITORY" --pattern "*.dmg" --dir released
+          ls -lh released
+
+      - name: Check it is something a Mac user can open
+        run: |
+          DMG=$(ls released/*.dmg | head -1)
+          bash .github/scripts/check-macos-app.sh "$DMG"

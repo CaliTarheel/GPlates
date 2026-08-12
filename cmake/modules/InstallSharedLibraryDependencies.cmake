@@ -366,14 +366,36 @@ elseif (APPLE)
             function(codesign installed_file)
                 # Only sign if a signing identity was provided.
                 if (CODE_SIGN_IDENTITY)
-                    # Run 'codesign' to sign installed file/directory with a Developer ID certificate.
-                    # Note that we need "--timestamp" to provide a secure timestamp, otherwise notarization will fail.
-                    execute_process(
-                        COMMAND ${CODESIGN} --timestamp --force --verify --options runtime --sign ${CODE_SIGN_IDENTITY}
-                                --entitlements ${ENTITLEMENTS_FILE} ${installed_file}
-                        RESULT_VARIABLE _codesign_result
-                        OUTPUT_VARIABLE _codesign_output
-                        ERROR_VARIABLE _codesign_error)
+                    if (CODE_SIGN_IDENTITY STREQUAL "-")
+                        # Ad-hoc signing - the free fallback for builds without a paid Apple Developer ID.
+                        #
+                        # An ad-hoc signature is tied to no identity and cannot be notarized, so a downloaded
+                        # bundle is still quarantined and the user still has to approve it once. What it does
+                        # provide is a *valid* signature that seals the bundle, and that matters for two reasons:
+                        # on Apple Silicon every Mach-O must carry a valid signature to be exec'd at all, and an
+                        # unsigned bundle makes macOS report the misleading "GPlates is damaged and can't be
+                        # opened - you should move it to the Trash", which offers the user no way forward.
+                        # Signed ad-hoc, the same bundle instead gets the ordinary unidentified-developer prompt.
+                        #
+                        # Note that "--timestamp" and "--options runtime" are deliberately omitted here: an ad-hoc
+                        # signature cannot carry a secure timestamp, and the hardened runtime only buys anything
+                        # in combination with notarization (which needs a Developer ID). The entitlements file is
+                        # omitted for the same reason - those entitlements only take effect under hardened runtime.
+                        execute_process(
+                            COMMAND ${CODESIGN} --force --sign - ${installed_file}
+                            RESULT_VARIABLE _codesign_result
+                            OUTPUT_VARIABLE _codesign_output
+                            ERROR_VARIABLE _codesign_error)
+                    else()
+                        # Run 'codesign' to sign installed file/directory with a Developer ID certificate.
+                        # Note that we need "--timestamp" to provide a secure timestamp, otherwise notarization will fail.
+                        execute_process(
+                            COMMAND ${CODESIGN} --timestamp --force --verify --options runtime --sign ${CODE_SIGN_IDENTITY}
+                                    --entitlements ${ENTITLEMENTS_FILE} ${installed_file}
+                            RESULT_VARIABLE _codesign_result
+                            OUTPUT_VARIABLE _codesign_output
+                            ERROR_VARIABLE _codesign_error)
+                    endif()
                     if (_codesign_result)
                         message(FATAL_ERROR "${CODESIGN} failed: ${_codesign_error}")
                     endif()
