@@ -6,9 +6,15 @@
 # Run it by hand from the Actions tab, or let it fire on a version tag - in which case the .dmg is
 # attached to the matching release.
 #
-# Note: the .dmg is NOT code signed or notarised. macOS Gatekeeper will refuse to open it on a
-# first attempt; the user has to right-click the app and choose Open, or clear the quarantine
-# attribute. Signing requires a paid Apple Developer account.
+# Note: the .dmg is ad-hoc signed but NOT notarised, because notarisation requires a paid Apple
+# Developer account. Ad-hoc signing is free and is what keeps macOS from reporting the bundle as
+# "damaged and can't be opened" - see the configure step below. Gatekeeper will still stop the app
+# on first launch, but with the ordinary unidentified-developer prompt that the user can approve
+# via Right-click > Open, or by clearing the quarantine attribute:
+#
+#     xattr -dr com.apple.quarantine /Applications/gplates.app
+#
+# Neither of those requires the user to disable any system protection.
 name: GPlates macOS build
 
 on:
@@ -54,10 +60,19 @@ jobs:
 
       - name: Configure
         run: |
+          # GPLATES_APPLE_CODE_SIGN_IDENTITY=- selects ad-hoc signing.
+          #
+          # The standalone install rewrites the dependency paths of every bundled dylib, plugin and
+          # framework with 'install_name_tool', and then signs each one. Left unset, that signing step
+          # is silently skipped and we ship a bundle macOS considers unsigned - which it reports to the
+          # user as "damaged", with no way past it short of turning off system protections. Ad-hoc
+          # signing costs nothing and avoids that. Replace with a "Developer ID Application: ..."
+          # identity (and add a notarisation step) if this fork ever gets an Apple developer account.
           cmake -S . -B build-gplates -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_PREFIX_PATH="$CONDA_PREFIX" \
-            -DGPLATES_INSTALL_STANDALONE=ON
+            -DGPLATES_INSTALL_STANDALONE=ON \
+            -DGPLATES_APPLE_CODE_SIGN_IDENTITY=-
 
       - name: Build
         run: cmake --build build-gplates --target gplates
@@ -69,6 +84,30 @@ jobs:
 
       - name: Show what was produced
         run: ls -lh "$GITHUB_WORKSPACE/packages"/*.dmg
+
+      # Catch an unsigned or partially signed bundle here, in CI, rather than leaving a Mac user to
+      # discover it as "GPlates is damaged and can't be opened". Verifying the app *inside the .dmg*
+      # (rather than the staged install tree) is what matters, since that is what the user receives.
+      #
+      # Note: we deliberately do not run 'spctl --assess' - that asks whether Gatekeeper would admit
+      #       the app without prompting, which is a question about notarisation, and it will always
+      #       fail for an ad-hoc signature. What we need to know is that the signature is *valid*.
+      - name: Verify the app in the .dmg is validly signed
+        run: |
+          DMG=$(ls "$GITHUB_WORKSPACE"/packages/*.dmg | head -1)
+          MOUNT=$(mktemp -d)
+          hdiutil attach "$DMG" -mountpoint "$MOUNT" -nobrowse -readonly
+          trap 'hdiutil detach "$MOUNT" || true' EXIT
+
+          APP=$(find "$MOUNT" -maxdepth 1 -name "*.app" | head -1)
+          if [ -z "$APP" ]; then
+            echo "No .app found in $DMG"
+            exit 1
+          fi
+          echo "Verifying $APP"
+
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign --display --verbose=2 "$APP"
 
       # Keep the artifact regardless, so a manual run is useful on its own and a failed upload does
       # not throw away an hour of build time.
