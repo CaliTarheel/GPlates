@@ -342,6 +342,62 @@ namespace GPlatesPresentation
 		QList<InternalSessionInfo>
 		get_recent_session_list();
 
+
+		/**
+		 * Returns the filename of the project file most recently opened or saved, or none if
+		 * no project has been opened or saved on this machine.
+		 *
+		 * This is recorded whenever a project is loaded or saved, and is not cleared when the
+		 * current session stops being a project (eg, via @a clear_session). The file is not
+		 * checked for existence - it may since have been moved or deleted.
+		 */
+		boost::optional<QString>
+		get_last_project_filename() const;
+
+
+		/**
+		 * Returns true if the user has asked for the most recently used project to be re-opened
+		 * when GPlates starts (see @a get_last_project_filename).
+		 */
+		bool
+		is_auto_load_last_project_enabled() const;
+
+
+		/**
+		 * Turn automatic re-opening of the last project on or off.
+		 *
+		 * Used to switch it off when an attempt is found to have failed - see
+		 * @a is_auto_load_attempt_pending.
+		 */
+		void
+		set_auto_load_last_project_enabled(
+				bool enabled);
+
+
+		/**
+		 * Returns true if an automatic re-open was started and never finished.
+		 *
+		 * A project that fails hard while loading would otherwise be re-opened on every
+		 * subsequent launch, and since it fails during startup the user never reaches the
+		 * preference to turn it off - GPlates becomes unusable with no way back in.
+		 *
+		 * So the attempt is recorded before the load begins and cleared once it returns. Finding
+		 * it still set on the next startup means the previous attempt did not complete.
+		 */
+		bool
+		is_auto_load_attempt_pending() const;
+
+
+		/**
+		 * Record whether an automatic re-open is in progress.
+		 *
+		 * This is written to persistent storage immediately, since its whole purpose is to
+		 * survive a process that does not shut down normally.
+		 */
+		void
+		set_auto_load_attempt_pending(
+				bool pending);
+
 	public Q_SLOTS:
 
 		/**
