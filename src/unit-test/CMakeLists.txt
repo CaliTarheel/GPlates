@@ -9,6 +9,16 @@
 # so the build is unaware of the change.
 #
 set(srcs
+    AdvancePlateMotionGeometryTest.cc
+    AdvancePlateMotionGeometryTest.h
+    BooleanPolygonGeometryTest.cc
+    BooleanPolygonGeometryTest.h
+    CollisionGeometryTest.cc
+    CollisionGeometryTest.h
+    PostCollisionRiftGeometryTest.cc
+    PostCollisionRiftGeometryTest.h
+    MantleEventGeometryTest.cc
+    MantleEventGeometryTest.h
     ApplicationStateTest.cc
     ApplicationStateTest.h
     AppLogicTestSuite.cc
@@ -25,6 +35,8 @@ set(srcs
     DataMiningTestSuite.h
     FeatureHandleTest.cc
     FeatureHandleTest.h
+    FeatureEventVersionerTest.cc
+    FeatureEventVersionerTest.h
     FeatureVisitorsTestSuite.cc
     FeatureVisitorsTestSuite.h
     FileIoTestSuite.cc
@@ -42,6 +54,16 @@ set(srcs
     GPlatesTestSuite.h
     GuiTestSuite.cc
     GuiTestSuite.h
+    InitialContinentGeometryTest.cc
+    InitialContinentGeometryTest.h
+    InitialRiftGeometryTest.cc
+    InitialRiftGeometryTest.h
+    InitialRotationFileTest.cc
+    InitialRotationFileTest.h
+    InitialSubductionGeometryTest.cc
+    InitialSubductionGeometryTest.h
+    SubductionEffectsGeometryTest.cc
+    SubductionEffectsGeometryTest.h
     MainTestSuite.cc
     MainTestSuite.h
     MathsTestSuite.cc
@@ -52,10 +74,32 @@ set(srcs
     ModelTestSuite.h
     MultiThreadTest.cc
     MultiThreadTest.h
+    OceanCrustBandBuilderTest.cc
+    OceanCrustBandBuilderTest.h
+    PacificPlateGeometryTest.cc
+    PacificPlateGeometryTest.h
     PresentationTestSuite.cc
     PresentationTestSuite.h
     ProjectMetadataTest.cc
     ProjectMetadataTest.h
+    ProjectTimestampScheduleTest.cc
+    ProjectTimestampScheduleTest.h
+    RotationMotionPlannerTest.cc
+    RotationMotionPlannerTest.h
+    BoundarySectionGraphTest.cc
+    BoundarySectionGraphTest.h
+    SubductionLifecyclePlannerTest.cc
+    SubductionLifecyclePlannerTest.h
+    CollisionAccretionGuardrailsTest.cc
+    CollisionAccretionGuardrailsTest.h
+    GeologyEventLedgerTest.cc
+    GeologyEventLedgerTest.h
+    WorldbuildingAuditReportTest.cc
+    WorldbuildingAuditReportTest.h
+    WorldbuildingExportProfileTest.cc
+    WorldbuildingExportProfileTest.h
+    WorldbuildingProjectManifestTest.cc
+    WorldbuildingProjectManifestTest.h
     PropertyValuesTestSuite.cc
     PropertyValuesTestSuite.h
     RealTest.cc
@@ -73,6 +117,8 @@ set(srcs
     TestSuiteFilterTest.h
     TranscribeTest.cc
     TranscribeTest.h
+    TripleJunctionGeometryTest.cc
+    TripleJunctionGeometryTest.h
     UnitTestTestSuite.cc
     UnitTestTestSuite.h
     UtilsTestSuite.cc

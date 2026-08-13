@@ -31,7 +31,12 @@
 #include "unit-test/TestSuiteFilter.h"
 #include "unit-test/DataAssociationDataTableTest.h"
 #include "unit-test/GenerateVelocityDomainCitcomsTest.h"
+#include "unit-test/FeatureEventVersionerTest.h"
 #include "unit-test/ProjectMetadataTest.h"
+#include "unit-test/ProjectTimestampScheduleTest.h"
+#include "unit-test/RotationMotionPlannerTest.h"
+#include "unit-test/WorldbuildingProjectManifestTest.h"
+#include "unit-test/WorldbuildingExportProfileTest.h"
 
 
 GPlatesUnitTest::AppLogicTestSuite::AppLogicTestSuite(
@@ -47,6 +52,11 @@ GPlatesUnitTest::AppLogicTestSuite::construct_maps()
 {
 	ADD_TESTSUITE(ApplicationState);
 	ADD_TESTSUITE(GenerateVelocityDomainCitcoms);
+	ADD_TESTSUITE(FeatureEventVersioner);
 	ADD_TESTSUITE(ProjectMetadata);
+	ADD_TESTSUITE(ProjectTimestampSchedule);
+	ADD_TESTSUITE(RotationMotionPlanner);
+	ADD_TESTSUITE(WorldbuildingProjectManifest);
+	ADD_TESTSUITE(WorldbuildingExportProfile);
 }
 

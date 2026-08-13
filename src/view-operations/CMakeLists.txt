@@ -11,6 +11,24 @@
 set(srcs
     AddPointGeometryOperation.cc
     AddPointGeometryOperation.h
+    AdvancePlateMotionGeometry.cc
+    AdvancePlateMotionGeometry.h
+    AdvancePlateMotionOperation.cc
+    AdvancePlateMotionOperation.h
+    BooleanPolygonOperation.cc
+    BooleanPolygonOperation.h
+    CollisionGeometry.cc
+    CollisionGeometry.h
+    CollisionOrogenyOperation.cc
+    CollisionOrogenyOperation.h
+    PostCollisionRiftGeometry.cc
+    PostCollisionRiftGeometry.h
+    PostCollisionRiftOperation.cc
+    PostCollisionRiftOperation.h
+    MantleEventGeometry.cc
+    MantleEventGeometry.h
+    GenerateMantleEventsOperation.cc
+    GenerateMantleEventsOperation.h
     ChangeLightDirectionOperation.cc
     ChangeLightDirectionOperation.h
     CloneOperation.cc
@@ -18,12 +36,30 @@ set(srcs
     CircularFeatureOperation.cc
     CircularFeatureOperation.h
     WorldbuildingFeatureCollectionUtils.h
+    CreateInitialContinentOperation.cc
+    CreateInitialContinentOperation.h
+    CreateInitialRotationFileOperation.cc
+    CreateInitialRotationFileOperation.h
+    CreateOceanCrustOperation.cc
+    CreateOceanCrustOperation.h
+    CreatePacificPlateOperation.cc
+    CreatePacificPlateOperation.h
+    CreateTripleJunctionCrustOperation.cc
+    CreateTripleJunctionCrustOperation.h
+    CratonPlateIdLabels.cc
+    CratonPlateIdLabels.h
+    CraterGeneratorOperation.cc
+    CraterGeneratorOperation.h
     DeleteFeatureOperation.cc
     DeleteFeatureOperation.h
     DeleteVertexGeometryOperation.cc
     DeleteVertexGeometryOperation.h
     FocusedFeatureGeometryManipulator.cc
     FocusedFeatureGeometryManipulator.h
+    FlowlineManagerOperation.cc
+    FlowlineManagerOperation.h
+    FeatureEventVersioner.cc
+    FeatureEventVersioner.h
     GeometryBuilder.cc
     GeometryBuilder.h
     GeometryBuilderUndoCommands.cc
@@ -32,18 +68,44 @@ set(srcs
     GeometryOperation.h
     GeometryOperationUndo.cc
     GeometryOperationUndo.h
+    GenerateInitialSubductionOperation.cc
+    GenerateInitialSubductionOperation.h
+    GenerateSubductionEffectsOperation.cc
+    GenerateSubductionEffectsOperation.h
     InsertVertexGeometryOperation.cc
     InsertVertexGeometryOperation.h
     InternalGeometryBuilder.cc
     InternalGeometryBuilder.h
+    InitialContinentGeometry.cc
+    InitialContinentGeometry.h
+    InitialRiftGeometry.cc
+    InitialRiftGeometry.h
+    InitialRotationFile.cc
+    InitialRotationFile.h
+    InitialSubductionGeometry.cc
+    InitialSubductionGeometry.h
+    MakeRiftOperation.cc
+    MakeRiftOperation.h
+    MORFeatureBuilder.cc
+    MORFeatureBuilder.h
     MovePoleOperation.cc
     MovePoleOperation.h
     MoveVertexGeometryOperation.cc
     MoveVertexGeometryOperation.h
+    NaturalizeCoastlineGeometry.cc
+    NaturalizeCoastlineGeometry.h
+    OceanCrustBandBuilder.cc
+    OceanCrustBandBuilder.h
+    PacificPlateGeometry.cc
+    PacificPlateGeometry.h
     PlateIdReassignmentOperation.cc
     PlateIdReassignmentOperation.h
+    ProposeInitialRiftsOperation.cc
+    ProposeInitialRiftsOperation.h
     PlateDirectionArrowsOperation.cc
     PlateDirectionArrowsOperation.h
+    PlateEventTransaction.cc
+    PlateEventTransaction.h
     QueryProximityThreshold.h
     RenderedArrowedPolyline.h
     RenderedCircleSymbol.h
@@ -87,6 +149,20 @@ set(srcs
     RenderedString.h
     RotationFileEditorOperation.cc
     RotationFileEditorOperation.h
+    RotationMotionPlanner.cc
+    RotationMotionPlanner.h
+    BoundarySectionGraph.cc
+    BoundarySectionGraph.h
+    SubductionLifecyclePlanner.cc
+    SubductionLifecyclePlanner.h
+    CollisionAccretionGuardrails.cc
+    CollisionAccretionGuardrails.h
+    GeologyEventLedger.cc
+    GeologyEventLedger.h
+    WorldbuildingAuditReport.cc
+    WorldbuildingAuditReport.h
+    RotationPlateCreation.cc
+    RotationPlateCreation.h
     RenderedSubductionTeethPolyline.h
     RenderedTangentialArrow.h
     RenderedTriangleSymbol.h
@@ -102,6 +178,10 @@ set(srcs
     SubductionCutterGeometry.h
     SubductionCutterOperation.cc
     SubductionCutterOperation.h
+    SubductionEffectsGeometry.cc
+    SubductionEffectsGeometry.h
+    TripleJunctionGeometry.cc
+    TripleJunctionGeometry.h
     UndoRedo.cc
     UndoRedo.h
     VisibleReconstructionGeometryExport.cc

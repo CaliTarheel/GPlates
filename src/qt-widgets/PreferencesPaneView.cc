@@ -25,6 +25,10 @@
 
 #include "PreferencesPaneView.h"
 
+#include <QCheckBox>
+#include <QGroupBox>
+#include <QVBoxLayout>
+
 #include "QtWidgetUtils.h"
 #include "app-logic/ApplicationState.h"
 #include "app-logic/UserPreferences.h"
@@ -38,6 +42,27 @@ GPlatesQtWidgets::PreferencesPaneView::PreferencesPaneView(
 {
 	setupUi(this);
 	GPlatesAppLogic::UserPreferences &prefs = app_state.get_user_preferences();
+
+	QGroupBox *feature_creation_group = new QGroupBox(tr("New Feature Time Defaults"), this);
+	QVBoxLayout *feature_creation_layout = new QVBoxLayout(feature_creation_group);
+	QCheckBox *default_begin_to_current = new QCheckBox(
+			tr("Default start time to the current displayed time"), feature_creation_group);
+	QCheckBox *default_end_to_current = new QCheckBox(
+			tr("Default end time to the current displayed time"), feature_creation_group);
+	default_begin_to_current->setToolTip(tr(
+			"When creating a feature, initialise its Begin time from the current reconstruction time."));
+	default_end_to_current->setToolTip(tr(
+			"When creating a feature, initialise its End time from the current reconstruction time."));
+	feature_creation_layout->addWidget(default_begin_to_current);
+	feature_creation_layout->addWidget(default_end_to_current);
+	verticalLayout_2->insertWidget(1, feature_creation_group);
+
+	GPlatesGui::ConfigGuiUtils::link_widget_to_preference(
+			default_begin_to_current, prefs,
+			"feature_creation/default_begin_time_to_current", NULL);
+	GPlatesGui::ConfigGuiUtils::link_widget_to_preference(
+			default_end_to_current, prefs,
+			"feature_creation/default_end_time_to_current", NULL);
 	
 	// View Time UserPreferences link:-
 	
@@ -47,6 +72,9 @@ GPlatesQtWidgets::PreferencesPaneView::PreferencesPaneView(
 			"view/animation/default_time_range_end", toolbutton_reset_time_range);
 	GPlatesGui::ConfigGuiUtils::link_widget_to_preference(spinbox_time_range_increment, prefs,
 			"view/animation/default_time_increment", toolbutton_reset_time_range);
+	GPlatesGui::ConfigGuiUtils::link_widget_to_preference(
+			checkbox_lock_view_time_to_range, prefs,
+			"view/animation/lock_view_time_to_range", NULL);
 
 	// Misc view options link:-
 	

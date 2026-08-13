@@ -13,6 +13,7 @@
 
 #include <boost/optional.hpp>
 #include <QString>
+#include <vector>
 
 
 namespace GPlatesAppLogic
@@ -27,6 +28,11 @@ namespace GPlatesAppLogic
 		bool has_front_matter;
 		bool is_valid;
 		boost::optional<double> planet_radius_metres;
+		bool planet_radius_is_valid;
+		QString planet_radius_diagnostic;
+		boost::optional< std::vector<double> > required_timestamps_ma;
+		bool required_timestamps_are_valid;
+		QString required_timestamps_diagnostic;
 		QString diagnostic;
 	};
 

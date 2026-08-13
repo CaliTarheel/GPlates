@@ -191,9 +191,13 @@
    </widget>
    <widget class="QMenu" name="menu_World_Building">
     <property name="title">
-     <string>&amp;World Building</string>
+     <string>&amp;MM</string>
     </property>
     <addaction name="action_Split_Plate"/>
+    <addaction name="action_Boolean_Polygons"/>
+    <addaction name="action_Create_Ocean_Crust"/>
+    <addaction name="action_Create_Triple_Junction_Crust"/>
+    <addaction name="action_Create_Pacific_Plate"/>
     <addaction name="action_Subduction_Cutter"/>
     <addaction name="separator"/>
     <addaction name="action_Manage_Colouring"/>
@@ -273,13 +277,57 @@
   </action>
   <action name="action_Subduction_Cutter">
    <property name="text">
-    <string>&amp;Subduction...</string>
+    <string>Retire Subducted &amp;Oceanic Crust...</string>
    </property>
    <property name="toolTip">
-    <string>Cut overlapping subducting plate polygons through a reconstruction-time range</string>
+    <string>Split and time-hide OceanicCrust as it overlaps an overriding plate</string>
    </property>
    <property name="statusTip">
-    <string>Assign overriding and subducting plates, sample their overlap through time, and time-hide subducted pieces.</string>
+    <string>Preview OceanicCrust retirement from the current View time back to an older project timestamp, then apply it as one undoable edit.</string>
+   </property>
+  </action>
+  <action name="action_Boolean_Polygons">
+   <property name="text">
+    <string>&amp;Boolean Polygons...</string>
+   </property>
+   <property name="toolTip">
+    <string>Union, subtract, intersect, or symmetric-difference selected polygons</string>
+   </property>
+   <property name="statusTip">
+    <string>Build one polygon result from a first feature and one or more selected operand polygons.</string>
+   </property>
+  </action>
+  <action name="action_Create_Ocean_Crust">
+   <property name="text">
+    <string>Generate Oceanic Crust from &amp;MOR...</string>
+   </property>
+   <property name="toolTip">
+    <string>Fill open ocean space from a Shift-clicked half-stage MidOceanRidge</string>
+   </property>
+   <property name="statusTip">
+    <string>Build both side-plate age bands for one interval and subtract existing OceanicCrust before saving.</string>
+   </property>
+  </action>
+  <action name="action_Create_Triple_Junction_Crust">
+   <property name="text">
+    <string>Generate &amp;RRR Triple-Junction Crust...</string>
+   </property>
+   <property name="toolTip">
+    <string>Extend three connected half-stage MORs and fill the adjoining ocean-crust sectors</string>
+   </property>
+   <property name="statusTip">
+    <string>Use the shared MOR selection and crust-band builder to preview and commit one RRR junction as an atomic edit.</string>
+   </property>
+  </action>
+  <action name="action_Create_Pacific_Plate">
+   <property name="text">
+    <string>Create &amp;Pacific-Style Plate...</string>
+   </property>
+   <property name="toolTip">
+    <string>Create a new oceanic plate inside a local void bounded by three selected MORs</string>
+   </property>
+   <property name="statusTip">
+    <string>Capture a local void seed, then atomically add its plate rotation, OceanicCrust, and three naturalized half-stage MORs.</string>
    </property>
   </action>
   <action name="action_Cut">

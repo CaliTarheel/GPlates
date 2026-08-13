@@ -29,9 +29,12 @@
 #pragma warning( disable : 4005 )
 #endif 
 
+#include <algorithm>
+#include <functional>
 #include <iostream>
 #include <iterator>
 #include <memory>
+#include <set>
 #include <boost/format.hpp>
 #include <boost/scoped_ptr.hpp>
 #include <boost/foreach.hpp>
@@ -39,27 +42,47 @@
 
 #include <QAction>
 #include <QActionGroup>
+#include <QAbstractItemView>
+#include <QCheckBox>
 #include <QColor>
 #include <QList>
+#include <QComboBox>
 #include <QCoreApplication>
 #include <QCursor>
 #include <QDesktopServices>
+#include <QDialog>
+#include <QDir>
 #include <QDockWidget>
+#include <QDoubleSpinBox>
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QFile>
 #include <QHeaderView>
+#include <QGroupBox>
+#include <QFormLayout>
+#include <QHBoxLayout>
 #include <QInputDialog>
+#include <QLabel>
+#include <QLineEdit>
 #include <QLocale>
 #include <QMessageBox>
 #include <QMenu>
 #include <QMimeData>
 #include <QProcess>
 #include <QProgressBar>
+#include <QPushButton>
+#include <QScrollArea>
+#include <QSignalBlocker>
+#include <QSpinBox>
 #include <QString>
 #include <QStringList>
+#include <QTableWidget>
+#include <QTableWidgetItem>
 #include <QtGlobal>
 #include <QToolBar>
+#include <QVBoxLayout>
 #include <QWidget>
 
 #include "ViewportWindow.h"
@@ -70,7 +93,9 @@
 #include "CreateFeatureDialog.h"
 #include "DigitisationWidget.h"
 #include "DockWidget.h"
+#include "DrawStyleDialog.h"
 #include "FeaturePropertiesDialog.h"
+#include "FeatureTypeDisplayPreferences.h"
 #include "GlobeCanvas.h"
 #include "GlobeAndMapWidget.h"
 #include "ImportRasterDialog.h"
@@ -93,6 +118,7 @@
 #include "api/Sleeper.h"
 
 #include "app-logic/ApplicationState.h"
+#include "app-logic/ProjectTimestampSchedule.h"
 #include "app-logic/PlanetaryParameters.h"
 #include "app-logic/AppLogicUtils.h"
 #include "app-logic/FeatureCollectionFileIO.h"
@@ -100,7 +126,9 @@
 #include "app-logic/PlateVelocityUtils.h"
 #include "app-logic/ReconstructionFeatureProperties.h"
 #include "app-logic/ReconstructionGeometryUtils.h"
+#include "app-logic/UserPreferences.h"
 #include "app-logic/VelocityDeltaTime.h"
+#include "app-logic/WorldbuildingProjectManifest.h"
 
 #include "canvas-tools/GeometryOperationState.h"
 #include "canvas-tools/MeasureDistanceState.h"
@@ -121,6 +149,7 @@
 #include "gui/ColourSchemeDelegator.h"
 #include "gui/DockState.h"
 #include "gui/Dialogs.h"
+#include "gui/DrawStyleManager.h"
 #include "gui/FeatureFocus.h"
 #include "gui/FileIOFeedback.h"
 #include "gui/FullScreenMode.h"
@@ -135,6 +164,8 @@
 #include "gui/UtilitiesMenu.h"
 
 #include "model/Model.h"
+#include "model/Gpgim.h"
+#include "model/QualifiedXmlName.h"
 #include "model/types.h"
 
 #include "maths/Centroid.h"
@@ -147,6 +178,8 @@
 #include "maths/Vector3D.h"
 
 #include "presentation/SessionManagement.h"
+#include "presentation/VisualLayer.h"
+#include "presentation/VisualLayers.h"
 #include "presentation/ViewState.h"
 
 #include "utils/ComponentManager.h"
@@ -155,13 +188,34 @@
 #include "utils/Profile.h"
 
 #include "view-operations/CloneOperation.h"
+#include "view-operations/BooleanPolygonOperation.h"
+#include "view-operations/CollisionOrogenyOperation.h"
+#include "view-operations/AdvancePlateMotionOperation.h"
+#include "view-operations/CreateInitialContinentOperation.h"
+#include "view-operations/CreateInitialRotationFileOperation.h"
+#include "view-operations/CreateOceanCrustOperation.h"
+#include "view-operations/CreatePacificPlateOperation.h"
+#include "view-operations/CreateTripleJunctionCrustOperation.h"
+#include "view-operations/CratonPlateIdLabels.h"
 #include "view-operations/DeleteFeatureOperation.h"
 #include "view-operations/PlateDirectionArrowsOperation.h"
 #include "view-operations/PlateIdReassignmentOperation.h"
 #include "view-operations/CircularFeatureOperation.h"
+#include "view-operations/GenerateInitialSubductionOperation.h"
+#include "view-operations/GenerateMantleEventsOperation.h"
+#include "view-operations/GenerateSubductionEffectsOperation.h"
+#include "view-operations/MakeRiftOperation.h"
+#include "view-operations/PostCollisionRiftOperation.h"
+#include "view-operations/ProposeInitialRiftsOperation.h"
+#include "view-operations/CraterGeneratorOperation.h"
+#include "view-operations/FlowlineManagerOperation.h"
+#include "view-operations/FeatureEventVersioner.h"
+#include "view-operations/GeologyEventLedger.h"
+#include "view-operations/WorldbuildingAuditReport.h"
 #include "view-operations/RenderedGeometryCollection.h"
 #include "view-operations/RenderedGeometryParameters.h"
 #include "view-operations/RotationFileEditorOperation.h"
+#include "view-operations/RotationMotionPlanner.h"
 #include "view-operations/SplitPlateOperation.h"
 #include "view-operations/SubductionCutterOperation.h"
 #include "view-operations/UndoRedo.h"
@@ -172,6 +226,452 @@ namespace GPlatesQtWidgets
 	{
 		const char *STATUS_MESSAGE_SUFFIX_FOR_GLOBE = QT_TR_NOOP("Ctrl+drag to re-orient the globe.");
 		const char *STATUS_MESSAGE_SUFFIX_FOR_MAP = QT_TR_NOOP("Ctrl+drag to pan the map.");
+
+		struct ArtifexiaDrawStyle
+		{
+			const char *category_name;
+			const char *style_name;
+			const char *configuration_name;
+			const char *configuration_value;
+		};
+
+		struct ArtifexiaLayerStyle
+		{
+			const char *layer_name;
+			unsigned int draw_style_index;
+		};
+
+		enum ArtifexiaDrawStyleIndex
+		{
+			ARTIFEXIA_DEFAULT_STYLE,
+			ARTIFEXIA_SILVER_STYLE,
+			ARTIFEXIA_PURPLE_STYLE,
+			ARTIFEXIA_ORANGE_STYLE,
+			ARTIFEXIA_BLACK_STYLE,
+			ARTIFEXIA_RED_STYLE,
+			ARTIFEXIA_BLUE_STYLE,
+			ARTIFEXIA_PINK_STYLE,
+			ARTIFEXIA_GREEN_STYLE,
+			ARTIFEXIA_FEATURE_AGE_DEFAULT_STYLE,
+			ARTIFEXIA_FEATURE_AGE_MONOCHROME_STYLE,
+			ARTIFEXIA_WHITE_STYLE,
+			ARTIFEXIA_GOLD_STYLE
+		};
+
+		// Draw-style records transcribed from Artifexia/arty.gproj. An empty category denotes
+		// the project's intentional use of GPlates' default plate-ID style.
+		const ArtifexiaDrawStyle ARTIFEXIA_DRAW_STYLES[] =
+		{
+			{ "", "", "", "" },
+			{ "SingleColour", "silver", "Color", "silver" },
+			{ "SingleColour", "Purple", "Color", "#55007f" },
+			{ "SingleColour", "orange", "Color", "orange" },
+			{ "SingleColour", "black", "Color", "black" },
+			{ "SingleColour", "red", "Color", "#ff0000" },
+			{ "SingleColour", "blue", "Color", "blue" },
+			{ "SingleColour", "pink", "Color", "pink" },
+			{ "SingleColour", "green", "Color", "green" },
+			{ "FeatureAge", "Default", "Palette", "FeatureAgeDefault" },
+			{ "FeatureAge", "Monochrome", "Palette", "FeatureAgeMono" },
+			{ "SingleColour", "white", "Color", "white" },
+			{ "SingleColour", "gold", "Color", "gold" }
+		};
+
+		// Names from the demo's saved visual layers, plus exact aliases created by the
+		// Worldbuilding Pasta operations in this build.
+		const ArtifexiaLayerStyle ARTIFEXIA_LAYER_STYLES[] =
+		{
+			{ "continents", ARTIFEXIA_DEFAULT_STYLE },
+			{ "cratons grey", ARTIFEXIA_DEFAULT_STYLE },
+			{ "cratons", ARTIFEXIA_DEFAULT_STYLE },
+			{ "failed rifts", ARTIFEXIA_SILVER_STYLE },
+			{ "flowlines", ARTIFEXIA_DEFAULT_STYLE },
+			{ "island arcs", ARTIFEXIA_DEFAULT_STYLE },
+			{ "mid ocean ridges", ARTIFEXIA_PURPLE_STYLE },
+			{ "rifts", ARTIFEXIA_ORANGE_STYLE },
+			{ "subduction zones", ARTIFEXIA_BLACK_STYLE },
+			{ "topo", ARTIFEXIA_DEFAULT_STYLE },
+			{ "MOR topo", ARTIFEXIA_RED_STYLE },
+			{ "accreted terranes", ARTIFEXIA_DEFAULT_STYLE },
+			{ "microcontinents", ARTIFEXIA_DEFAULT_STYLE },
+			{ "ocean crust", ARTIFEXIA_DEFAULT_STYLE },
+			{ "Convergent", ARTIFEXIA_BLUE_STYLE },
+			{ "Divergent", ARTIFEXIA_DEFAULT_STYLE },
+			{ "Transform faults", ARTIFEXIA_PINK_STYLE },
+			{ "Transform", ARTIFEXIA_GREEN_STYLE },
+			{ "sea blue", ARTIFEXIA_DEFAULT_STYLE },
+			{ "lines", ARTIFEXIA_DEFAULT_STYLE },
+			{ "extant ocean crust", ARTIFEXIA_FEATURE_AGE_DEFAULT_STYLE },
+			{ "Plates", ARTIFEXIA_DEFAULT_STYLE },
+			{ "active orogenies", ARTIFEXIA_DEFAULT_STYLE },
+			{ "former orogenies", ARTIFEXIA_FEATURE_AGE_MONOCHROME_STYLE },
+			{ "old orogenies", ARTIFEXIA_WHITE_STYLE },
+			{ "active LIP", ARTIFEXIA_DEFAULT_STYLE },
+			{ "former LIP", ARTIFEXIA_GOLD_STYLE },
+			{ "Hotspots", ARTIFEXIA_DEFAULT_STYLE },
+			{ "Hotspot trails", ARTIFEXIA_DEFAULT_STYLE },
+			{ "former orogenies culled", ARTIFEXIA_DEFAULT_STYLE },
+			{ "Initial Continental Crust", ARTIFEXIA_DEFAULT_STYLE },
+			{ "Initial Cratons", ARTIFEXIA_DEFAULT_STYLE },
+			{ "Provisional Mid-Ocean Ridges", ARTIFEXIA_PURPLE_STYLE },
+			{ "Failed Rifts", ARTIFEXIA_SILVER_STYLE },
+			{ "Active Mid-Ocean Ridges", ARTIFEXIA_PURPLE_STYLE },
+			{ "Active Subduction Zones", ARTIFEXIA_BLACK_STYLE },
+			{ "Collision Sutures", ARTIFEXIA_BLUE_STYLE }
+		};
+
+		// The exact feature-collection load order saved by Artifexia/arty.gproj. Raster,
+		// topology and derived collections are included as empty shells so a new world has
+		// the same human-readable filing system from the outset. The rotation file is
+		// deliberately created later by workflow step 2.3, once its plate circuit is known.
+		const char *WORLDPASTA_COLLECTION_FILENAMES[] =
+		{
+			"Continent Color.gpml",
+			"continents.gpml",
+			"cratons grey.gpml",
+			"cratons.gpml",
+			"failed rifts.gpml",
+			"flowlines.gpml",
+			"island arcs.gpml",
+			"mid ocean ridges.gpml",
+			"rifts.gpml",
+			"subduction zones.gpml",
+			"topo.gpml",
+			"MOR topo.gpml",
+			"accreted terranes.gpml",
+			"microcontinents.gpml",
+			"ocean crust.gpml",
+			"Convergent.gpml",
+			"Divergent.gpml",
+			"Transform faults.gpml",
+			"Transform.gpml",
+			"sea blue.gpml",
+			"lines.gpml",
+			"extant ocean crust.gpml",
+			"Plates.gpml",
+			"active orogenies.gpml",
+			"former orogenies.gpml",
+			"old orogenies.gpml",
+			"active LIP.gpml",
+			"former LIP.gpml",
+			"Hotspots.gpml",
+			"Hotspot trails.gpml",
+			"former orogenies culled.gpml"
+		};
+
+		const ArtifexiaDrawStyle *
+		find_artifexia_draw_style_for_layer(
+				const QString &layer_name)
+		{
+			for (unsigned int index = 0;
+				index < sizeof(ARTIFEXIA_LAYER_STYLES) / sizeof(ARTIFEXIA_LAYER_STYLES[0]);
+				++index)
+			{
+				if (layer_name.compare(
+						QString::fromLatin1(ARTIFEXIA_LAYER_STYLES[index].layer_name),
+						Qt::CaseInsensitive) == 0)
+				{
+					return &ARTIFEXIA_DRAW_STYLES[ARTIFEXIA_LAYER_STYLES[index].draw_style_index];
+				}
+			}
+			return NULL;
+		}
+
+		const GPlatesGui::ConfigurationItem *
+		find_style_configuration_item(
+				const GPlatesGui::Configuration &configuration,
+				const QString &configuration_name)
+		{
+			const GPlatesGui::ConfigurationItem *item = configuration.get(configuration_name);
+			if (!item && configuration_name == "Color")
+			{
+				item = configuration.get("Colour");
+			}
+			if (!item)
+			{
+				const std::vector<QString> item_names = configuration.all_cfg_item_names();
+				if (item_names.size() == 1)
+				{
+					item = configuration.get(item_names.front());
+				}
+			}
+			return item;
+		}
+
+		GPlatesGui::ConfigurationItem *
+		find_style_configuration_item(
+				GPlatesGui::Configuration &configuration,
+				const QString &configuration_name)
+		{
+			return const_cast<GPlatesGui::ConfigurationItem *>(
+					find_style_configuration_item(
+							static_cast<const GPlatesGui::Configuration &>(configuration),
+							configuration_name));
+		}
+
+		const ArtifexiaDrawStyle *
+		find_artifexia_draw_style_by_name(
+				const QString &style_name)
+		{
+			if (style_name.compare(QString::fromLatin1("Default"), Qt::CaseInsensitive) == 0)
+			{
+				return &ARTIFEXIA_DRAW_STYLES[ARTIFEXIA_DEFAULT_STYLE];
+			}
+			for (unsigned int index = 0;
+				 index < sizeof(ARTIFEXIA_DRAW_STYLES) / sizeof(ARTIFEXIA_DRAW_STYLES[0]);
+				 ++index)
+			{
+				if (style_name.compare(
+						QString::fromLatin1(ARTIFEXIA_DRAW_STYLES[index].style_name),
+						Qt::CaseInsensitive) == 0)
+				{
+					return &ARTIFEXIA_DRAW_STYLES[index];
+				}
+			}
+			return NULL;
+		}
+
+		bool
+		style_matches_artifexia_configuration(
+				const GPlatesGui::StyleAdapter &style,
+				const ArtifexiaDrawStyle &artifexia_style)
+		{
+			const GPlatesGui::ConfigurationItem *configuration_item =
+					find_style_configuration_item(
+							style.configuration(),
+							QString::fromLatin1(artifexia_style.configuration_name));
+			return configuration_item &&
+					configuration_item->value().toString().compare(
+							QString::fromLatin1(artifexia_style.configuration_value),
+							Qt::CaseInsensitive) == 0;
+		}
+
+		const GPlatesGui::StyleAdapter *
+		resolve_artifexia_draw_style(
+				const ArtifexiaDrawStyle &artifexia_style)
+		{
+			GPlatesGui::DrawStyleManager *style_manager = GPlatesGui::DrawStyleManager::instance();
+			if (!artifexia_style.category_name[0])
+			{
+				return style_manager->default_style();
+			}
+
+			const QString category_name = QString::fromLatin1(artifexia_style.category_name);
+			const QString style_name = QString::fromLatin1(artifexia_style.style_name);
+			const GPlatesGui::StyleCategory *category = style_manager->get_catagory(category_name);
+			if (!category)
+			{
+				return NULL;
+			}
+
+			const GPlatesGui::DrawStyleManager::StyleContainer styles =
+					style_manager->get_styles(*category);
+			BOOST_FOREACH(GPlatesGui::StyleAdapter *style, styles)
+			{
+				const bool compatible_name =
+						style->name().compare(style_name, Qt::CaseInsensitive) == 0 ||
+						style->name().startsWith(style_name + " (Artifexia", Qt::CaseInsensitive);
+				if (compatible_name && style_matches_artifexia_configuration(*style, artifexia_style))
+				{
+					return style;
+				}
+			}
+
+			const GPlatesGui::StyleAdapter *template_style =
+					style_manager->get_template_style(*category);
+			if (!template_style)
+			{
+				return NULL;
+			}
+
+			std::unique_ptr<GPlatesGui::StyleAdapter> new_style(template_style->deep_clone());
+			if (!new_style)
+			{
+				return NULL;
+			}
+
+			QString unique_style_name = style_name;
+			bool name_is_available = false;
+			for (unsigned int suffix = 0; !name_is_available; ++suffix)
+			{
+				name_is_available = true;
+				BOOST_FOREACH(GPlatesGui::StyleAdapter *style, styles)
+				{
+					if (style->name().compare(unique_style_name, Qt::CaseInsensitive) == 0)
+					{
+						name_is_available = false;
+						unique_style_name = suffix == 0
+								? style_name + " (Artifexia)"
+								: style_name + QString(" (Artifexia %1)").arg(suffix + 1);
+						break;
+					}
+				}
+			}
+
+			new_style->set_name(unique_style_name);
+			GPlatesGui::ConfigurationItem *configuration_item =
+					find_style_configuration_item(
+							new_style->configuration(),
+							QString::fromLatin1(artifexia_style.configuration_name));
+			if (!configuration_item)
+			{
+				return NULL;
+			}
+			configuration_item->set_value(QString::fromLatin1(artifexia_style.configuration_value));
+
+			GPlatesGui::StyleAdapter *registered_style = new_style.get();
+			style_manager->register_style(registered_style);
+			new_style.release();
+			return registered_style;
+		}
+
+		struct ArtifexiaPresetResult
+		{
+			unsigned int feature_type_count;
+			unsigned int matching_layer_count;
+			unsigned int unavailable_style_count;
+		};
+
+		ArtifexiaPresetResult
+		apply_artifexia_presentation(
+				GPlatesQtWidgets::ViewportWindow &viewport_window)
+		{
+			// Inventory taken from all GPML collections in the Artifexia demo project.
+			const QStringList artifexia_feature_types = QStringList()
+					<< "gpml:ClosedPlateBoundary"
+					<< "gpml:ContinentalCrust"
+					<< "gpml:ContinentalRift"
+					<< "gpml:Craton"
+					<< "gpml:HotSpot"
+					<< "gpml:IslandArc"
+					<< "gpml:LargeIgneousProvince"
+					<< "gpml:MidOceanRidge"
+					<< "gpml:MotionPath"
+					<< "gpml:OceanicCrust"
+					<< "gpml:OrogenicBelt"
+					<< "gpml:Raster"
+					<< "gpml:SubductionZone"
+					<< "gpml:Suture"
+					<< "gpml:TerraneBoundary"
+					<< "gpml:TopologicalClosedPlateBoundary"
+					<< "gpml:Transform"
+					<< "gpml:UnclassifiedFeature";
+
+			QStringList hidden_feature_types;
+			const GPlatesModel::Gpgim::feature_type_seq_type feature_types =
+					GPlatesModel::Gpgim::instance().get_concrete_feature_types();
+			BOOST_FOREACH(const GPlatesModel::FeatureType &feature_type, feature_types)
+			{
+				const QString qualified_name =
+						GPlatesModel::convert_qualified_xml_name_to_qstring(feature_type);
+				if (!artifexia_feature_types.contains(qualified_name))
+				{
+					hidden_feature_types.append(qualified_name);
+				}
+			}
+			viewport_window.get_application_state().get_user_preferences().set_value(
+					FeatureTypeDisplayPreferences::hidden_feature_types_key(),
+					hidden_feature_types);
+
+			ArtifexiaPresetResult result =
+			{
+				static_cast<unsigned int>(artifexia_feature_types.size()), 0, 0
+			};
+			GPlatesPresentation::VisualLayers &visual_layers =
+					viewport_window.get_view_state().get_visual_layers();
+			GPlatesQtWidgets::DrawStyleDialog &draw_style_dialog =
+					viewport_window.dialogs().draw_style_dialog();
+			for (size_t layer_index = 0; layer_index < visual_layers.size(); ++layer_index)
+			{
+				boost::weak_ptr<GPlatesPresentation::VisualLayer> visual_layer_ref =
+						visual_layers.visual_layer_at(layer_index);
+				boost::shared_ptr<GPlatesPresentation::VisualLayer> visual_layer =
+						visual_layer_ref.lock();
+				if (!visual_layer)
+				{
+					continue;
+				}
+
+				const ArtifexiaDrawStyle *artifexia_style =
+						find_artifexia_draw_style_for_layer(visual_layer->get_name().trimmed());
+				if (!artifexia_style)
+				{
+					continue;
+				}
+
+				const GPlatesGui::StyleAdapter *style =
+						resolve_artifexia_draw_style(*artifexia_style);
+				if (!style)
+				{
+					++result.unavailable_style_count;
+					continue;
+				}
+
+				draw_style_dialog.reset(visual_layer_ref, style);
+				++result.matching_layer_count;
+			}
+
+			return result;
+		}
+
+		unsigned int
+		apply_worldbuilding_workspace_profile(
+				GPlatesQtWidgets::ViewportWindow &viewport_window,
+				const GPlatesAppLogic::WorldbuildingProjectManifest::Manifest &manifest)
+		{
+			unsigned int applied_layer_count = 0;
+			GPlatesPresentation::VisualLayers &visual_layers =
+					viewport_window.get_view_state().get_visual_layers();
+			GPlatesQtWidgets::DrawStyleDialog &draw_style_dialog =
+					viewport_window.dialogs().draw_style_dialog();
+
+			for (std::vector<GPlatesAppLogic::WorldbuildingProjectManifest::LayerProfile>::const_iterator
+				 profile = manifest.layers.begin(); profile != manifest.layers.end(); ++profile)
+			{
+				QStringList matching_names;
+				for (std::vector<GPlatesAppLogic::WorldbuildingProjectManifest::Collection>::const_iterator
+					 collection = manifest.collections.begin(); collection != manifest.collections.end(); ++collection)
+				{
+					if (collection->role.compare(profile->collection_role, Qt::CaseInsensitive) == 0)
+					{
+						matching_names << collection->display_name
+								<< QFileInfo(collection->file_name).completeBaseName();
+						break;
+					}
+				}
+
+				for (std::size_t layer_index = 0; layer_index < visual_layers.size(); ++layer_index)
+				{
+					boost::weak_ptr<GPlatesPresentation::VisualLayer> visual_layer_ref =
+							visual_layers.visual_layer_at(layer_index);
+					boost::shared_ptr<GPlatesPresentation::VisualLayer> visual_layer = visual_layer_ref.lock();
+					if (!visual_layer ||
+						!matching_names.contains(visual_layer->get_name().trimmed(), Qt::CaseInsensitive))
+					{
+						continue;
+					}
+
+					visual_layer->set_visible(profile->visible);
+					const ArtifexiaDrawStyle *draw_style =
+							find_artifexia_draw_style_by_name(profile->draw_style);
+					if (draw_style)
+					{
+						const GPlatesGui::StyleAdapter *style = resolve_artifexia_draw_style(*draw_style);
+						if (style)
+						{
+							draw_style_dialog.reset(visual_layer_ref, style);
+						}
+					}
+
+					const std::size_t target_index = static_cast<std::size_t>(
+							std::max(0, std::min(profile->order, static_cast<int>(visual_layers.size()) - 1)));
+					visual_layers.move_layer(layer_index, target_index);
+					++applied_layer_count;
+					break;
+				}
+			}
+			return applied_layer_count;
+		}
 
 		void
 		canvas_tool_status_message(
@@ -186,6 +686,15 @@ namespace GPlatesQtWidgets
 		}
 
 		void
+		activate_choose_feature_tool(
+				GPlatesGui::CanvasToolWorkflows &canvas_tool_workflows)
+		{
+			canvas_tool_workflows.choose_canvas_tool(
+					GPlatesGui::CanvasToolWorkflows::WORKFLOW_FEATURE_INSPECTION,
+					GPlatesGui::CanvasToolWorkflows::TOOL_CLICK_GEOMETRY);
+		}
+
+		void
 		add_shortcut_to_tooltip(
 				QAction *action)
 		{
@@ -195,6 +704,22 @@ namespace GPlatesQtWidgets
 				action->setToolTip(action->toolTip() + "  " +
 						action->shortcut().toString(QKeySequence::NativeText));
 			}
+		}
+
+		QVBoxLayout *
+		create_scrollable_dialog_layout(
+				QDialog *dialog)
+		{
+			QVBoxLayout *outer_layout = new QVBoxLayout(dialog);
+			outer_layout->setContentsMargins(0, 0, 0, 0);
+			QScrollArea *scroll_area = new QScrollArea(dialog);
+			scroll_area->setWidgetResizable(true);
+			scroll_area->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+			QWidget *contents = new QWidget(scroll_area);
+			QVBoxLayout *contents_layout = new QVBoxLayout(contents);
+			scroll_area->setWidget(contents);
+			outer_layout->addWidget(scroll_area);
+			return contents_layout;
 		}
 	}
 }
@@ -222,10 +747,81 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 				get_view_state().get_digitise_geometry_builder(),
 				get_view_state().get_focused_feature_geometry_builder(),
 				get_view_state())),
+	d_boolean_polygon_operation_ptr(
+			new GPlatesViewOperations::BooleanPolygonOperation(
+					get_view_state().get_feature_focus(),
+					get_application_state(),
+					get_view_state())),
+	d_collision_orogeny_operation_ptr(
+			new GPlatesViewOperations::CollisionOrogenyOperation(
+					get_view_state().get_feature_focus(),
+					get_application_state(),
+					get_view_state())),
+	d_post_collision_rift_operation_ptr(
+			new GPlatesViewOperations::PostCollisionRiftOperation(
+					get_view_state().get_feature_focus(),
+					get_application_state(),
+					get_view_state())),
+	d_generate_mantle_events_operation_ptr(
+			new GPlatesViewOperations::GenerateMantleEventsOperation(
+					get_view_state().get_feature_focus(),
+					get_application_state(),
+					get_view_state())),
 	d_delete_feature_operation_ptr(
 			new GPlatesViewOperations::DeleteFeatureOperation(
 				get_view_state().get_feature_focus(),
 				get_application_state())),
+	d_create_initial_continent_operation_ptr(
+			new GPlatesViewOperations::CreateInitialContinentOperation(
+					get_application_state(),
+					get_view_state())),
+	d_create_initial_rotation_file_operation_ptr(
+			new GPlatesViewOperations::CreateInitialRotationFileOperation(
+					get_application_state())),
+	d_advance_plate_motion_operation_ptr(
+			new GPlatesViewOperations::AdvancePlateMotionOperation(
+					get_application_state(),
+					get_view_state())),
+	d_create_ocean_crust_operation_ptr(
+			new GPlatesViewOperations::CreateOceanCrustOperation(
+					get_view_state().get_feature_focus(),
+					get_application_state(),
+					get_view_state())),
+	d_create_triple_junction_crust_operation_ptr(
+			new GPlatesViewOperations::CreateTripleJunctionCrustOperation(
+					*d_create_ocean_crust_operation_ptr,
+					get_view_state().get_feature_focus(),
+					get_application_state(),
+					get_view_state())),
+	d_create_pacific_plate_operation_ptr(
+			new GPlatesViewOperations::CreatePacificPlateOperation(
+					*d_create_ocean_crust_operation_ptr,
+					get_view_state().get_feature_focus(),
+					get_application_state(),
+					get_view_state())),
+	d_propose_initial_rifts_operation_ptr(
+			new GPlatesViewOperations::ProposeInitialRiftsOperation(
+					get_application_state(),
+					get_view_state())),
+	d_make_rift_operation_ptr(
+			new GPlatesViewOperations::MakeRiftOperation(
+					get_view_state().get_feature_focus(),
+					get_application_state(),
+					get_view_state())),
+	d_generate_initial_subduction_operation_ptr(
+			new GPlatesViewOperations::GenerateInitialSubductionOperation(
+					get_view_state().get_feature_focus(),
+					get_application_state(),
+					get_view_state())),
+	d_generate_subduction_effects_operation_ptr(
+			new GPlatesViewOperations::GenerateSubductionEffectsOperation(
+					get_view_state().get_feature_focus(),
+					get_application_state(),
+					get_view_state())),
+	d_craton_plate_id_labels_ptr(
+			new GPlatesViewOperations::CratonPlateIdLabels(
+					get_application_state(),
+					get_view_state())),
 	d_split_plate_operation_ptr(
 			new GPlatesViewOperations::SplitPlateOperation(
 				get_view_state().get_feature_focus(),
@@ -288,6 +884,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	d_search_results_dock_ptr(NULL),
 	d_canvas_tools_dock_ptr(NULL),
 	d_project_documents_dock_ptr(NULL),
+	d_worldbuilding_pasta_dock_ptr(NULL),
 	d_reconstruction_view_widget_ptr(
 			new ReconstructionViewWidget(
 				*this,
@@ -489,6 +1086,2037 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			this,
 			SLOT(handle_map_feature_context_menu(
 					const QPointF &, bool, Qt::MouseButton, Qt::KeyboardModifiers)));
+	QObject::connect(
+			&get_view_state().get_animation_controller(),
+			&GPlatesGui::AnimationController::project_timestamp_navigation_message,
+			this,
+			[this](const QString &message)
+			{
+				status_message(message);
+			});
+
+	// Keep the Worldbuilding Pasta procedure in one compact, ordered palette. Multi-step
+	// operations launch persistent modeless windows so globe selection remains available.
+	d_worldbuilding_pasta_dock_ptr = new QDockWidget(tr("Worldbuilding Pasta"), this);
+	d_worldbuilding_pasta_dock_ptr->setObjectName("WorldbuildingPastaDock");
+	d_worldbuilding_pasta_dock_ptr->setAllowedAreas(
+			Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
+	QScrollArea *worldbuilding_pasta_scroll_area = new QScrollArea(
+			d_worldbuilding_pasta_dock_ptr);
+	worldbuilding_pasta_scroll_area->setWidgetResizable(true);
+	worldbuilding_pasta_scroll_area->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+	QWidget *worldbuilding_pasta_palette = new QWidget(worldbuilding_pasta_scroll_area);
+	QVBoxLayout *worldbuilding_pasta_layout = new QVBoxLayout(worldbuilding_pasta_palette);
+	QPushButton *initialize_worldpasta_structure_button = new QPushButton(
+			tr("Open / Update Worldbuilding Project..."), worldbuilding_pasta_palette);
+	initialize_worldpasta_structure_button->setToolTip(tr(
+			"Choose a directory, inspect its editable worldbuilding manifest, and create only missing managed collections after a dry-run conflict report."));
+	worldbuilding_pasta_layout->addWidget(initialize_worldpasta_structure_button);
+	QPushButton *show_event_history_button = new QPushButton(
+			tr("Event History..."), worldbuilding_pasta_palette);
+	show_event_history_button->setToolTip(tr(
+			"Show read-only Worldbuilding event lineage stored in GPML-compatible feature descriptions."));
+	worldbuilding_pasta_layout->addWidget(show_event_history_button);
+	QPushButton *show_worldbuilding_audit_button = new QPushButton(
+			tr("Audit + Crust Ledger..."), worldbuilding_pasta_palette);
+	show_worldbuilding_audit_button->setToolTip(tr(
+			"Run read-only current-time, interval, or all-time checks; review the ocean-crust lifecycle ledger; and export Markdown or JSON."));
+	worldbuilding_pasta_layout->addWidget(show_worldbuilding_audit_button);
+
+	QDialog *event_history_dialog = new QDialog(this);
+	event_history_dialog->setWindowTitle(tr("Worldbuilding Event History"));
+	event_history_dialog->setModal(false);
+	QVBoxLayout *event_history_layout = new QVBoxLayout(event_history_dialog);
+	QLabel *event_history_note = new QLabel(
+			tr("Read-only chronological ledger for loaded features. Observations remain distinct from derived geometry, interpretations, and model changes. Search any column; double-click an event to move to its time."),
+			event_history_dialog);
+	event_history_note->setWordWrap(true);
+	event_history_layout->addWidget(event_history_note);
+	QLineEdit *event_history_filter = new QLineEdit(event_history_dialog);
+	event_history_filter->setPlaceholderText(tr("Filter by event, relation, feature, plate collection, version, or ID..."));
+	event_history_filter->setClearButtonEnabled(true);
+	event_history_layout->addWidget(event_history_filter);
+	QLabel *event_history_status = new QLabel(event_history_dialog);
+	event_history_status->setWordWrap(true);
+	event_history_layout->addWidget(event_history_status);
+	QLabel *event_history_warnings = new QLabel(event_history_dialog);
+	event_history_warnings->setWordWrap(true);
+	event_history_layout->addWidget(event_history_warnings);
+	QTableWidget *event_history_table = new QTableWidget(event_history_dialog);
+	event_history_table->setColumnCount(11);
+	event_history_table->setHorizontalHeaderLabels(QStringList()
+			<< tr("Time (Ma)") << tr("Category") << tr("Event") << tr("Relation") << tr("Feature Type") << tr("Feature ID")
+			<< tr("Sources") << tr("Outputs") << tr("Version") << tr("Seed")
+			<< tr("Collection"));
+	event_history_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+	event_history_table->setSelectionBehavior(QAbstractItemView::SelectRows);
+	event_history_table->setAlternatingRowColors(true);
+	event_history_table->horizontalHeader()->setStretchLastSection(true);
+	event_history_layout->addWidget(event_history_table);
+	QDialogButtonBox *event_history_buttons = new QDialogButtonBox(
+			QDialogButtonBox::Close, event_history_dialog);
+	QPushButton *refresh_event_history_button = event_history_buttons->addButton(
+			tr("Refresh"), QDialogButtonBox::ActionRole);
+	event_history_layout->addWidget(event_history_buttons);
+	QObject::connect(event_history_buttons, SIGNAL(rejected()), event_history_dialog, SLOT(hide()));
+	event_history_dialog->resize(1120, 520);
+	const auto apply_event_history_filter =
+			[event_history_table, event_history_filter, event_history_status]()
+			{
+				const QString query = event_history_filter->text().trimmed();
+				unsigned int visible_count = 0;
+				for (int row = 0; row < event_history_table->rowCount(); ++row)
+				{
+					bool matches = query.isEmpty();
+					for (int column = 0; !matches && column < event_history_table->columnCount(); ++column)
+					{
+						const QTableWidgetItem *item = event_history_table->item(row, column);
+						matches = item && item->text().contains(query, Qt::CaseInsensitive);
+					}
+					event_history_table->setRowHidden(row, !matches);
+					if (matches)
+					{
+						++visible_count;
+					}
+				}
+				event_history_status->setText(QObject::tr("Showing %1 of %2 event records.")
+						.arg(visible_count).arg(event_history_table->rowCount()));
+			};
+
+	const auto refresh_event_history = [this, event_history_table, event_history_warnings,
+			apply_event_history_filter]()
+	{
+		event_history_table->setSortingEnabled(false);
+		event_history_table->setRowCount(0);
+		const std::vector<GPlatesViewOperations::GeologyEventLedger::Entry> entries =
+				GPlatesViewOperations::GeologyEventLedger::build(
+						get_application_state().get_feature_collection_file_state());
+		const QStringList ledger_warnings =
+				GPlatesViewOperations::GeologyEventLedger::transition_warnings(entries);
+		event_history_warnings->setVisible(!ledger_warnings.isEmpty());
+		event_history_warnings->setText(ledger_warnings.isEmpty()
+				? QString()
+				: tr("Ledger integrity warnings (%1):\n- %2")
+						.arg(ledger_warnings.size())
+						.arg(ledger_warnings.join(QString::fromLatin1("\n- "))));
+		for (std::vector<GPlatesViewOperations::GeologyEventLedger::Entry>::const_iterator
+				entry = entries.begin(); entry != entries.end(); ++entry)
+		{
+			const int row = event_history_table->rowCount();
+			event_history_table->insertRow(row);
+			QTableWidgetItem *time_item = new QTableWidgetItem();
+			time_item->setData(Qt::EditRole, entry->event.event_time);
+			event_history_table->setItem(row, 0, time_item);
+			const QStringList values = QStringList()
+					<< GPlatesViewOperations::GeologyEventLedger::category_name(entry->category)
+					<< entry->event.event_type << entry->event.relation << entry->feature_type
+					<< entry->feature_id
+					<< entry->event.source_feature_ids.join(QString::fromLatin1(", "))
+					<< entry->event.output_feature_ids.join(QString::fromLatin1(", "))
+					<< entry->event.operation_version
+					<< (entry->event.seed ? QString::number(*entry->event.seed) : QString())
+					<< entry->collection;
+			for (int column = 0; column < values.size(); ++column)
+				event_history_table->setItem(row, column + 1, new QTableWidgetItem(values[column]));
+		}
+		event_history_table->resizeColumnsToContents();
+		event_history_table->setSortingEnabled(true);
+		apply_event_history_filter();
+	};
+	QObject::connect(event_history_filter, &QLineEdit::textChanged,
+			this, [apply_event_history_filter](const QString &) { apply_event_history_filter(); });
+	QObject::connect(event_history_table, &QTableWidget::cellDoubleClicked,
+			this,
+			[this, event_history_table](int row, int)
+			{
+				const QTableWidgetItem *time_item = event_history_table->item(row, 0);
+				if (!time_item)
+				{
+					return;
+				}
+				bool valid = false;
+				const double event_time = time_item->data(Qt::EditRole).toDouble(&valid);
+				if (valid)
+				{
+					get_view_state().get_animation_controller().set_view_time(event_time);
+					status_message(tr("Moved to event time %1 Ma. Feature %2 remains selected in the ledger for review.")
+							.arg(event_time, 0, 'f', 3)
+							.arg(event_history_table->item(row, 5)->text()));
+				}
+			});
+	QObject::connect(refresh_event_history_button, &QPushButton::clicked,
+			this, refresh_event_history);
+	QObject::connect(show_event_history_button, &QPushButton::clicked, this,
+			[event_history_dialog, refresh_event_history]()
+			{
+				refresh_event_history();
+				event_history_dialog->show();
+				event_history_dialog->raise();
+				event_history_dialog->activateWindow();
+			});
+
+	QDialog *audit_dialog = new QDialog(this);
+	audit_dialog->setWindowTitle(tr("Worldbuilding Audit and Ocean-Crust Ledger"));
+	audit_dialog->setModal(false);
+	QVBoxLayout *audit_layout = new QVBoxLayout(audit_dialog);
+	QLabel *audit_note = new QLabel(tr(
+			"Read-only diagnostics. Checking Queue only promotes a suggestion into the exported repair queue; it never mutates geometry, rotations, boundaries, or topology."), audit_dialog);
+	audit_note->setWordWrap(true);
+	audit_layout->addWidget(audit_note);
+	QLineEdit *audit_filter = new QLineEdit(audit_dialog);
+	audit_filter->setPlaceholderText(tr("Filter findings and ocean-crust records..."));
+	audit_filter->setClearButtonEnabled(true);
+	audit_layout->addWidget(audit_filter);
+	QLabel *audit_status = new QLabel(audit_dialog);
+	audit_status->setWordWrap(true);
+	audit_layout->addWidget(audit_status);
+	QFormLayout *audit_form = new QFormLayout();
+	QComboBox *audit_scope = new QComboBox(audit_dialog);
+	audit_scope->addItem(tr("Current time"));
+	audit_scope->addItem(tr("Interval"));
+	audit_scope->addItem(tr("All times"));
+	QDoubleSpinBox *audit_older = new QDoubleSpinBox(audit_dialog);
+	audit_older->setRange(0, 10000); audit_older->setDecimals(3); audit_older->setSuffix(tr(" Ma"));
+	QDoubleSpinBox *audit_old_crust = new QDoubleSpinBox(audit_dialog);
+	audit_old_crust->setRange(1, 1000); audit_old_crust->setValue(200); audit_old_crust->setSuffix(tr(" Ma"));
+	QLineEdit *audit_revision = new QLineEdit(tr("working"), audit_dialog);
+	audit_form->addRow(tr("Scope:"), audit_scope);
+	audit_form->addRow(tr("Older interval bound:"), audit_older);
+	audit_form->addRow(tr("Old-crust advisory threshold:"), audit_old_crust);
+	audit_form->addRow(tr("Project revision:"), audit_revision);
+	audit_layout->addLayout(audit_form);
+	QLabel *findings_label = new QLabel(tr("Findings and user-promoted repair queue"), audit_dialog);
+	audit_layout->addWidget(findings_label);
+	QTableWidget *audit_findings = new QTableWidget(audit_dialog);
+	audit_findings->setColumnCount(8);
+	audit_findings->setHorizontalHeaderLabels(QStringList() << tr("Queue") << tr("Severity")
+			<< tr("Domain") << tr("Code") << tr("Feature ID") << tr("Time")
+			<< tr("Finding") << tr("Suggested repair"));
+	audit_findings->setEditTriggers(QAbstractItemView::NoEditTriggers);
+	audit_findings->setSelectionBehavior(QAbstractItemView::SelectRows);
+	audit_findings->horizontalHeader()->setStretchLastSection(true);
+	audit_layout->addWidget(audit_findings);
+	QLabel *crust_label = new QLabel(tr("Ocean-crust creation / retirement / survival ledger"), audit_dialog);
+	audit_layout->addWidget(crust_label);
+	QTableWidget *audit_crust = new QTableWidget(audit_dialog);
+	audit_crust->setColumnCount(6);
+	audit_crust->setHorizontalHeaderLabels(QStringList() << tr("Feature ID") << tr("Created")
+			<< tr("Retired") << tr("Status") << tr("Age") << tr("Advisory"));
+	audit_crust->setEditTriggers(QAbstractItemView::NoEditTriggers);
+	audit_crust->horizontalHeader()->setStretchLastSection(true);
+	audit_layout->addWidget(audit_crust);
+	QDialogButtonBox *audit_buttons = new QDialogButtonBox(QDialogButtonBox::Close, audit_dialog);
+	QPushButton *audit_refresh = audit_buttons->addButton(tr("Refresh"), QDialogButtonBox::ActionRole);
+	QPushButton *audit_export_markdown = audit_buttons->addButton(tr("Export Markdown"), QDialogButtonBox::ActionRole);
+	QPushButton *audit_export_json = audit_buttons->addButton(tr("Export JSON"), QDialogButtonBox::ActionRole);
+	audit_layout->addWidget(audit_buttons);
+	QObject::connect(audit_buttons, SIGNAL(rejected()), audit_dialog, SLOT(hide()));
+	std::shared_ptr<GPlatesViewOperations::WorldbuildingAuditReport::Report> audit_report(
+			new GPlatesViewOperations::WorldbuildingAuditReport::Report());
+	const auto apply_audit_filter = [audit_filter, audit_status, audit_findings, audit_crust]()
+	{
+		const QString query = audit_filter->text().trimmed();
+		unsigned int visible_findings = 0;
+		for (int row = 0; row < audit_findings->rowCount(); ++row)
+		{
+			bool match = query.isEmpty();
+			for (int column = 1; !match && column < audit_findings->columnCount(); ++column)
+				match = audit_findings->item(row, column) &&
+						audit_findings->item(row, column)->text().contains(query, Qt::CaseInsensitive);
+			audit_findings->setRowHidden(row, !match);
+			if (match) ++visible_findings;
+		}
+		unsigned int visible_crust = 0;
+		for (int row = 0; row < audit_crust->rowCount(); ++row)
+		{
+			bool match = query.isEmpty();
+			for (int column = 0; !match && column < audit_crust->columnCount(); ++column)
+				match = audit_crust->item(row, column) &&
+						audit_crust->item(row, column)->text().contains(query, Qt::CaseInsensitive);
+			audit_crust->setRowHidden(row, !match);
+			if (match) ++visible_crust;
+		}
+		audit_status->setText(QObject::tr(
+				"Showing %1 of %2 findings and %3 of %4 ocean-crust records.")
+				.arg(visible_findings).arg(audit_findings->rowCount())
+				.arg(visible_crust).arg(audit_crust->rowCount()));
+	};
+	const auto refresh_audit = [this, audit_scope, audit_older, audit_old_crust, audit_revision,
+			audit_findings, audit_crust, audit_report, apply_audit_filter]()
+	{
+		std::set<QString> queued_findings;
+		for (int row = 0; row < audit_findings->rowCount(); ++row)
+			if (audit_findings->item(row, 0) && audit_findings->item(row, 0)->checkState() == Qt::Checked &&
+					audit_findings->item(row, 3) && audit_findings->item(row, 4))
+				queued_findings.insert(audit_findings->item(row, 3)->text() + QString::fromLatin1("|") +
+						audit_findings->item(row, 4)->text());
+		GPlatesViewOperations::WorldbuildingAuditReport::Request request;
+		request.scope = static_cast<GPlatesViewOperations::WorldbuildingAuditReport::Scope>(audit_scope->currentIndex());
+		request.current_time = get_application_state().get_current_reconstruction_time();
+		request.older_time = audit_older->value();
+		request.old_crust_threshold_ma = audit_old_crust->value();
+		request.project_revision = audit_revision->text().trimmed();
+		*audit_report = GPlatesViewOperations::WorldbuildingAuditReport::build(
+				get_application_state().get_feature_collection_file_state(), request);
+		audit_findings->setRowCount(0);
+		for (size_t index = 0; index < audit_report->findings.size(); ++index)
+		{
+			const GPlatesViewOperations::WorldbuildingAuditReport::Finding &finding = audit_report->findings[index];
+			const int row = audit_findings->rowCount(); audit_findings->insertRow(row);
+			QTableWidgetItem *queue = new QTableWidgetItem();
+			queue->setCheckState(queued_findings.count(
+					finding.code + QString::fromLatin1("|") + finding.feature_id)
+					? Qt::Checked : Qt::Unchecked);
+			audit_findings->setItem(row, 0, queue);
+			const QStringList values = QStringList() << finding.severity << finding.domain << finding.code
+					<< finding.feature_id << (finding.time ? QString::number(*finding.time, 'f', 3) : QString())
+					<< finding.message << finding.suggested_repair;
+			for (int column = 0; column < values.size(); ++column)
+				audit_findings->setItem(row, column + 1, new QTableWidgetItem(values[column]));
+		}
+		audit_crust->setRowCount(0);
+		for (std::vector<GPlatesViewOperations::WorldbuildingAuditReport::CrustRecord>::const_iterator
+				record = audit_report->crust.begin(); record != audit_report->crust.end(); ++record)
+		{
+			const int row = audit_crust->rowCount(); audit_crust->insertRow(row);
+			const QStringList values = QStringList() << record->feature_id
+					<< QString::number(record->created_time, 'f', 3)
+					<< (record->retired_time ? QString::number(*record->retired_time, 'f', 3) : QString())
+					<< record->status << QString::number(record->age_at_current_time, 'f', 1)
+					<< (record->old_crust_advisory ? tr("review") : QString());
+			for (int column = 0; column < values.size(); ++column)
+				audit_crust->setItem(row, column, new QTableWidgetItem(values[column]));
+		}
+		audit_findings->resizeColumnsToContents(); audit_crust->resizeColumnsToContents();
+		apply_audit_filter();
+	};
+	const auto export_audit = [this, audit_findings, audit_report](bool json)
+	{
+		std::vector<int> queue;
+		for (int row = 0; row < audit_findings->rowCount(); ++row)
+			if (audit_findings->item(row, 0) && audit_findings->item(row, 0)->checkState() == Qt::Checked)
+				queue.push_back(row);
+		const QString file_name = QFileDialog::getSaveFileName(this,
+				json ? tr("Export Worldbuilding Audit JSON") : tr("Export Worldbuilding Audit Markdown"),
+				json ? tr("worldbuilding-audit.json") : tr("worldbuilding-audit.md"),
+				json ? tr("JSON (*.json)") : tr("Markdown (*.md)"));
+		if (file_name.isEmpty()) return;
+		QFile file(file_name);
+		if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+		{
+			QMessageBox::warning(this, tr("Export Worldbuilding Audit"), file.errorString());
+			return;
+		}
+		file.write((json ? audit_report->to_json(queue) : audit_report->to_markdown(queue)).toUtf8());
+		file.close();
+	};
+	QObject::connect(audit_refresh, &QPushButton::clicked, this, refresh_audit);
+	QObject::connect(audit_filter, &QLineEdit::textChanged, this,
+			[apply_audit_filter](const QString &) { apply_audit_filter(); });
+	QObject::connect(audit_findings, &QTableWidget::cellDoubleClicked, this,
+			[this, audit_findings](int row, int)
+			{
+				if (!audit_findings->item(row, 5) || audit_findings->item(row, 5)->text().isEmpty()) return;
+				bool valid = false;
+				const double time = audit_findings->item(row, 5)->text().toDouble(&valid);
+				if (valid) get_view_state().get_animation_controller().set_view_time(time);
+			});
+	QObject::connect(audit_crust, &QTableWidget::cellDoubleClicked, this,
+			[this, audit_crust](int row, int)
+			{
+				if (!audit_crust->item(row, 1)) return;
+				bool valid = false;
+				const double time = audit_crust->item(row, 1)->text().toDouble(&valid);
+				if (valid) get_view_state().get_animation_controller().set_view_time(time);
+			});
+	QObject::connect(audit_export_markdown, &QPushButton::clicked, this,
+			[export_audit]() { export_audit(false); });
+	QObject::connect(audit_export_json, &QPushButton::clicked, this,
+			[export_audit]() { export_audit(true); });
+	QObject::connect(show_worldbuilding_audit_button, &QPushButton::clicked, this,
+			[this, audit_dialog, audit_older, refresh_audit]()
+			{
+				const double current = get_application_state().get_current_reconstruction_time();
+				const boost::optional<double> older = get_application_state()
+						.get_project_timestamp_schedule().default_older_bound(current);
+				audit_older->setValue(older ? *older : current);
+				refresh_audit(); audit_dialog->show(); audit_dialog->raise(); audit_dialog->activateWindow();
+			});
+	audit_dialog->resize(1320, 820);
+	QLabel *worldbuilding_pasta_description = new QLabel(
+			tr("Follow the Worldbuilding Pasta sequence from stable continental core to active plate margins."),
+			worldbuilding_pasta_palette);
+	worldbuilding_pasta_description->setWordWrap(true);
+	worldbuilding_pasta_layout->addWidget(worldbuilding_pasta_description);
+	QGroupBox *project_health_group = new QGroupBox(
+			tr("Project Health and Checkpoint"), worldbuilding_pasta_palette);
+	QVBoxLayout *project_health_layout = new QVBoxLayout(project_health_group);
+	QLabel *project_health_status = new QLabel(project_health_group);
+	project_health_status->setWordWrap(true);
+	project_health_layout->addWidget(project_health_status);
+	QHBoxLayout *project_health_buttons = new QHBoxLayout();
+	QPushButton *refresh_project_health_button = new QPushButton(
+			tr("Refresh Health"), project_health_group);
+	QPushButton *save_project_checkpoint_button = new QPushButton(
+			tr("Save Checkpoint"), project_health_group);
+	project_health_buttons->addWidget(refresh_project_health_button);
+	project_health_buttons->addWidget(save_project_checkpoint_button);
+	project_health_layout->addLayout(project_health_buttons);
+	worldbuilding_pasta_layout->addWidget(project_health_group);
+
+	const auto update_worldbuilding_project_health =
+			[this, project_health_status, save_project_checkpoint_button]()
+			{
+				if (!GPlatesAppLogic::WorldbuildingProjectManifest::has_active_manifest())
+				{
+					project_health_status->setText(tr(
+							"No reviewed worldbuilding manifest is active. Open or update a project before using role-routed generators."));
+					save_project_checkpoint_button->setEnabled(false);
+					return;
+				}
+
+				GPlatesAppLogic::FeatureCollectionFileState &file_state =
+						get_application_state().get_feature_collection_file_state();
+				const QStringList roles =
+						GPlatesAppLogic::WorldbuildingProjectManifest::active_collection_roles();
+				unsigned int loaded_count = 0;
+				unsigned int dirty_count = 0;
+				BOOST_FOREACH(const QString &role, roles)
+				{
+					const boost::optional<GPlatesAppLogic::FeatureCollectionFileState::file_reference> file =
+							GPlatesAppLogic::WorldbuildingProjectManifest::resolve_loaded_collection(
+									role, file_state);
+					if (file)
+					{
+						++loaded_count;
+						const GPlatesModel::FeatureCollectionHandle::weak_ref collection =
+								file->get_file().get_feature_collection();
+						if (collection.is_valid() && collection->contains_unsaved_changes())
+						{
+							++dirty_count;
+						}
+					}
+				}
+				project_health_status->setText(tr(
+						"Active: %1\nManaged collections loaded: %2 of %3; unsaved: %4.")
+						.arg(QDir::toNativeSeparators(
+								GPlatesAppLogic::WorldbuildingProjectManifest::active_project_directory()))
+						.arg(loaded_count)
+						.arg(roles.size())
+						.arg(dirty_count));
+				save_project_checkpoint_button->setEnabled(true);
+			};
+	QObject::connect(
+			refresh_project_health_button, &QPushButton::clicked,
+			worldbuilding_pasta_palette, update_worldbuilding_project_health);
+	QObject::connect(
+			save_project_checkpoint_button, &QPushButton::clicked,
+			worldbuilding_pasta_palette,
+			[this, update_worldbuilding_project_health]()
+			{
+				GPlatesAppLogic::FeatureCollectionFileState &file_state =
+						get_application_state().get_feature_collection_file_state();
+				std::vector<GPlatesAppLogic::FeatureCollectionFileState::file_reference> files;
+				BOOST_FOREACH(const QString &role,
+						GPlatesAppLogic::WorldbuildingProjectManifest::active_collection_roles())
+				{
+					const boost::optional<GPlatesAppLogic::FeatureCollectionFileState::file_reference> file =
+							GPlatesAppLogic::WorldbuildingProjectManifest::resolve_loaded_collection(
+									role, file_state);
+					if (file)
+					{
+						files.push_back(*file);
+					}
+				}
+				const QString project_file = QDir(
+						GPlatesAppLogic::WorldbuildingProjectManifest::active_project_directory()).
+						filePath(QString::fromLatin1("worldpasta.gproj"));
+				const bool files_saved = file_io_feedback().save_files(files, false, true);
+				const bool project_saved = files_saved && file_io_feedback().save_project(project_file);
+				status_message(project_saved
+						? tr("Worldbuilding checkpoint saved: managed collection changes and worldpasta.gproj.")
+						: tr("Worldbuilding checkpoint was not fully saved; review the file error shown above."));
+				update_worldbuilding_project_health();
+			});
+	update_worldbuilding_project_health();
+
+	QGroupBox *project_time_group = new QGroupBox(
+			tr("Project Timestamp Navigation"), worldbuilding_pasta_palette);
+	QVBoxLayout *project_time_layout = new QVBoxLayout(project_time_group);
+	QLabel *project_time_status = new QLabel(project_time_group);
+	project_time_status->setWordWrap(true);
+	project_time_layout->addWidget(project_time_status);
+	QHBoxLayout *project_time_buttons = new QHBoxLayout();
+	QPushButton *older_project_timestamp_button = new QPushButton(
+			tr("Older"), project_time_group);
+	QPushButton *younger_project_timestamp_button = new QPushButton(
+			tr("Younger"), project_time_group);
+	older_project_timestamp_button->setToolTip(tr(
+			"Go to the next older required Project Timestamp. This is the visible equivalent of Alt plus the reverse timeline-step button."));
+	younger_project_timestamp_button->setToolTip(tr(
+			"Go to the next younger required Project Timestamp. This is the visible equivalent of Alt plus the forward timeline-step button."));
+	project_time_buttons->addWidget(older_project_timestamp_button);
+	project_time_buttons->addWidget(younger_project_timestamp_button);
+	project_time_layout->addLayout(project_time_buttons);
+	worldbuilding_pasta_layout->addWidget(project_time_group);
+
+	GPlatesAppLogic::ProjectTimestampSchedule &project_timestamp_schedule =
+			get_application_state().get_project_timestamp_schedule();
+	GPlatesGui::AnimationController &animation_controller =
+			get_view_state().get_animation_controller();
+	const auto update_project_timestamp_status =
+			[this, project_time_status, older_project_timestamp_button,
+			 younger_project_timestamp_button]()
+			{
+				const GPlatesAppLogic::ProjectTimestampSchedule &schedule =
+						get_application_state().get_project_timestamp_schedule();
+				const double current_time =
+						get_view_state().get_animation_controller().view_time();
+				const boost::optional<double> older = schedule.next_older_timestamp(current_time);
+				const boost::optional<double> younger = schedule.next_younger_timestamp(current_time);
+				const bool active = schedule.source() ==
+						GPlatesAppLogic::ProjectTimestampSchedule::PROJECT_MARKDOWN;
+				older_project_timestamp_button->setEnabled(active && older);
+				younger_project_timestamp_button->setEnabled(active && younger);
+
+				if (active)
+				{
+					project_time_status->setText(tr(
+							"View: %1 Ma. Required schedule active (%2 timestamps).%3%4")
+							.arg(QLocale().toString(current_time, 'f', 1))
+							.arg(static_cast<qulonglong>(
+									schedule.timestamps_older_to_younger().size()))
+							.arg(older
+									? tr(" Older: %1 Ma.").arg(
+											QLocale().toString(older.get(), 'f', 1))
+									: tr(" At the oldest required timestamp."))
+							.arg(younger
+									? tr(" Younger: %1 Ma.").arg(
+											QLocale().toString(younger.get(), 'f', 1))
+									: tr(" At the youngest required timestamp.")));
+				}
+				else
+				{
+					project_time_status->setText(schedule.diagnostic().isEmpty()
+							? tr("No required Project Timestamp schedule is active. Ordinary timeline stepping remains available.")
+							: schedule.diagnostic());
+				}
+			};
+	QObject::connect(
+			&project_timestamp_schedule,
+			&GPlatesAppLogic::ProjectTimestampSchedule::schedule_changed,
+			worldbuilding_pasta_palette,
+			update_project_timestamp_status);
+	QObject::connect(
+			&animation_controller,
+			&GPlatesGui::AnimationController::view_time_changed,
+			worldbuilding_pasta_palette,
+			[update_project_timestamp_status](double)
+			{
+				update_project_timestamp_status();
+			});
+	QObject::connect(
+			older_project_timestamp_button,
+			&QPushButton::clicked,
+			worldbuilding_pasta_palette,
+			[this]()
+			{
+				const GPlatesAppLogic::ProjectTimestampSchedule &schedule =
+						get_application_state().get_project_timestamp_schedule();
+				const boost::optional<double> timestamp = schedule.next_older_timestamp(
+						get_view_state().get_animation_controller().view_time());
+				if (timestamp)
+				{
+					get_view_state().get_animation_controller().set_view_time(timestamp.get());
+				}
+			});
+	QObject::connect(
+			younger_project_timestamp_button,
+			&QPushButton::clicked,
+			worldbuilding_pasta_palette,
+			[this]()
+			{
+				const GPlatesAppLogic::ProjectTimestampSchedule &schedule =
+						get_application_state().get_project_timestamp_schedule();
+				const boost::optional<double> timestamp = schedule.next_younger_timestamp(
+						get_view_state().get_animation_controller().view_time());
+				if (timestamp)
+				{
+					get_view_state().get_animation_controller().set_view_time(timestamp.get());
+				}
+			});
+	update_project_timestamp_status();
+	QLabel *worldbuilding_pasta_attribution = new QLabel(
+			QString("%1 <a href=\"https://worldbuildingpasta.blogspot.com/\">%2</a>")
+					.arg(tr("Method and inspiration:"), tr("Worldbuilding Pasta blog")),
+			worldbuilding_pasta_palette);
+	worldbuilding_pasta_attribution->setTextFormat(Qt::RichText);
+	worldbuilding_pasta_attribution->setTextInteractionFlags(Qt::TextBrowserInteraction);
+	worldbuilding_pasta_attribution->setOpenExternalLinks(true);
+	worldbuilding_pasta_attribution->setToolTip(tr(
+			"Open the original Worldbuilding Pasta blog, whose tectonic-worldbuilding method this workflow follows."));
+	worldbuilding_pasta_layout->addWidget(worldbuilding_pasta_attribution);
+	QLabel *gplates_tutorials_link = new QLabel(
+			QString("<a href=\"https://sites.google.com/site/gplatestutorials/\">%1</a>")
+					.arg(tr("Additional GPlates tutorials and guidance")),
+			worldbuilding_pasta_palette);
+	gplates_tutorials_link->setTextFormat(Qt::RichText);
+	gplates_tutorials_link->setTextInteractionFlags(Qt::TextBrowserInteraction);
+	gplates_tutorials_link->setOpenExternalLinks(true);
+	worldbuilding_pasta_layout->addWidget(gplates_tutorials_link);
+
+	QGroupBox *foundation_group = new QGroupBox(
+			tr("1. Continental Foundation"), worldbuilding_pasta_palette);
+	QVBoxLayout *foundation_layout = new QVBoxLayout(foundation_group);
+	QPushButton *create_initial_continent_button = new QPushButton(
+			tr("1.1  Create Initial Continent..."), foundation_group);
+	foundation_layout->addWidget(create_initial_continent_button);
+	worldbuilding_pasta_layout->addWidget(foundation_group);
+
+	QGroupBox *rifting_group = new QGroupBox(
+			tr("2. Initial Rifting"), worldbuilding_pasta_palette);
+	QVBoxLayout *rifting_layout = new QVBoxLayout(rifting_group);
+	QPushButton *propose_initial_rifts_button = new QPushButton(
+			tr("2.1  Build Voronoi Rift Network..."), rifting_group);
+	QPushButton *show_make_rift_button = new QPushButton(
+			tr("2.2  Make Rift..."), rifting_group);
+	QPushButton *create_initial_rotation_file_button = new QPushButton(
+			tr("2.3  Create + Load Rotation File..."), rifting_group);
+	create_initial_rotation_file_button->setToolTip(tr(
+			"Build Pasta's initial identity-pole plate circuit, save it as rotation.rot, and load it immediately."));
+	rifting_layout->addWidget(propose_initial_rifts_button);
+	rifting_layout->addWidget(show_make_rift_button);
+	rifting_layout->addWidget(create_initial_rotation_file_button);
+	worldbuilding_pasta_layout->addWidget(rifting_group);
+
+	QGroupBox *active_margin_group = new QGroupBox(
+			tr("3. Plate Motion and Ocean Basins"), worldbuilding_pasta_palette);
+	QVBoxLayout *active_margin_layout = new QVBoxLayout(active_margin_group);
+	QPushButton *show_initial_subduction_button = new QPushButton(
+			tr("3.1  Build Opposite-Margin Subduction Zone..."), active_margin_group);
+	show_initial_subduction_button->setToolTip(tr(
+			"Infer motion from a rifted continent and its half-stage MOR, then preview a broad far-margin trench."));
+	active_margin_layout->addWidget(show_initial_subduction_button);
+	QPushButton *advance_plate_motion_button = new QPushButton(
+			tr("3.2  Advance Plate Motion..."), active_margin_group);
+	advance_plate_motion_button->setToolTip(tr(
+			"Use .rot history, normalized MOR push and normalized subduction pull to propose the next younger rotation poles."));
+	active_margin_layout->addWidget(advance_plate_motion_button);
+	QPushButton *show_motion_workbench_button = new QPushButton(
+			tr("3.2a  Rotation + Motion Workbench..."), active_margin_group);
+	show_motion_workbench_button->setToolTip(tr(
+			"Preview parent/child circuit validity and absolute/relative stage motion at Project Timestamps; never changes a pole automatically."));
+	active_margin_layout->addWidget(show_motion_workbench_button);
+
+	QDialog *motion_workbench_dialog = new QDialog(this, Qt::Tool);
+	motion_workbench_dialog->setWindowTitle(tr("Rotation and Motion Planning Workbench"));
+	motion_workbench_dialog->setModal(false);
+	QVBoxLayout *motion_workbench_layout = new QVBoxLayout(motion_workbench_dialog);
+	QLabel *motion_workbench_note = new QLabel(tr(
+			"Advisory preview only. Inspect circuit continuity and relative motion here, then use the existing Rotation File Editor for any confirmed pole copy or edit. No optimisation is performed."),
+			motion_workbench_dialog);
+	motion_workbench_note->setWordWrap(true);
+	motion_workbench_layout->addWidget(motion_workbench_note);
+	QFormLayout *motion_workbench_form = new QFormLayout();
+	QSpinBox *motion_moving_plate = new QSpinBox(motion_workbench_dialog);
+	motion_moving_plate->setRange(0, 99999999);
+	motion_moving_plate->setValue(1);
+	QSpinBox *motion_fixed_plate = new QSpinBox(motion_workbench_dialog);
+	motion_fixed_plate->setRange(0, 99999999);
+	motion_fixed_plate->setValue(0);
+	QDoubleSpinBox *motion_older_time = new QDoubleSpinBox(motion_workbench_dialog);
+	motion_older_time->setRange(0, 10000);
+	motion_older_time->setDecimals(3);
+	motion_older_time->setSuffix(tr(" Ma"));
+	QDoubleSpinBox *motion_younger_time = new QDoubleSpinBox(motion_workbench_dialog);
+	motion_younger_time->setRange(0, 10000);
+	motion_younger_time->setDecimals(3);
+	motion_younger_time->setSuffix(tr(" Ma"));
+	QDoubleSpinBox *motion_sample_latitude = new QDoubleSpinBox(motion_workbench_dialog);
+	motion_sample_latitude->setRange(-90.0, 90.0);
+	motion_sample_latitude->setDecimals(3);
+	motion_sample_latitude->setSuffix(tr(" deg"));
+	QDoubleSpinBox *motion_sample_longitude = new QDoubleSpinBox(motion_workbench_dialog);
+	motion_sample_longitude->setRange(-360.0, 360.0);
+	motion_sample_longitude->setDecimals(3);
+	motion_sample_longitude->setSuffix(tr(" deg"));
+	QDoubleSpinBox *motion_boundary_strike = new QDoubleSpinBox(motion_workbench_dialog);
+	motion_boundary_strike->setRange(0.0, 360.0);
+	motion_boundary_strike->setDecimals(2);
+	motion_boundary_strike->setSuffix(tr(" deg"));
+	QComboBox *motion_boundary_kind = new QComboBox(motion_workbench_dialog);
+	motion_boundary_kind->addItem(tr("Advisory only"),
+			GPlatesViewOperations::RotationMotionPlanner::NO_BOUNDARY);
+	motion_boundary_kind->addItem(tr("Mid-ocean ridge"),
+			GPlatesViewOperations::RotationMotionPlanner::MID_OCEAN_RIDGE);
+	motion_boundary_kind->addItem(tr("Transform fault"),
+			GPlatesViewOperations::RotationMotionPlanner::TRANSFORM_FAULT);
+	motion_boundary_kind->addItem(tr("Subduction trench"),
+			GPlatesViewOperations::RotationMotionPlanner::SUBDUCTION_TRENCH);
+	motion_workbench_form->addRow(tr("Moving / child Plate ID:"), motion_moving_plate);
+	motion_workbench_form->addRow(tr("Fixed / parent Plate ID:"), motion_fixed_plate);
+	motion_workbench_form->addRow(tr("Older bound:"), motion_older_time);
+	motion_workbench_form->addRow(tr("Younger bound:"), motion_younger_time);
+	motion_workbench_form->addRow(tr("Boundary sample latitude:"), motion_sample_latitude);
+	motion_workbench_form->addRow(tr("Boundary sample longitude:"), motion_sample_longitude);
+	motion_workbench_form->addRow(tr("Boundary strike (clockwise from north):"), motion_boundary_strike);
+	motion_workbench_form->addRow(tr("Boundary gate:"), motion_boundary_kind);
+	motion_workbench_layout->addLayout(motion_workbench_form);
+	QLabel *motion_constraint_note = new QLabel(tr(
+			"Boundary review gates: motion should be near the MOR normal, tangent to transforms, convergent at the selected trench, and should not pass first contact. Use Plate Direction Arrows and the relevant selected boundary geometry to confirm these before editing."),
+			motion_workbench_dialog);
+	motion_constraint_note->setWordWrap(true);
+	motion_workbench_layout->addWidget(motion_constraint_note);
+	QTableWidget *motion_workbench_table = new QTableWidget(motion_workbench_dialog);
+	motion_workbench_table->setColumnCount(12);
+	motion_workbench_table->setHorizontalHeaderLabels(QStringList()
+			<< tr("Older") << tr("Younger") << tr("Moving circuit") << tr("Parent circuit")
+			<< tr("Absolute stage (deg)") << tr("Relative stage (deg)")
+			<< tr("Relative deg/Ma") << tr("Local cm/yr") << tr("Normal cm/yr")
+			<< tr("Parallel cm/yr") << tr("Azimuth") << tr("Review"));
+	motion_workbench_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+	motion_workbench_table->horizontalHeader()->setStretchLastSection(true);
+	motion_workbench_layout->addWidget(motion_workbench_table);
+	QDialogButtonBox *motion_workbench_buttons = new QDialogButtonBox(
+			QDialogButtonBox::Close, motion_workbench_dialog);
+	QPushButton *motion_preview_button = motion_workbench_buttons->addButton(
+			tr("Preview Interval"), QDialogButtonBox::ActionRole);
+	QPushButton *motion_editor_button = motion_workbench_buttons->addButton(
+			tr("Open Rotation File Editor"), QDialogButtonBox::ActionRole);
+	motion_workbench_layout->addWidget(motion_workbench_buttons);
+	QObject::connect(motion_workbench_buttons, SIGNAL(rejected()), motion_workbench_dialog, SLOT(hide()));
+	QObject::connect(motion_editor_button, &QPushButton::clicked, this,
+			[this]() { handle_rotation_file_editor(); });
+	QObject::connect(motion_preview_button, &QPushButton::clicked, this,
+			[this, motion_moving_plate, motion_fixed_plate, motion_older_time,
+			 motion_younger_time, motion_sample_latitude, motion_sample_longitude,
+			 motion_boundary_strike, motion_boundary_kind, motion_workbench_table]()
+			{
+				motion_workbench_table->setRowCount(0);
+				const double older = motion_older_time->value();
+				const double younger = motion_younger_time->value();
+				if (older <= younger)
+				{
+					QMessageBox::warning(this, tr("Rotation and Motion Workbench"),
+							tr("The older bound must be greater than the younger bound."));
+					return;
+				}
+				std::vector<double> times;
+				times.push_back(older);
+				const std::vector<double> project_times = get_application_state()
+						.get_project_timestamp_schedule().timestamps_older_to_younger();
+				for (std::vector<double>::const_iterator time = project_times.begin();
+					 time != project_times.end(); ++time)
+				{
+					if (*time < older - 1e-9 && *time > younger + 1e-9)
+					{
+						times.push_back(*time);
+					}
+				}
+				times.push_back(younger);
+				std::sort(times.begin(), times.end(), std::greater<double>());
+				const GPlatesAppLogic::ReconstructionTreeCreator tree_creator =
+						get_application_state().get_current_reconstruction()
+								.get_default_reconstruction_layer_output()
+								->get_reconstruction_tree_creator();
+				for (std::size_t index = 1; index < times.size(); ++index)
+				{
+					const GPlatesViewOperations::RotationMotionPlanner::Sample sample =
+							GPlatesViewOperations::RotationMotionPlanner::analyse(
+									tree_creator, motion_moving_plate->value(), motion_fixed_plate->value(),
+									times[index - 1], times[index],
+									motion_sample_latitude->value(), motion_sample_longitude->value(),
+									motion_boundary_strike->value(),
+									static_cast<GPlatesViewOperations::RotationMotionPlanner::BoundaryKind>(
+											motion_boundary_kind->currentData().toInt()),
+									get_application_state().get_planetary_parameters().effective_radius_kilometres());
+					const int row = motion_workbench_table->rowCount();
+					motion_workbench_table->insertRow(row);
+					const QStringList values = QStringList()
+							<< QString::number(sample.older_time, 'f', 3)
+							<< QString::number(sample.younger_time, 'f', 3)
+							<< (sample.moving_circuit_valid ? tr("valid") : tr("missing"))
+							<< (sample.fixed_circuit_valid ? tr("valid") : tr("missing"))
+							<< QString::number(sample.absolute_stage_degrees, 'f', 5)
+							<< QString::number(sample.relative_stage_degrees, 'f', 5)
+							<< QString::number(sample.relative_rate_degrees_per_ma, 'f', 6)
+							<< QString::number(sample.local_speed_cm_per_year, 'f', 2)
+							<< QString::number(sample.boundary_normal_cm_per_year, 'f', 2)
+							<< QString::number(sample.boundary_parallel_cm_per_year, 'f', 2)
+							<< QString::number(sample.motion_azimuth_degrees, 'f', 1)
+							<< sample.diagnostic;
+					for (int column = 0; column < values.size(); ++column)
+					{
+						motion_workbench_table->setItem(row, column, new QTableWidgetItem(values[column]));
+					}
+				}
+				motion_workbench_table->resizeColumnsToContents();
+			});
+	QObject::connect(show_motion_workbench_button, &QPushButton::clicked, this,
+			[this, motion_workbench_dialog, motion_older_time, motion_younger_time]()
+			{
+				const double current_time = get_application_state().get_current_reconstruction_time();
+				motion_younger_time->setValue(current_time);
+				const boost::optional<double> older = get_application_state()
+						.get_project_timestamp_schedule().default_older_bound(current_time);
+				motion_older_time->setValue(older ? *older : current_time + 10.0);
+				motion_workbench_dialog->show();
+				motion_workbench_dialog->raise();
+				motion_workbench_dialog->activateWindow();
+			});
+	motion_workbench_dialog->resize(1180, 620);
+	QPushButton *create_ocean_crust_button = new QPushButton(
+			tr("3.3  Generate Ocean Crust from MOR..."), active_margin_group);
+	create_ocean_crust_button->setToolTip(tr(
+			"Shift-click a half-stage MOR, use the Project Timeline interval and recorded .rot motion, then fill only open ocean space on each side."));
+	active_margin_layout->addWidget(create_ocean_crust_button);
+	QPushButton *create_triple_junction_crust_button = new QPushButton(
+			tr("3.4  Generate RRR Triple-Junction Crust..."), active_margin_group);
+	create_triple_junction_crust_button->setToolTip(tr(
+			"Shift-click three connected half-stage MORs, conservatively extend them to one junction, and fill all three plate sectors using the shared crust-band builder."));
+	active_margin_layout->addWidget(create_triple_junction_crust_button);
+	QPushButton *create_pacific_plate_button = new QPushButton(
+			tr("3.5  Create Pacific-Style Plate..."), active_margin_group);
+	create_pacific_plate_button->setToolTip(tr(
+			"Shift-click three surrounding half-stage MORs, click the local void, then atomically create its new plate, crust, bounding MORs, and rotation sequence."));
+	active_margin_layout->addWidget(create_pacific_plate_button);
+	QPushButton *retire_ocean_crust_button = new QPushButton(
+			tr("3.6  Retire Subducted Oceanic Crust..."), active_margin_group);
+	retire_ocean_crust_button->setToolTip(tr(
+			"Preview where OceanicCrust first overlaps an overriding plate, split those pieces, and give them disappearance times."));
+	active_margin_layout->addWidget(retire_ocean_crust_button);
+	worldbuilding_pasta_layout->addWidget(active_margin_group);
+
+	QGroupBox *convergent_margin_group = new QGroupBox(
+			tr("4. Convergent-Margin Effects"), worldbuilding_pasta_palette);
+	QVBoxLayout *convergent_margin_layout = new QVBoxLayout(convergent_margin_group);
+	QPushButton *show_subduction_effects_button = new QPushButton(
+			tr("4.1  Review Island Arcs + Mountains..."), convergent_margin_group);
+	show_subduction_effects_button->setToolTip(tr(
+			"Select a trench, review its polarity and extent, then propose an editable island-arc line and land-intersection mountains, or a direct active-margin belt."));
+	convergent_margin_layout->addWidget(show_subduction_effects_button);
+	worldbuilding_pasta_layout->addWidget(convergent_margin_group);
+
+	QGroupBox *collision_group = new QGroupBox(
+			tr("5. Continental Collision"), worldbuilding_pasta_palette);
+	QVBoxLayout *collision_group_layout = new QVBoxLayout(collision_group);
+	QPushButton *show_collision_button = new QPushButton(
+			tr("5.1  Review Collision + Orogeny..."), collision_group);
+	show_collision_button->setToolTip(tr(
+			"Derive and review a suture, collision class, consumed trench and complete orogen lifecycle from two approaching continents."));
+	collision_group_layout->addWidget(show_collision_button);
+	worldbuilding_pasta_layout->addWidget(collision_group);
+
+	QGroupBox *post_collision_group = new QGroupBox(
+			tr("6. Post-Collision Rerifting"), worldbuilding_pasta_palette);
+	QVBoxLayout *post_collision_group_layout = new QVBoxLayout(post_collision_group);
+	QPushButton *show_post_collision_rift_button = new QPushButton(
+			tr("6.1  Reactivate Suture + Rerift..."), post_collision_group);
+	show_post_collision_rift_button->setToolTip(tr(
+			"Propose a craton-safe rift near an inherited suture, redistribute the welded assemblage, create the MOR, and preserve older plate history."));
+	post_collision_group_layout->addWidget(show_post_collision_rift_button);
+	worldbuilding_pasta_layout->addWidget(post_collision_group);
+
+	QGroupBox *mantle_events_group = new QGroupBox(
+			tr("7. Mantle Events"), worldbuilding_pasta_palette);
+	QVBoxLayout *mantle_events_group_layout = new QVBoxLayout(mantle_events_group);
+	QPushButton *show_mantle_events_button = new QPushButton(
+			tr("7.1  Review LIP + Hotspot Event..."), mantle_events_group);
+	show_mantle_events_button->setToolTip(tr(
+			"Place a contained rift-triggered or random LIP, then create its active/former lifecycle, mantle-fixed hotspot, and native MotionPath trail."));
+	mantle_events_group_layout->addWidget(show_mantle_events_button);
+	worldbuilding_pasta_layout->addWidget(mantle_events_group);
+
+	QGroupBox *project_helpers_group = new QGroupBox(
+			tr("Project Helpers"), worldbuilding_pasta_palette);
+	QVBoxLayout *project_helpers_layout = new QVBoxLayout(project_helpers_group);
+	QPushButton *artifexia_preset_button = new QPushButton(
+			tr("Use Artifexia Types + Layer Styles"), project_helpers_group);
+	artifexia_preset_button->setToolTip(tr(
+			"Show the Artifexia feature-type set and apply its saved colouring to matching loaded or generated layers."));
+	project_helpers_layout->addWidget(artifexia_preset_button);
+	QPushButton *show_boolean_polygons_button = new QPushButton(
+			tr("Boolean Polygons..."), project_helpers_group);
+	show_boolean_polygons_button->setToolTip(tr(
+			"Union, subtract, intersect, or symmetric-difference polygon features while keeping the first feature's properties."));
+	project_helpers_layout->addWidget(show_boolean_polygons_button);
+	worldbuilding_pasta_layout->addWidget(project_helpers_group);
+	worldbuilding_pasta_layout->addStretch();
+
+	// Modeless Boolean workflow. It remains visible while the user selects the
+	// first polygon and any number of operands, then hides after a successful edit.
+	d_boolean_polygon_dialog_ptr = new QDialog(this, Qt::Tool);
+	d_boolean_polygon_dialog_ptr->setObjectName("WorldbuildingBooleanPolygonsDialog");
+	d_boolean_polygon_dialog_ptr->setWindowTitle(tr("MM - Boolean Polygons"));
+	d_boolean_polygon_dialog_ptr->setModal(false);
+	d_boolean_polygon_dialog_ptr->setAttribute(Qt::WA_DeleteOnClose, false);
+	QVBoxLayout *boolean_layout = create_scrollable_dialog_layout(d_boolean_polygon_dialog_ptr);
+	QLabel *boolean_description = new QLabel(tr(
+			"Keep this window open while selecting polygons on the globe or map. The first polygon supplies every output feature property. Operand features are read-only inputs."),
+			d_boolean_polygon_dialog_ptr);
+	boolean_description->setWordWrap(true);
+	boolean_description->setMinimumWidth(500);
+	boolean_layout->addWidget(boolean_description);
+
+	QFormLayout *boolean_form = new QFormLayout();
+	d_boolean_operation_combo_ptr = new QComboBox(d_boolean_polygon_dialog_ptr);
+	d_boolean_operation_combo_ptr->addItem(tr("Union (first + operands)"));
+	d_boolean_operation_combo_ptr->addItem(tr("Subtract (first - operands)"));
+	d_boolean_operation_combo_ptr->addItem(tr("Intersection"));
+	d_boolean_operation_combo_ptr->addItem(tr("Symmetric difference"));
+	boolean_form->addRow(tr("Operation:"), d_boolean_operation_combo_ptr);
+	boolean_layout->addLayout(boolean_form);
+
+	d_boolean_select_first_button_ptr = new QPushButton(
+			tr("1. Select First Polygon"), d_boolean_polygon_dialog_ptr);
+	d_boolean_select_first_button_ptr->setCheckable(true);
+	d_boolean_first_status_label_ptr = new QLabel(d_boolean_polygon_dialog_ptr);
+	d_boolean_first_status_label_ptr->setWordWrap(true);
+	boolean_layout->addWidget(d_boolean_select_first_button_ptr);
+	boolean_layout->addWidget(d_boolean_first_status_label_ptr);
+
+	QHBoxLayout *boolean_operand_buttons = new QHBoxLayout();
+	d_boolean_select_operand_button_ptr = new QPushButton(
+			tr("2. Add Operand Polygon"), d_boolean_polygon_dialog_ptr);
+	d_boolean_select_operand_button_ptr->setCheckable(true);
+	d_boolean_clear_operands_button_ptr = new QPushButton(
+			tr("Clear Operands"), d_boolean_polygon_dialog_ptr);
+	d_boolean_remove_operand_button_ptr = new QPushButton(
+			tr("Remove Last"), d_boolean_polygon_dialog_ptr);
+	boolean_operand_buttons->addWidget(d_boolean_select_operand_button_ptr);
+	boolean_operand_buttons->addWidget(d_boolean_remove_operand_button_ptr);
+	boolean_operand_buttons->addWidget(d_boolean_clear_operands_button_ptr);
+	d_boolean_operands_status_label_ptr = new QLabel(d_boolean_polygon_dialog_ptr);
+	d_boolean_operands_status_label_ptr->setWordWrap(true);
+	boolean_layout->addLayout(boolean_operand_buttons);
+	boolean_layout->addWidget(d_boolean_operands_status_label_ptr);
+
+	d_boolean_instruction_label_ptr = new QLabel(d_boolean_polygon_dialog_ptr);
+	d_boolean_instruction_label_ptr->setWordWrap(true);
+	boolean_layout->addWidget(d_boolean_instruction_label_ptr);
+	QHBoxLayout *boolean_finish_buttons = new QHBoxLayout();
+	d_boolean_preview_button_ptr = new QPushButton(
+			tr("3. Preview Result"), d_boolean_polygon_dialog_ptr);
+	d_boolean_apply_button_ptr = new QPushButton(
+			tr("4. Apply and Finish"), d_boolean_polygon_dialog_ptr);
+	d_boolean_cancel_button_ptr = new QPushButton(
+			tr("Cancel"), d_boolean_polygon_dialog_ptr);
+	boolean_finish_buttons->addStretch();
+	boolean_finish_buttons->addWidget(d_boolean_preview_button_ptr);
+	boolean_finish_buttons->addWidget(d_boolean_apply_button_ptr);
+	boolean_finish_buttons->addWidget(d_boolean_cancel_button_ptr);
+	boolean_layout->addLayout(boolean_finish_buttons);
+	d_boolean_polygon_dialog_ptr->hide();
+
+	// Modeless Make Rift workflow. Closing it merely hides it; selections remain
+	// captured until a successful cut resets the operation.
+	d_make_rift_dialog_ptr = new QDialog(this, Qt::Tool);
+	d_make_rift_dialog_ptr->setObjectName("WorldbuildingPastaMakeRiftDialog");
+	d_make_rift_dialog_ptr->setWindowTitle(tr("Worldbuilding Pasta - Make Rift"));
+	d_make_rift_dialog_ptr->setModal(false);
+	d_make_rift_dialog_ptr->setAttribute(Qt::WA_DeleteOnClose, false);
+	QVBoxLayout *make_rift_layout = create_scrollable_dialog_layout(d_make_rift_dialog_ptr);
+	QLabel *make_rift_description = new QLabel(tr(
+			"Keep this window open while selecting in the globe or map. The cutter may be any polyline; it no longer has to be a provisional MOR."),
+			d_make_rift_dialog_ptr);
+	make_rift_description->setWordWrap(true);
+	make_rift_layout->addWidget(make_rift_description);
+	d_make_rift_select_continent_button_ptr = new QPushButton(
+			tr("1. Select Continent"), d_make_rift_dialog_ptr);
+	d_make_rift_select_continent_button_ptr->setCheckable(true);
+	d_make_rift_continent_status_label_ptr = new QLabel(d_make_rift_dialog_ptr);
+	d_make_rift_continent_status_label_ptr->setWordWrap(true);
+	d_make_rift_select_rift_button_ptr = new QPushButton(
+			tr("2. Select Rift Polyline"), d_make_rift_dialog_ptr);
+	d_make_rift_select_rift_button_ptr->setCheckable(true);
+	d_make_rift_rift_status_label_ptr = new QLabel(d_make_rift_dialog_ptr);
+	d_make_rift_rift_status_label_ptr->setWordWrap(true);
+	d_make_rift_cut_button_ptr = new QPushButton(
+			tr("3. Cut / Make Rift..."), d_make_rift_dialog_ptr);
+	d_make_rift_instruction_label_ptr = new QLabel(d_make_rift_dialog_ptr);
+	d_make_rift_instruction_label_ptr->setWordWrap(true);
+	make_rift_layout->addWidget(d_make_rift_select_continent_button_ptr);
+	make_rift_layout->addWidget(d_make_rift_continent_status_label_ptr);
+	make_rift_layout->addWidget(d_make_rift_select_rift_button_ptr);
+	make_rift_layout->addWidget(d_make_rift_rift_status_label_ptr);
+	make_rift_layout->addWidget(d_make_rift_cut_button_ptr);
+	make_rift_layout->addWidget(d_make_rift_instruction_label_ptr);
+	d_make_rift_dialog_ptr->resize(430, 330);
+	d_make_rift_dialog_ptr->hide();
+
+	// Modeless active-margin workflow, mirroring Make Rift's explicit capture flow.
+	d_initial_subduction_dialog_ptr = new QDialog(this, Qt::Tool);
+	d_initial_subduction_dialog_ptr->setObjectName("WorldbuildingPastaInitialSubductionDialog");
+	d_initial_subduction_dialog_ptr->setWindowTitle(
+			tr("Worldbuilding Pasta - Opposite-Margin Subduction"));
+	d_initial_subduction_dialog_ptr->setModal(false);
+	d_initial_subduction_dialog_ptr->setAttribute(Qt::WA_DeleteOnClose, false);
+	QVBoxLayout *initial_subduction_layout = create_scrollable_dialog_layout(d_initial_subduction_dialog_ptr);
+	QLabel *initial_subduction_description = new QLabel(tr(
+			"Select one rifted continent and its half-stage MOR. The preview uses the MOR-to-continent vector for motion, spans the far-side silhouette, smooths coastal detail, and adds a broad natural arc."),
+			d_initial_subduction_dialog_ptr);
+	initial_subduction_description->setWordWrap(true);
+	initial_subduction_layout->addWidget(initial_subduction_description);
+	d_initial_subduction_select_continent_button_ptr = new QPushButton(
+			tr("1. Select Rifted Continent"), d_initial_subduction_dialog_ptr);
+	d_initial_subduction_select_continent_button_ptr->setCheckable(true);
+	d_initial_subduction_continent_status_label_ptr = new QLabel(d_initial_subduction_dialog_ptr);
+	d_initial_subduction_continent_status_label_ptr->setWordWrap(true);
+	d_initial_subduction_select_mor_button_ptr = new QPushButton(
+			tr("2. Select Half-Stage MOR"), d_initial_subduction_dialog_ptr);
+	d_initial_subduction_select_mor_button_ptr->setCheckable(true);
+	d_initial_subduction_mor_status_label_ptr = new QLabel(d_initial_subduction_dialog_ptr);
+	d_initial_subduction_mor_status_label_ptr->setWordWrap(true);
+	d_initial_subduction_generate_button_ptr = new QPushButton(
+			tr("3. Preview / Create Subduction Zone..."), d_initial_subduction_dialog_ptr);
+	d_initial_subduction_instruction_label_ptr = new QLabel(d_initial_subduction_dialog_ptr);
+	d_initial_subduction_instruction_label_ptr->setWordWrap(true);
+	initial_subduction_layout->addWidget(d_initial_subduction_select_continent_button_ptr);
+	initial_subduction_layout->addWidget(d_initial_subduction_continent_status_label_ptr);
+	initial_subduction_layout->addWidget(d_initial_subduction_select_mor_button_ptr);
+	initial_subduction_layout->addWidget(d_initial_subduction_mor_status_label_ptr);
+	initial_subduction_layout->addWidget(d_initial_subduction_generate_button_ptr);
+	initial_subduction_layout->addWidget(d_initial_subduction_instruction_label_ptr);
+	d_initial_subduction_dialog_ptr->resize(470, 360);
+	d_initial_subduction_dialog_ptr->hide();
+
+	// Persistent proposal/review window: source selections remain captured while the
+	// worldbuilder adjusts polarity, extent, offsets and geological interpretation.
+	d_subduction_effects_dialog_ptr = new QDialog(this, Qt::Tool);
+	d_subduction_effects_dialog_ptr->setObjectName("WorldbuildingPastaSubductionEffectsDialog");
+	d_subduction_effects_dialog_ptr->setWindowTitle(
+			tr("Worldbuilding Pasta - Island Arcs and Mountains"));
+	d_subduction_effects_dialog_ptr->setModal(false);
+	d_subduction_effects_dialog_ptr->setAttribute(Qt::WA_DeleteOnClose, false);
+	QVBoxLayout *subduction_effects_layout = create_scrollable_dialog_layout(d_subduction_effects_dialog_ptr);
+	QLabel *subduction_effects_description = new QLabel(tr(
+			"Select a trench, then optionally its overriding continental crust. Auto proposes an island-arc notation line without a selected crust and an Andean belt with one. Arc intersections with any visible ContinentalCrust or terrane automatically preview mountain building. Nothing is committed until review."),
+			d_subduction_effects_dialog_ptr);
+	subduction_effects_description->setWordWrap(true);
+	subduction_effects_layout->addWidget(subduction_effects_description);
+	d_subduction_effects_select_subduction_button_ptr = new QPushButton(
+			tr("1. Select Subduction Zone"), d_subduction_effects_dialog_ptr);
+	d_subduction_effects_select_subduction_button_ptr->setCheckable(true);
+	d_subduction_effects_subduction_status_label_ptr = new QLabel(d_subduction_effects_dialog_ptr);
+	d_subduction_effects_subduction_status_label_ptr->setWordWrap(true);
+	subduction_effects_layout->addWidget(d_subduction_effects_select_subduction_button_ptr);
+	subduction_effects_layout->addWidget(d_subduction_effects_subduction_status_label_ptr);
+	QHBoxLayout *subduction_effects_crust_buttons = new QHBoxLayout();
+	d_subduction_effects_select_continent_button_ptr = new QPushButton(
+			tr("2. Select Overriding Crust"), d_subduction_effects_dialog_ptr);
+	d_subduction_effects_select_continent_button_ptr->setCheckable(true);
+	d_subduction_effects_clear_continent_button_ptr = new QPushButton(
+			tr("Clear Crust"), d_subduction_effects_dialog_ptr);
+	subduction_effects_crust_buttons->addWidget(d_subduction_effects_select_continent_button_ptr);
+	subduction_effects_crust_buttons->addWidget(d_subduction_effects_clear_continent_button_ptr);
+	d_subduction_effects_continent_status_label_ptr = new QLabel(d_subduction_effects_dialog_ptr);
+	d_subduction_effects_continent_status_label_ptr->setWordWrap(true);
+	subduction_effects_layout->addLayout(subduction_effects_crust_buttons);
+	subduction_effects_layout->addWidget(d_subduction_effects_continent_status_label_ptr);
+
+	QFormLayout *subduction_effects_form = new QFormLayout();
+	d_subduction_effect_type_combo_ptr = new QComboBox(d_subduction_effects_dialog_ptr);
+	d_subduction_effect_type_combo_ptr->addItem(tr("Auto (context-sensitive)"));
+	d_subduction_effect_type_combo_ptr->addItem(tr("Island Arc"));
+	d_subduction_effect_type_combo_ptr->addItem(tr("Andean Orogeny"));
+	d_subduction_effect_type_combo_ptr->addItem(tr("Laramide Orogeny"));
+	subduction_effects_form->addRow(tr("Interpretation:"), d_subduction_effect_type_combo_ptr);
+	d_subduction_lifecycle_combo_ptr = new QComboBox(d_subduction_effects_dialog_ptr);
+	d_subduction_lifecycle_combo_ptr->addItem(tr("Continued subduction"));
+	d_subduction_lifecycle_combo_ptr->addItem(tr("Trench extension"));
+	d_subduction_lifecycle_combo_ptr->addItem(tr("Rollback"));
+	d_subduction_lifecycle_combo_ptr->addItem(tr("Trench jump"));
+	d_subduction_lifecycle_combo_ptr->addItem(tr("Polarity reversal"));
+	d_subduction_lifecycle_combo_ptr->addItem(tr("Plate invasion"));
+	d_subduction_lifecycle_combo_ptr->addItem(tr("Flat-slab interval"));
+	d_subduction_lifecycle_combo_ptr->addItem(tr("Final retirement"));
+	subduction_effects_form->addRow(tr("Lifecycle event:"), d_subduction_lifecycle_combo_ptr);
+	d_subduction_subducting_plate_spin_ptr = new QSpinBox(d_subduction_effects_dialog_ptr);
+	d_subduction_subducting_plate_spin_ptr->setRange(0, 999999);
+	d_subduction_subducting_plate_spin_ptr->setSpecialValueText(tr("Required"));
+	subduction_effects_form->addRow(tr("Subducting Plate ID:"), d_subduction_subducting_plate_spin_ptr);
+	d_subduction_migration_offset_spin_ptr = new QDoubleSpinBox(d_subduction_effects_dialog_ptr);
+	d_subduction_migration_offset_spin_ptr->setRange(0, 3000);
+	d_subduction_migration_offset_spin_ptr->setSuffix(tr(" km"));
+	d_subduction_migration_offset_spin_ptr->setToolTip(tr(
+			"Required for trench extension, rollback, trench jump, and plate invasion; ignored for ordinary continuation."));
+	subduction_effects_form->addRow(tr("Extension / migration distance:"), d_subduction_migration_offset_spin_ptr);
+	d_subduction_lifecycle_duration_spin_ptr = new QDoubleSpinBox(d_subduction_effects_dialog_ptr);
+	d_subduction_lifecycle_duration_spin_ptr->setRange(0, 500);
+	d_subduction_lifecycle_duration_spin_ptr->setSuffix(tr(" Ma"));
+	d_subduction_lifecycle_duration_spin_ptr->setToolTip(tr(
+			"Required only for a flat-slab interval."));
+	subduction_effects_form->addRow(tr("Lifecycle duration:"), d_subduction_lifecycle_duration_spin_ptr);
+	d_subduction_isolates_fragment_check_ptr = new QCheckBox(
+			tr("Event isolates a plate fragment (delegate plate birth)"), d_subduction_effects_dialog_ptr);
+	subduction_effects_form->addRow(QString(), d_subduction_isolates_fragment_check_ptr);
+	d_subduction_effects_flip_polarity_check_ptr = new QCheckBox(
+			tr("Flip declared trench polarity"), d_subduction_effects_dialog_ptr);
+	subduction_effects_form->addRow(QString(), d_subduction_effects_flip_polarity_check_ptr);
+	d_subduction_effects_early_arc_check_ptr = new QCheckBox(
+			tr("Allow island arc before delay"), d_subduction_effects_dialog_ptr);
+	subduction_effects_form->addRow(QString(), d_subduction_effects_early_arc_check_ptr);
+
+	const struct SpinSpec { QPointer<QDoubleSpinBox> *target; const char *label; double minimum; double maximum; double value; const char *suffix; } spin_specs[] =
+	{
+		{ &d_subduction_effects_arc_delay_spin_ptr, QT_TR_NOOP("Island-arc delay:"), 0, 200, 50, " Ma" },
+		{ &d_subduction_effects_trim_start_spin_ptr, QT_TR_NOOP("Trim from start:"), 0, 40, 0, " %" },
+		{ &d_subduction_effects_trim_end_spin_ptr, QT_TR_NOOP("Trim from end:"), 0, 40, 0, " %" },
+		{ &d_subduction_effects_offset_spin_ptr, QT_TR_NOOP("Trench offset:"), 50, 800, 220, " km" },
+		{ &d_subduction_effects_irregularity_spin_ptr, QT_TR_NOOP("Arc-line wiggle:"), 0, 45, 22, " %" },
+		{ &d_subduction_effects_belt_width_spin_ptr, QT_TR_NOOP("Mountain-belt width:"), 50, 800, 100, " km" }
+	};
+	for (unsigned int index = 0; index < sizeof(spin_specs) / sizeof(spin_specs[0]); ++index)
+	{
+		*spin_specs[index].target = new QDoubleSpinBox(d_subduction_effects_dialog_ptr);
+		(*spin_specs[index].target)->setRange(spin_specs[index].minimum, spin_specs[index].maximum);
+		(*spin_specs[index].target)->setValue(spin_specs[index].value);
+		(*spin_specs[index].target)->setSuffix(tr(spin_specs[index].suffix));
+		(*spin_specs[index].target)->setDecimals(0);
+		subduction_effects_form->addRow(tr(spin_specs[index].label), *spin_specs[index].target);
+	}
+	subduction_effects_layout->addLayout(subduction_effects_form);
+	QHBoxLayout *subduction_effects_action_buttons = new QHBoxLayout();
+	d_subduction_effects_preview_button_ptr = new QPushButton(
+			tr("3. Preview Proposal"), d_subduction_effects_dialog_ptr);
+	d_subduction_effects_commit_button_ptr = new QPushButton(
+			tr("4. Commit Reviewed Features"), d_subduction_effects_dialog_ptr);
+	subduction_effects_action_buttons->addWidget(d_subduction_effects_preview_button_ptr);
+	subduction_effects_action_buttons->addWidget(d_subduction_effects_commit_button_ptr);
+	subduction_effects_layout->addLayout(subduction_effects_action_buttons);
+	d_subduction_effects_instruction_label_ptr = new QLabel(d_subduction_effects_dialog_ptr);
+	d_subduction_effects_instruction_label_ptr->setWordWrap(true);
+	subduction_effects_layout->addWidget(d_subduction_effects_instruction_label_ptr);
+	d_subduction_effects_dialog_ptr->resize(520, 700);
+	d_subduction_effects_dialog_ptr->hide();
+
+	// Persistent continental-collision workflow with separately reviewable margin
+	// deformation and no-jump incoming-plate retirement.
+	d_collision_dialog_ptr = new QDialog(this, Qt::Tool);
+	d_collision_dialog_ptr->setObjectName("WorldbuildingPastaCollisionOrogenyDialog");
+	d_collision_dialog_ptr->setWindowTitle(
+			tr("Worldbuilding Pasta - Collision and Orogeny"));
+	d_collision_dialog_ptr->setModal(false);
+	d_collision_dialog_ptr->setAttribute(Qt::WA_DeleteOnClose, false);
+	QVBoxLayout *collision_layout = create_scrollable_dialog_layout(d_collision_dialog_ptr);
+	QLabel *collision_description = new QLabel(tr(
+			"Select the incoming and receiving continental crust. Optionally select only the trench segment consumed by the collision. Preview estimates convergence, proposes a suture and mountain belt, and can time-slice a welded younger plate without erasing its older reconstruction history."),
+			d_collision_dialog_ptr);
+	collision_description->setWordWrap(true);
+	collision_layout->addWidget(collision_description);
+	d_collision_select_incoming_button_ptr = new QPushButton(
+			tr("1. Select Incoming Continent"), d_collision_dialog_ptr);
+	d_collision_select_incoming_button_ptr->setCheckable(true);
+	d_collision_incoming_status_label_ptr = new QLabel(d_collision_dialog_ptr);
+	d_collision_incoming_status_label_ptr->setWordWrap(true);
+	collision_layout->addWidget(d_collision_select_incoming_button_ptr);
+	collision_layout->addWidget(d_collision_incoming_status_label_ptr);
+	d_collision_select_receiving_button_ptr = new QPushButton(
+			tr("2. Select Receiving Continent"), d_collision_dialog_ptr);
+	d_collision_select_receiving_button_ptr->setCheckable(true);
+	d_collision_receiving_status_label_ptr = new QLabel(d_collision_dialog_ptr);
+	d_collision_receiving_status_label_ptr->setWordWrap(true);
+	collision_layout->addWidget(d_collision_select_receiving_button_ptr);
+	collision_layout->addWidget(d_collision_receiving_status_label_ptr);
+	QHBoxLayout *collision_trench_buttons = new QHBoxLayout();
+	d_collision_select_trench_button_ptr = new QPushButton(
+			tr("3. Select Consumed Trench"), d_collision_dialog_ptr);
+	d_collision_select_trench_button_ptr->setCheckable(true);
+	d_collision_clear_trench_button_ptr = new QPushButton(
+			tr("Clear Trench"), d_collision_dialog_ptr);
+	collision_trench_buttons->addWidget(d_collision_select_trench_button_ptr);
+	collision_trench_buttons->addWidget(d_collision_clear_trench_button_ptr);
+	d_collision_trench_status_label_ptr = new QLabel(d_collision_dialog_ptr);
+	d_collision_trench_status_label_ptr->setWordWrap(true);
+	collision_layout->addLayout(collision_trench_buttons);
+	collision_layout->addWidget(d_collision_trench_status_label_ptr);
+
+	QFormLayout *collision_form = new QFormLayout();
+	d_collision_type_combo_ptr = new QComboBox(d_collision_dialog_ptr);
+	d_collision_type_combo_ptr->addItem(tr("Auto (area + motion + history)"));
+	d_collision_type_combo_ptr->addItem(tr("Arc / Terrane Accretion"));
+	d_collision_type_combo_ptr->addItem(tr("Ural-type Collision"));
+	d_collision_type_combo_ptr->addItem(tr("Himalayan-type Collision"));
+	collision_form->addRow(tr("Interpretation:"), d_collision_type_combo_ptr);
+	d_collision_precursor_spin_ptr = new QSpinBox(d_collision_dialog_ptr);
+	d_collision_precursor_spin_ptr->setRange(0, 8);
+	d_collision_precursor_spin_ptr->setValue(0);
+	d_collision_precursor_spin_ptr->setToolTip(tr(
+			"Count earlier arc, microcontinent or continent collisions affecting this contact. Two or more biases Auto toward Himalayan."));
+	collision_form->addRow(tr("Precursor collisions:"), d_collision_precursor_spin_ptr);
+	d_collision_contact_threshold_spin_ptr = new QDoubleSpinBox(d_collision_dialog_ptr);
+	d_collision_contact_threshold_spin_ptr->setRange(25, 800);
+	d_collision_contact_threshold_spin_ptr->setValue(250);
+	d_collision_contact_threshold_spin_ptr->setDecimals(0);
+	d_collision_contact_threshold_spin_ptr->setSuffix(tr(" km"));
+	collision_form->addRow(tr("Contact reach:"), d_collision_contact_threshold_spin_ptr);
+	d_collision_auto_width_check_ptr = new QCheckBox(
+			tr("Use classification width"), d_collision_dialog_ptr);
+	d_collision_auto_width_check_ptr->setChecked(true);
+	collision_form->addRow(QString(), d_collision_auto_width_check_ptr);
+	d_collision_belt_width_spin_ptr = new QDoubleSpinBox(d_collision_dialog_ptr);
+	d_collision_belt_width_spin_ptr->setRange(50, 900);
+	d_collision_belt_width_spin_ptr->setValue(180);
+	d_collision_belt_width_spin_ptr->setDecimals(0);
+	d_collision_belt_width_spin_ptr->setSuffix(tr(" km"));
+	collision_form->addRow(tr("Mountain-belt width:"), d_collision_belt_width_spin_ptr);
+	d_collision_smoothing_spin_ptr = new QSpinBox(d_collision_dialog_ptr);
+	d_collision_smoothing_spin_ptr->setRange(0, 8);
+	d_collision_smoothing_spin_ptr->setValue(2);
+	collision_form->addRow(tr("Suture smoothing passes:"), d_collision_smoothing_spin_ptr);
+	d_collision_irregularity_spin_ptr = new QDoubleSpinBox(d_collision_dialog_ptr);
+	d_collision_irregularity_spin_ptr->setRange(0, 35);
+	d_collision_irregularity_spin_ptr->setValue(12);
+	d_collision_irregularity_spin_ptr->setDecimals(0);
+	d_collision_irregularity_spin_ptr->setSuffix(tr(" %"));
+	collision_form->addRow(tr("Belt irregularity:"), d_collision_irregularity_spin_ptr);
+	d_collision_deform_margins_check_ptr = new QCheckBox(
+			tr("Deform both contact margins into the suture"), d_collision_dialog_ptr);
+	d_collision_deform_margins_check_ptr->setChecked(true);
+	collision_form->addRow(QString(), d_collision_deform_margins_check_ptr);
+	d_collision_deformation_reach_spin_ptr = new QDoubleSpinBox(d_collision_dialog_ptr);
+	d_collision_deformation_reach_spin_ptr->setRange(100, 1200);
+	d_collision_deformation_reach_spin_ptr->setValue(350);
+	d_collision_deformation_reach_spin_ptr->setDecimals(0);
+	d_collision_deformation_reach_spin_ptr->setSuffix(tr(" km"));
+	d_collision_deformation_reach_spin_ptr->setToolTip(tr(
+			"Margin vertices inside this corridor taper toward the proposed suture; the nearest 35% is welded exactly."));
+	collision_form->addRow(tr("Deformation reach:"), d_collision_deformation_reach_spin_ptr);
+	d_collision_retire_incoming_check_ptr = new QCheckBox(
+			tr("Retire incoming crustal features into receiving plate (no jump)"),
+			d_collision_dialog_ptr);
+	d_collision_retire_incoming_check_ptr->setChecked(true);
+	d_collision_retire_incoming_check_ptr->setToolTip(tr(
+			"Creates younger successor slices for continental crust, cratons, rifts, arcs, LIPs, orogenies and sutures on the receiving Plate ID. Older source slices and the loaded .rot history remain intact."));
+	collision_form->addRow(QString(), d_collision_retire_incoming_check_ptr);
+	d_collision_active_duration_spin_ptr = new QDoubleSpinBox(d_collision_dialog_ptr);
+	d_collision_active_duration_spin_ptr->setRange(1, 200);
+	d_collision_active_duration_spin_ptr->setValue(50);
+	d_collision_active_duration_spin_ptr->setDecimals(0);
+	d_collision_active_duration_spin_ptr->setSuffix(tr(" Ma"));
+	collision_form->addRow(tr("Active duration:"), d_collision_active_duration_spin_ptr);
+	d_collision_old_age_spin_ptr = new QDoubleSpinBox(d_collision_dialog_ptr);
+	d_collision_old_age_spin_ptr->setRange(50, 1000);
+	d_collision_old_age_spin_ptr->setValue(450);
+	d_collision_old_age_spin_ptr->setDecimals(0);
+	d_collision_old_age_spin_ptr->setSuffix(tr(" Ma"));
+	collision_form->addRow(tr("Become old after:"), d_collision_old_age_spin_ptr);
+	d_collision_terminate_trench_check_ptr = new QCheckBox(
+			tr("End selected consumed trench at collision"), d_collision_dialog_ptr);
+	d_collision_terminate_trench_check_ptr->setChecked(true);
+	collision_form->addRow(QString(), d_collision_terminate_trench_check_ptr);
+	d_collision_allow_nonconvergent_check_ptr = new QCheckBox(
+			tr("Allow non-convergent rotation result"), d_collision_dialog_ptr);
+	collision_form->addRow(QString(), d_collision_allow_nonconvergent_check_ptr);
+	collision_layout->addLayout(collision_form);
+	QHBoxLayout *collision_action_buttons = new QHBoxLayout();
+	d_collision_preview_button_ptr = new QPushButton(
+			tr("4. Preview Collision"), d_collision_dialog_ptr);
+	d_collision_commit_button_ptr = new QPushButton(
+			tr("5. Commit Reviewed Collision"), d_collision_dialog_ptr);
+	collision_action_buttons->addWidget(d_collision_preview_button_ptr);
+	collision_action_buttons->addWidget(d_collision_commit_button_ptr);
+	collision_layout->addLayout(collision_action_buttons);
+	d_collision_instruction_label_ptr = new QLabel(d_collision_dialog_ptr);
+	d_collision_instruction_label_ptr->setWordWrap(true);
+	collision_layout->addWidget(d_collision_instruction_label_ptr);
+	d_collision_dialog_ptr->resize(580, 840);
+	d_collision_dialog_ptr->hide();
+
+	// Persistent post-collision rerifting workflow. The proposal is intentionally
+	// offset from the inherited suture and is never committed without review.
+	d_post_collision_rift_dialog_ptr = new QDialog(this, Qt::Tool);
+	d_post_collision_rift_dialog_ptr->setObjectName("WorldbuildingPastaPostCollisionRiftDialog");
+	d_post_collision_rift_dialog_ptr->setWindowTitle(
+			tr("Worldbuilding Pasta - Post-Collision Suture Reactivation"));
+	d_post_collision_rift_dialog_ptr->setModal(false);
+	d_post_collision_rift_dialog_ptr->setAttribute(Qt::WA_DeleteOnClose, false);
+	QVBoxLayout *post_collision_rift_layout = create_scrollable_dialog_layout(d_post_collision_rift_dialog_ptr);
+	QLabel *post_collision_rift_description = new QLabel(tr(
+			"Select one crust polygon the new rift must cut and the inherited collision suture. The generator searches for a nearby, irregular, craton-safe route; commit time-slices the welded assemblage, creates the half-stage MOR, and adds only a missing no-jump rotation branch."),
+			d_post_collision_rift_dialog_ptr);
+	post_collision_rift_description->setWordWrap(true);
+	post_collision_rift_layout->addWidget(post_collision_rift_description);
+	d_post_collision_rift_select_host_button_ptr = new QPushButton(
+			tr("1. Select Host Continental Crust"), d_post_collision_rift_dialog_ptr);
+	d_post_collision_rift_select_host_button_ptr->setCheckable(true);
+	d_post_collision_rift_host_status_label_ptr = new QLabel(d_post_collision_rift_dialog_ptr);
+	d_post_collision_rift_host_status_label_ptr->setWordWrap(true);
+	d_post_collision_rift_select_suture_button_ptr = new QPushButton(
+			tr("2. Select Inherited Suture"), d_post_collision_rift_dialog_ptr);
+	d_post_collision_rift_select_suture_button_ptr->setCheckable(true);
+	d_post_collision_rift_suture_status_label_ptr = new QLabel(d_post_collision_rift_dialog_ptr);
+	d_post_collision_rift_suture_status_label_ptr->setWordWrap(true);
+	post_collision_rift_layout->addWidget(d_post_collision_rift_select_host_button_ptr);
+	post_collision_rift_layout->addWidget(d_post_collision_rift_host_status_label_ptr);
+	post_collision_rift_layout->addWidget(d_post_collision_rift_select_suture_button_ptr);
+	post_collision_rift_layout->addWidget(d_post_collision_rift_suture_status_label_ptr);
+	QFormLayout *post_collision_rift_form = new QFormLayout();
+	d_post_collision_rift_offset_spin_ptr = new QDoubleSpinBox(d_post_collision_rift_dialog_ptr);
+	d_post_collision_rift_offset_spin_ptr->setRange(20, 800);
+	d_post_collision_rift_offset_spin_ptr->setValue(120);
+	d_post_collision_rift_offset_spin_ptr->setDecimals(0);
+	d_post_collision_rift_offset_spin_ptr->setSuffix(tr(" km"));
+	post_collision_rift_form->addRow(tr("Suture offset:"), d_post_collision_rift_offset_spin_ptr);
+	d_post_collision_rift_wiggle_spin_ptr = new QDoubleSpinBox(d_post_collision_rift_dialog_ptr);
+	d_post_collision_rift_wiggle_spin_ptr->setRange(0, 80);
+	d_post_collision_rift_wiggle_spin_ptr->setValue(25);
+	d_post_collision_rift_wiggle_spin_ptr->setDecimals(0);
+	d_post_collision_rift_wiggle_spin_ptr->setSuffix(tr(" %"));
+	post_collision_rift_form->addRow(tr("Rift irregularity:"), d_post_collision_rift_wiggle_spin_ptr);
+	d_post_collision_rift_segment_spin_ptr = new QDoubleSpinBox(d_post_collision_rift_dialog_ptr);
+	d_post_collision_rift_segment_spin_ptr->setRange(25, 200);
+	d_post_collision_rift_segment_spin_ptr->setValue(90);
+	d_post_collision_rift_segment_spin_ptr->setDecimals(0);
+	d_post_collision_rift_segment_spin_ptr->setSuffix(tr(" km"));
+	post_collision_rift_form->addRow(tr("Maximum segment:"), d_post_collision_rift_segment_spin_ptr);
+	d_post_collision_rift_extension_spin_ptr = new QDoubleSpinBox(d_post_collision_rift_dialog_ptr);
+	d_post_collision_rift_extension_spin_ptr->setRange(100, 2000);
+	d_post_collision_rift_extension_spin_ptr->setValue(500);
+	d_post_collision_rift_extension_spin_ptr->setDecimals(0);
+	d_post_collision_rift_extension_spin_ptr->setSuffix(tr(" km"));
+	post_collision_rift_form->addRow(tr("End extension:"), d_post_collision_rift_extension_spin_ptr);
+	d_post_collision_rift_side_combo_ptr = new QComboBox(d_post_collision_rift_dialog_ptr);
+	d_post_collision_rift_side_combo_ptr->addItem(tr("Left of drawn suture"));
+	d_post_collision_rift_side_combo_ptr->addItem(tr("Right of drawn suture"));
+	post_collision_rift_form->addRow(tr("Preferred side:"), d_post_collision_rift_side_combo_ptr);
+	d_post_collision_rift_seed_spin_ptr = new QSpinBox(d_post_collision_rift_dialog_ptr);
+	d_post_collision_rift_seed_spin_ptr->setRange(0, 999999);
+	d_post_collision_rift_seed_spin_ptr->setValue(1);
+	post_collision_rift_form->addRow(tr("Route seed:"), d_post_collision_rift_seed_spin_ptr);
+	d_post_collision_rift_left_name_ptr = new QLineEdit(tr("Rerift Left Continent"), d_post_collision_rift_dialog_ptr);
+	d_post_collision_rift_right_name_ptr = new QLineEdit(tr("Rerift Right Continent"), d_post_collision_rift_dialog_ptr);
+	d_post_collision_rift_left_plate_spin_ptr = new QSpinBox(d_post_collision_rift_dialog_ptr);
+	d_post_collision_rift_right_plate_spin_ptr = new QSpinBox(d_post_collision_rift_dialog_ptr);
+	d_post_collision_rift_left_plate_spin_ptr->setRange(0, 99999999);
+	d_post_collision_rift_right_plate_spin_ptr->setRange(0, 99999999);
+	post_collision_rift_form->addRow(tr("Left child name:"), d_post_collision_rift_left_name_ptr);
+	post_collision_rift_form->addRow(tr("Left child Plate ID:"), d_post_collision_rift_left_plate_spin_ptr);
+	post_collision_rift_form->addRow(tr("Right child name:"), d_post_collision_rift_right_name_ptr);
+	post_collision_rift_form->addRow(tr("Right child Plate ID:"), d_post_collision_rift_right_plate_spin_ptr);
+	post_collision_rift_layout->addLayout(post_collision_rift_form);
+	QHBoxLayout *post_collision_rift_buttons = new QHBoxLayout();
+	d_post_collision_rift_preview_button_ptr = new QPushButton(
+			tr("3. Preview Rerift"), d_post_collision_rift_dialog_ptr);
+	d_post_collision_rift_commit_button_ptr = new QPushButton(
+			tr("4. Commit Assemblage Rerift"), d_post_collision_rift_dialog_ptr);
+	post_collision_rift_buttons->addWidget(d_post_collision_rift_preview_button_ptr);
+	post_collision_rift_buttons->addWidget(d_post_collision_rift_commit_button_ptr);
+	post_collision_rift_layout->addLayout(post_collision_rift_buttons);
+	d_post_collision_rift_instruction_label_ptr = new QLabel(d_post_collision_rift_dialog_ptr);
+	d_post_collision_rift_instruction_label_ptr->setWordWrap(true);
+	post_collision_rift_layout->addWidget(d_post_collision_rift_instruction_label_ptr);
+	d_post_collision_rift_dialog_ptr->resize(590, 760);
+	d_post_collision_rift_dialog_ptr->hide();
+
+	// Persistent mantle-event workflow. Active and former LIPs, the mantle-fixed
+	// hotspot and its native MotionPath are reviewed as one geological event.
+	d_mantle_events_dialog_ptr = new QDialog(this, Qt::Tool);
+	d_mantle_events_dialog_ptr->setObjectName("WorldbuildingPastaMantleEventsDialog");
+	d_mantle_events_dialog_ptr->setWindowTitle(
+			tr("Worldbuilding Pasta - LIP and Hotspot Event"));
+	d_mantle_events_dialog_ptr->setModal(false);
+	d_mantle_events_dialog_ptr->setAttribute(Qt::WA_DeleteOnClose, false);
+	QVBoxLayout *mantle_events_layout = create_scrollable_dialog_layout(d_mantle_events_dialog_ptr);
+	QLabel *mantle_events_description = new QLabel(tr(
+			"Select continental crust, then optionally a rift. Preview keeps the whole LIP inside the host. Commit creates Artifexia-aligned active/former LIP layers and, if enabled, a mantle-fixed HotSpot plus a native GPlates MotionPath trail."),
+			d_mantle_events_dialog_ptr);
+	mantle_events_description->setWordWrap(true);
+	mantle_events_layout->addWidget(mantle_events_description);
+	d_mantle_events_select_continent_button_ptr = new QPushButton(
+			tr("1. Select Host Continental Crust"), d_mantle_events_dialog_ptr);
+	d_mantle_events_select_continent_button_ptr->setCheckable(true);
+	d_mantle_events_continent_status_label_ptr = new QLabel(d_mantle_events_dialog_ptr);
+	d_mantle_events_continent_status_label_ptr->setWordWrap(true);
+	QHBoxLayout *mantle_rift_buttons = new QHBoxLayout();
+	d_mantle_events_select_rift_button_ptr = new QPushButton(
+			tr("2. Select Optional Rift"), d_mantle_events_dialog_ptr);
+	d_mantle_events_select_rift_button_ptr->setCheckable(true);
+	d_mantle_events_clear_rift_button_ptr = new QPushButton(
+			tr("Clear Rift"), d_mantle_events_dialog_ptr);
+	mantle_rift_buttons->addWidget(d_mantle_events_select_rift_button_ptr);
+	mantle_rift_buttons->addWidget(d_mantle_events_clear_rift_button_ptr);
+	d_mantle_events_rift_status_label_ptr = new QLabel(d_mantle_events_dialog_ptr);
+	d_mantle_events_rift_status_label_ptr->setWordWrap(true);
+	mantle_events_layout->addWidget(d_mantle_events_select_continent_button_ptr);
+	mantle_events_layout->addWidget(d_mantle_events_continent_status_label_ptr);
+	mantle_events_layout->addLayout(mantle_rift_buttons);
+	mantle_events_layout->addWidget(d_mantle_events_rift_status_label_ptr);
+	QFormLayout *mantle_events_form = new QFormLayout();
+	d_mantle_events_placement_combo_ptr = new QComboBox(d_mantle_events_dialog_ptr);
+	d_mantle_events_placement_combo_ptr->addItem(tr("Rift-triggered"));
+	d_mantle_events_placement_combo_ptr->addItem(tr("Random within host"));
+	mantle_events_form->addRow(tr("Placement:"), d_mantle_events_placement_combo_ptr);
+	d_mantle_events_diameter_spin_ptr = new QDoubleSpinBox(d_mantle_events_dialog_ptr);
+	d_mantle_events_diameter_spin_ptr->setRange(50, 4000);
+	d_mantle_events_diameter_spin_ptr->setValue(700);
+	d_mantle_events_diameter_spin_ptr->setDecimals(0);
+	d_mantle_events_diameter_spin_ptr->setSuffix(tr(" km"));
+	mantle_events_form->addRow(tr("Requested LIP diameter:"), d_mantle_events_diameter_spin_ptr);
+	d_mantle_events_irregularity_spin_ptr = new QDoubleSpinBox(d_mantle_events_dialog_ptr);
+	d_mantle_events_irregularity_spin_ptr->setRange(0, 75);
+	d_mantle_events_irregularity_spin_ptr->setValue(28);
+	d_mantle_events_irregularity_spin_ptr->setDecimals(0);
+	d_mantle_events_irregularity_spin_ptr->setSuffix(tr(" %"));
+	mantle_events_form->addRow(tr("Footprint irregularity:"), d_mantle_events_irregularity_spin_ptr);
+	d_mantle_events_segment_spin_ptr = new QDoubleSpinBox(d_mantle_events_dialog_ptr);
+	d_mantle_events_segment_spin_ptr->setRange(20, 200);
+	d_mantle_events_segment_spin_ptr->setValue(75);
+	d_mantle_events_segment_spin_ptr->setDecimals(0);
+	d_mantle_events_segment_spin_ptr->setSuffix(tr(" km"));
+	mantle_events_form->addRow(tr("Maximum boundary segment:"), d_mantle_events_segment_spin_ptr);
+	d_mantle_events_seed_spin_ptr = new QSpinBox(d_mantle_events_dialog_ptr);
+	d_mantle_events_seed_spin_ptr->setRange(0, 999999);
+	d_mantle_events_seed_spin_ptr->setValue(1);
+	mantle_events_form->addRow(tr("Event seed:"), d_mantle_events_seed_spin_ptr);
+	d_mantle_events_active_duration_spin_ptr = new QDoubleSpinBox(d_mantle_events_dialog_ptr);
+	d_mantle_events_active_duration_spin_ptr->setRange(1, 100);
+	d_mantle_events_active_duration_spin_ptr->setValue(10);
+	d_mantle_events_active_duration_spin_ptr->setDecimals(0);
+	d_mantle_events_active_duration_spin_ptr->setSuffix(tr(" Ma"));
+	mantle_events_form->addRow(tr("Active LIP duration:"), d_mantle_events_active_duration_spin_ptr);
+	d_mantle_events_create_hotspot_check_ptr = new QCheckBox(
+			tr("Create hotspot and native trail"), d_mantle_events_dialog_ptr);
+	d_mantle_events_create_hotspot_check_ptr->setChecked(true);
+	mantle_events_form->addRow(QString(), d_mantle_events_create_hotspot_check_ptr);
+	d_mantle_events_hotspot_lifetime_spin_ptr = new QDoubleSpinBox(d_mantle_events_dialog_ptr);
+	d_mantle_events_hotspot_lifetime_spin_ptr->setRange(10, 400);
+	d_mantle_events_hotspot_lifetime_spin_ptr->setValue(150);
+	d_mantle_events_hotspot_lifetime_spin_ptr->setDecimals(0);
+	d_mantle_events_hotspot_lifetime_spin_ptr->setSuffix(tr(" Ma"));
+	mantle_events_form->addRow(tr("Hotspot lifetime:"), d_mantle_events_hotspot_lifetime_spin_ptr);
+	d_mantle_events_trail_step_spin_ptr = new QDoubleSpinBox(d_mantle_events_dialog_ptr);
+	d_mantle_events_trail_step_spin_ptr->setRange(1, 50);
+	d_mantle_events_trail_step_spin_ptr->setValue(10);
+	d_mantle_events_trail_step_spin_ptr->setDecimals(0);
+	d_mantle_events_trail_step_spin_ptr->setSuffix(tr(" Ma"));
+	mantle_events_form->addRow(tr("MotionPath sample step:"), d_mantle_events_trail_step_spin_ptr);
+	d_mantle_events_mantle_plate_spin_ptr = new QSpinBox(d_mantle_events_dialog_ptr);
+	d_mantle_events_mantle_plate_spin_ptr->setRange(0, 99999999);
+	d_mantle_events_mantle_plate_spin_ptr->setValue(1);
+	mantle_events_form->addRow(tr("Mantle Plate ID:"), d_mantle_events_mantle_plate_spin_ptr);
+	mantle_events_layout->addLayout(mantle_events_form);
+	QHBoxLayout *mantle_events_action_buttons = new QHBoxLayout();
+	d_mantle_events_preview_button_ptr = new QPushButton(
+			tr("3. Preview Event"), d_mantle_events_dialog_ptr);
+	d_mantle_events_commit_button_ptr = new QPushButton(
+			tr("4. Commit LIP + Hotspot"), d_mantle_events_dialog_ptr);
+	mantle_events_action_buttons->addWidget(d_mantle_events_preview_button_ptr);
+	mantle_events_action_buttons->addWidget(d_mantle_events_commit_button_ptr);
+	mantle_events_layout->addLayout(mantle_events_action_buttons);
+	d_mantle_events_instruction_label_ptr = new QLabel(d_mantle_events_dialog_ptr);
+	d_mantle_events_instruction_label_ptr->setWordWrap(true);
+	mantle_events_layout->addWidget(d_mantle_events_instruction_label_ptr);
+	d_mantle_events_dialog_ptr->resize(570, 760);
+	d_mantle_events_dialog_ptr->hide();
+
+	worldbuilding_pasta_layout->addStretch();
+	worldbuilding_pasta_scroll_area->setWidget(worldbuilding_pasta_palette);
+	d_worldbuilding_pasta_dock_ptr->setWidget(worldbuilding_pasta_scroll_area);
+	addDockWidget(Qt::RightDockWidgetArea, d_worldbuilding_pasta_dock_ptr);
+	d_worldbuilding_pasta_dock_ptr->setFloating(true);
+	d_worldbuilding_pasta_dock_ptr->resize(420, 650);
+	d_worldbuilding_pasta_dock_ptr->hide();
+
+	QAction *worldbuilding_pasta_action = d_worldbuilding_pasta_dock_ptr->toggleViewAction();
+	worldbuilding_pasta_action->setText(tr("Worldbuilding Pasta..."));
+	worldbuilding_pasta_action->setObjectName("action_Worldbuilding_Pasta");
+	worldbuilding_pasta_action->setStatusTip(
+			tr("Show the Worldbuilding Pasta procedural-generation palette"));
+	menu_World_Building->insertAction(action_Split_Plate, worldbuilding_pasta_action);
+	menu_World_Building->insertSeparator(action_Split_Plate);
+	QObject::connect(
+			initialize_worldpasta_structure_button,
+			&QPushButton::clicked,
+			this,
+			[this, update_worldbuilding_project_health]()
+			{
+				const QString directory = QFileDialog::getExistingDirectory(
+						this,
+						tr("Open or Update Worldbuilding Project"),
+						get_view_state().get_last_open_directory(),
+						QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+				if (directory.isEmpty())
+				{
+					return;
+				}
+
+				get_view_state().get_last_open_directory() = directory;
+				const QDir target_directory(directory);
+				const QString project_filename = target_directory.filePath("worldpasta.gproj");
+				const QString manifest_filename = target_directory.filePath(
+						GPlatesAppLogic::WorldbuildingProjectManifest::default_file_name());
+				const bool new_manifest = !QFileInfo::exists(manifest_filename);
+				GPlatesAppLogic::WorldbuildingProjectManifest::Manifest manifest;
+				QString manifest_error;
+				if (new_manifest)
+				{
+					manifest = GPlatesAppLogic::WorldbuildingProjectManifest::default_manifest();
+				}
+				else if (!GPlatesAppLogic::WorldbuildingProjectManifest::load(
+							manifest_filename, manifest, &manifest_error))
+				{
+					QMessageBox::critical(
+							this,
+							tr("Cannot Read Worldbuilding Manifest"),
+							tr("The existing manifest was not changed:\n\n%1").arg(manifest_error));
+					return;
+				}
+
+				const GPlatesAppLogic::WorldbuildingProjectManifest::Audit audit =
+						GPlatesAppLogic::WorldbuildingProjectManifest::audit(directory, manifest);
+				QMessageBox dry_run(this);
+				dry_run.setWindowTitle(tr("Worldbuilding Project Dry Run"));
+				dry_run.setIcon(audit.has_blocking_issues() ? QMessageBox::Critical : QMessageBox::Information);
+				dry_run.setText(new_manifest
+						? tr("A new editable manifest and the missing Worldbuilding Pasta collections can be created.")
+						: tr("The existing editable manifest was audited. Only missing managed collections can be created."));
+				dry_run.setInformativeText(audit.to_plain_text());
+				dry_run.setDetailedText(tr(
+						"Existing collection contents, layer visibility, order, draw styles, raster connections, reconstruction methods, and feature defaults are never replaced by this update. The manifest's workspace profile remains preview-only until a separate apply action is confirmed."));
+				if (audit.has_blocking_issues())
+				{
+					dry_run.setStandardButtons(QMessageBox::Close);
+					dry_run.exec();
+					return;
+				}
+				bool apply_workspace_profile = new_manifest;
+				QPushButton *files_only_button = NULL;
+				QPushButton *files_and_profile_button = NULL;
+				if (new_manifest)
+				{
+					dry_run.setStandardButtons(QMessageBox::Apply | QMessageBox::Cancel);
+					dry_run.setDefaultButton(QMessageBox::Cancel);
+				}
+				else
+				{
+					dry_run.setStandardButtons(QMessageBox::Cancel);
+					files_only_button = dry_run.addButton(
+							tr("Create Missing Files Only"), QMessageBox::AcceptRole);
+					files_and_profile_button = dry_run.addButton(
+							tr("Create Files + Reapply Profile"), QMessageBox::ActionRole);
+				}
+				const int dry_run_result = dry_run.exec();
+				if ((new_manifest && dry_run_result != QMessageBox::Apply) ||
+					(!new_manifest && dry_run.clickedButton() != files_only_button &&
+					 dry_run.clickedButton() != files_and_profile_button))
+				{
+					return;
+				}
+				if (!new_manifest)
+				{
+					apply_workspace_profile = dry_run.clickedButton() == files_and_profile_button;
+				}
+
+				QStringList collection_file_names = audit.missing_files;
+				// Preserve the full Artifexia filing system on first creation. The manifest
+				// assigns stable roles to the collections used by automated operations.
+				if (new_manifest)
+				{
+					for (unsigned int index = 0;
+						 index < sizeof(WORLDPASTA_COLLECTION_FILENAMES) /
+								 sizeof(WORLDPASTA_COLLECTION_FILENAMES[0]);
+						 ++index)
+					{
+						const QString file_name = QString::fromLatin1(WORLDPASTA_COLLECTION_FILENAMES[index]);
+						if (!QFileInfo::exists(target_directory.filePath(file_name)) &&
+							!collection_file_names.contains(file_name, Qt::CaseInsensitive))
+						{
+							collection_file_names.append(file_name);
+						}
+					}
+				}
+
+				QStringList unwritable_filenames;
+				BOOST_FOREACH(const QString &collection_file_name, collection_file_names)
+				{
+					const QString target_filename = target_directory.filePath(collection_file_name);
+					if (!GPlatesFileIO::is_writable(target_filename))
+					{
+						unwritable_filenames.append(QFileInfo(target_filename).fileName());
+					}
+				}
+				if (new_manifest && !GPlatesFileIO::is_writable(manifest_filename))
+				{
+					unwritable_filenames.append(QFileInfo(manifest_filename).fileName());
+				}
+				if (!unwritable_filenames.isEmpty())
+				{
+					QMessageBox::critical(
+							this,
+							tr("Cannot Initialize Worldpasta Structure"),
+							tr("The selected directory is not writable for: %1")
+									.arg(unwritable_filenames.join(", ")));
+					return;
+				}
+
+				if (new_manifest && !GPlatesAppLogic::WorldbuildingProjectManifest::save(
+							manifest_filename, manifest, &manifest_error))
+				{
+					QMessageBox::critical(
+							this,
+							tr("Cannot Create Worldbuilding Manifest"),
+							manifest_error);
+					return;
+				}
+				GPlatesAppLogic::WorldbuildingProjectManifest::activate(directory, manifest);
+
+				QStringList created_filenames;
+				BOOST_FOREACH(const QString &collection_file_name, collection_file_names)
+				{
+					const QString collection_filename = target_directory.filePath(collection_file_name);
+					const GPlatesModel::FeatureCollectionHandle::non_null_ptr_type collection =
+							GPlatesModel::FeatureCollectionHandle::create();
+					const GPlatesFileIO::File::non_null_ptr_type file =
+							GPlatesFileIO::File::create_file(
+									GPlatesFileIO::FileInfo(collection_filename), collection);
+					if (!file_io_feedback().create_file(file))
+					{
+						const QString message = tr(
+								"Worldpasta initialization stopped while creating '%1'. %2 collection file(s) were already saved and loaded; no existing file was overwritten.")
+									.arg(QFileInfo(collection_filename).fileName())
+									.arg(created_filenames.size());
+						status_message(message);
+						QMessageBox::critical(
+								this, tr("Worldpasta Initialization Incomplete"), message);
+						return;
+					}
+					created_filenames.append(collection_filename);
+				}
+
+				ArtifexiaPresetResult preset_result = { 0, 0, 0 };
+				unsigned int manifest_profile_layer_count = 0;
+				if (new_manifest)
+				{
+					preset_result = apply_artifexia_presentation(*this);
+				}
+				else if (apply_workspace_profile)
+				{
+					manifest_profile_layer_count = apply_worldbuilding_workspace_profile(*this, manifest);
+				}
+				if (new_manifest && !file_io_feedback().save_project(project_filename))
+				{
+					const QString message = tr(
+							"The %1 Artifexia-style collection files were saved and loaded, but the visual project could not be saved as '%2'. You can retry with File > Save Project As.")
+								.arg(created_filenames.size())
+								.arg(QFileInfo(project_filename).fileName());
+					status_message(message);
+					QMessageBox::warning(this, tr("Worldpasta Project Not Saved"), message);
+					return;
+				}
+
+				const QString message = new_manifest
+						? tr("Created and loaded %1 missing collection files in %2. Saved %3, saved the initial presentation as %4, and applied styles to %5 matching layer(s). Future updates preserve user customisations.")
+							.arg(created_filenames.size())
+							.arg(QDir::toNativeSeparators(directory))
+							.arg(QFileInfo(manifest_filename).fileName())
+							.arg(QFileInfo(project_filename).fileName())
+							.arg(preset_result.matching_layer_count)
+						: apply_workspace_profile
+							? tr("Loaded %1 missing collection files from %2 and explicitly reapplied visibility, order, and draw style to %3 matching layers. Raster connections, reconstruction presets, and feature defaults remain recorded for operation-specific adapters.")
+									.arg(created_filenames.size())
+									.arg(QFileInfo(manifest_filename).fileName())
+									.arg(manifest_profile_layer_count)
+							: tr("Loaded %1 missing collection files from %2. The existing project and workspace customisations were not changed.")
+									.arg(created_filenames.size())
+									.arg(QFileInfo(manifest_filename).fileName());
+				status_message(message);
+				update_worldbuilding_project_health();
+				QMessageBox::information(this, tr("Worldbuilding Project Updated"), message);
+			});
+	QObject::connect(
+			create_initial_continent_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_create_initial_continent()));
+	QObject::connect(
+			propose_initial_rifts_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_propose_initial_rifts()));
+	QObject::connect(
+			show_make_rift_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(show_make_rift_window()));
+	QObject::connect(
+			create_initial_rotation_file_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_create_initial_rotation_file()));
+	QObject::connect(
+			show_initial_subduction_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(show_initial_subduction_window()));
+	QObject::connect(
+			advance_plate_motion_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_advance_plate_motion()));
+	QObject::connect(
+			create_ocean_crust_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_create_ocean_crust()));
+	QObject::connect(
+			create_triple_junction_crust_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_create_triple_junction_crust()));
+	QObject::connect(
+			create_pacific_plate_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_create_pacific_plate()));
+	QObject::connect(
+			retire_ocean_crust_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_subduction_cutter()));
+	QObject::connect(
+			show_subduction_effects_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(show_subduction_effects_window()));
+	QObject::connect(
+			show_collision_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(show_collision_orogeny_window()));
+	QObject::connect(
+			show_post_collision_rift_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(show_post_collision_rift_window()));
+	QObject::connect(
+			show_mantle_events_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(show_mantle_events_window()));
+	QObject::connect(
+			artifexia_preset_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(apply_artifexia_preset()));
+	QObject::connect(
+			show_boolean_polygons_button,
+			SIGNAL(clicked()),
+			this,
+			SLOT(show_boolean_polygons_window()));
+	QObject::connect(
+			d_boolean_select_first_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_boolean_select_first()));
+	QObject::connect(
+			d_boolean_select_operand_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_boolean_select_operand()));
+	QObject::connect(
+			d_boolean_remove_operand_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_boolean_remove_operand()));
+	QObject::connect(
+			d_boolean_clear_operands_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_boolean_clear_operands()));
+	QObject::connect(
+			d_boolean_preview_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_boolean_preview()));
+	QObject::connect(
+			d_boolean_apply_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_boolean_apply()));
+	QObject::connect(
+			d_boolean_cancel_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_boolean_cancel()));
+	QObject::connect(
+			d_boolean_operation_combo_ptr,
+			QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this,
+			[this](int)
+			{
+				d_boolean_polygon_operation_ptr->clear_preview();
+				update_boolean_palette(tr("Operation changed; preview the new result before applying."));
+			});
+	QObject::connect(
+			d_boolean_polygon_dialog_ptr,
+			SIGNAL(rejected()),
+			this,
+			SLOT(handle_boolean_cancel()));
+	QObject::connect(
+			&get_view_state().get_feature_focus(),
+			SIGNAL(focus_changed(GPlatesGui::FeatureFocus &)),
+			this,
+			SLOT(handle_boolean_focus_changed(GPlatesGui::FeatureFocus &)));
+	QObject::connect(
+			&get_view_state().get_animation_controller(),
+			&GPlatesGui::AnimationController::view_time_changed,
+			this,
+			[this](double)
+			{
+				d_boolean_polygon_operation_ptr->reset();
+				if (d_boolean_polygon_dialog_ptr->isVisible())
+				{
+					update_boolean_palette(tr(
+							"View time changed; Boolean selections and preview were cleared."));
+				}
+			});
+	update_boolean_palette();
+	QObject::connect(
+			d_make_rift_select_continent_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_make_rift_select_continent()));
+	QObject::connect(
+			d_make_rift_select_rift_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_make_rift_select_rift()));
+	QObject::connect(
+			d_make_rift_cut_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_make_rift()));
+	QObject::connect(
+			&get_view_state().get_feature_focus(),
+			SIGNAL(focus_changed(GPlatesGui::FeatureFocus &)),
+			this,
+			SLOT(handle_make_rift_focus_changed(GPlatesGui::FeatureFocus &)));
+	update_make_rift_palette();
+	QObject::connect(
+			d_initial_subduction_select_continent_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_initial_subduction_select_continent()));
+	QObject::connect(
+			d_initial_subduction_select_mor_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_initial_subduction_select_mor()));
+	QObject::connect(
+			d_initial_subduction_generate_button_ptr,
+			SIGNAL(clicked()),
+			this,
+			SLOT(handle_generate_initial_subduction()));
+	QObject::connect(
+			d_initial_subduction_dialog_ptr,
+			SIGNAL(rejected()),
+			this,
+			SLOT(handle_initial_subduction_cancel_selection()));
+	QObject::connect(
+			&get_view_state().get_feature_focus(),
+			SIGNAL(focus_changed(GPlatesGui::FeatureFocus &)),
+			this,
+			SLOT(handle_initial_subduction_focus_changed(GPlatesGui::FeatureFocus &)));
+	update_initial_subduction_palette();
+	QObject::connect(
+			d_subduction_effects_select_subduction_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_subduction_effects_select_subduction()));
+	QObject::connect(
+			d_subduction_effects_select_continent_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_subduction_effects_select_continent()));
+	QObject::connect(
+			d_subduction_effects_clear_continent_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_subduction_effects_clear_continent()));
+	QObject::connect(
+			d_subduction_effects_preview_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_subduction_effects_preview()));
+	QObject::connect(
+			d_subduction_effects_commit_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_subduction_effects_commit()));
+	QObject::connect(
+			d_subduction_effect_type_combo_ptr,
+			SIGNAL(currentIndexChanged(int)), this, SLOT(handle_subduction_effect_type_changed(int)));
+	QObject::connect(d_subduction_lifecycle_combo_ptr,
+			SIGNAL(currentIndexChanged(int)), this, SLOT(handle_subduction_effects_controls_changed()));
+	QObject::connect(d_subduction_subducting_plate_spin_ptr,
+			SIGNAL(valueChanged(int)), this, SLOT(handle_subduction_effects_controls_changed()));
+	QObject::connect(d_subduction_migration_offset_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_subduction_effects_controls_changed()));
+	QObject::connect(d_subduction_lifecycle_duration_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_subduction_effects_controls_changed()));
+	QObject::connect(d_subduction_isolates_fragment_check_ptr,
+			SIGNAL(toggled(bool)), this, SLOT(handle_subduction_effects_controls_changed()));
+	QObject::connect(
+			d_subduction_effects_flip_polarity_check_ptr,
+			SIGNAL(toggled(bool)), this, SLOT(handle_subduction_effects_controls_changed()));
+	QObject::connect(
+			d_subduction_effects_early_arc_check_ptr,
+			SIGNAL(toggled(bool)), this, SLOT(handle_subduction_effects_controls_changed()));
+	for (unsigned int index = 0; index < sizeof(spin_specs) / sizeof(spin_specs[0]); ++index)
+	{
+		QObject::connect(*spin_specs[index].target,
+				SIGNAL(valueChanged(double)), this, SLOT(handle_subduction_effects_controls_changed()));
+	}
+	QObject::connect(
+			&get_view_state().get_feature_focus(),
+			SIGNAL(focus_changed(GPlatesGui::FeatureFocus &)),
+			this,
+			SLOT(handle_subduction_effects_focus_changed(GPlatesGui::FeatureFocus &)));
+	update_subduction_effects_palette();
+	QObject::connect(
+			d_collision_select_incoming_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_collision_select_incoming()));
+	QObject::connect(
+			d_collision_select_receiving_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_collision_select_receiving()));
+	QObject::connect(
+			d_collision_select_trench_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_collision_select_trench()));
+	QObject::connect(
+			d_collision_clear_trench_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_collision_clear_trench()));
+	QObject::connect(
+			d_collision_preview_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_collision_preview()));
+	QObject::connect(
+			d_collision_commit_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_collision_commit()));
+	QObject::connect(
+			d_collision_type_combo_ptr,
+			SIGNAL(currentIndexChanged(int)), this, SLOT(handle_collision_type_changed(int)));
+	QObject::connect(
+			d_collision_precursor_spin_ptr,
+			SIGNAL(valueChanged(int)), this, SLOT(handle_collision_controls_changed()));
+	QObject::connect(
+			d_collision_smoothing_spin_ptr,
+			SIGNAL(valueChanged(int)), this, SLOT(handle_collision_controls_changed()));
+	QObject::connect(
+			d_collision_contact_threshold_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_collision_controls_changed()));
+	QObject::connect(
+			d_collision_belt_width_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_collision_controls_changed()));
+	QObject::connect(
+			d_collision_irregularity_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_collision_controls_changed()));
+	QObject::connect(
+			d_collision_active_duration_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_collision_controls_changed()));
+	QObject::connect(
+			d_collision_old_age_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_collision_controls_changed()));
+	QObject::connect(
+			d_collision_auto_width_check_ptr,
+			SIGNAL(toggled(bool)), this, SLOT(handle_collision_controls_changed()));
+	QObject::connect(
+			d_collision_terminate_trench_check_ptr,
+			SIGNAL(toggled(bool)), this, SLOT(handle_collision_controls_changed()));
+	QObject::connect(
+			d_collision_allow_nonconvergent_check_ptr,
+			SIGNAL(toggled(bool)), this, SLOT(handle_collision_controls_changed()));
+	QObject::connect(
+			d_collision_deform_margins_check_ptr,
+			SIGNAL(toggled(bool)), this, SLOT(handle_collision_controls_changed()));
+	QObject::connect(
+			d_collision_deformation_reach_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_collision_controls_changed()));
+	QObject::connect(
+			d_collision_retire_incoming_check_ptr,
+			SIGNAL(toggled(bool)), this, SLOT(handle_collision_controls_changed()));
+	QObject::connect(
+			&get_view_state().get_feature_focus(),
+			SIGNAL(focus_changed(GPlatesGui::FeatureFocus &)),
+			this,
+			SLOT(handle_collision_focus_changed(GPlatesGui::FeatureFocus &)));
+	update_collision_palette();
+	QObject::connect(
+			d_post_collision_rift_select_host_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_post_collision_rift_select_host()));
+	QObject::connect(
+			d_post_collision_rift_select_suture_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_post_collision_rift_select_suture()));
+	QObject::connect(
+			d_post_collision_rift_preview_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_post_collision_rift_preview()));
+	QObject::connect(
+			d_post_collision_rift_commit_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_post_collision_rift_commit()));
+	QObject::connect(
+			d_post_collision_rift_offset_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_post_collision_rift_controls_changed()));
+	QObject::connect(
+			d_post_collision_rift_wiggle_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_post_collision_rift_controls_changed()));
+	QObject::connect(
+			d_post_collision_rift_segment_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_post_collision_rift_controls_changed()));
+	QObject::connect(
+			d_post_collision_rift_extension_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_post_collision_rift_controls_changed()));
+	QObject::connect(
+			d_post_collision_rift_side_combo_ptr,
+			SIGNAL(currentIndexChanged(int)), this, SLOT(handle_post_collision_rift_controls_changed()));
+	QObject::connect(
+			d_post_collision_rift_seed_spin_ptr,
+			SIGNAL(valueChanged(int)), this, SLOT(handle_post_collision_rift_controls_changed()));
+	QObject::connect(
+			&get_view_state().get_feature_focus(),
+			SIGNAL(focus_changed(GPlatesGui::FeatureFocus &)),
+			this,
+			SLOT(handle_post_collision_rift_focus_changed(GPlatesGui::FeatureFocus &)));
+	update_post_collision_rift_palette();
+	QObject::connect(
+			d_mantle_events_select_continent_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_mantle_events_select_continent()));
+	QObject::connect(
+			d_mantle_events_select_rift_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_mantle_events_select_rift()));
+	QObject::connect(
+			d_mantle_events_clear_rift_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_mantle_events_clear_rift()));
+	QObject::connect(
+			d_mantle_events_preview_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_mantle_events_preview()));
+	QObject::connect(
+			d_mantle_events_commit_button_ptr,
+			SIGNAL(clicked()), this, SLOT(handle_mantle_events_commit()));
+	QObject::connect(
+			d_mantle_events_placement_combo_ptr,
+			SIGNAL(currentIndexChanged(int)), this, SLOT(handle_mantle_events_controls_changed()));
+	QObject::connect(
+			d_mantle_events_diameter_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_mantle_events_controls_changed()));
+	QObject::connect(
+			d_mantle_events_irregularity_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_mantle_events_controls_changed()));
+	QObject::connect(
+			d_mantle_events_segment_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_mantle_events_controls_changed()));
+	QObject::connect(
+			d_mantle_events_seed_spin_ptr,
+			SIGNAL(valueChanged(int)), this, SLOT(handle_mantle_events_controls_changed()));
+	QObject::connect(
+			d_mantle_events_active_duration_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_mantle_events_controls_changed()));
+	QObject::connect(
+			d_mantle_events_create_hotspot_check_ptr,
+			SIGNAL(toggled(bool)), this, SLOT(handle_mantle_events_controls_changed()));
+	QObject::connect(
+			d_mantle_events_hotspot_lifetime_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_mantle_events_controls_changed()));
+	QObject::connect(
+			d_mantle_events_trail_step_spin_ptr,
+			SIGNAL(valueChanged(double)), this, SLOT(handle_mantle_events_controls_changed()));
+	QObject::connect(
+			d_mantle_events_mantle_plate_spin_ptr,
+			SIGNAL(valueChanged(int)), this, SLOT(handle_mantle_events_controls_changed()));
+	QObject::connect(
+			&get_view_state().get_feature_focus(),
+			SIGNAL(focus_changed(GPlatesGui::FeatureFocus &)),
+			this,
+			SLOT(handle_mantle_events_focus_changed(GPlatesGui::FeatureFocus &)));
+	update_mantle_events_palette();
 
 	// Connect all the Signal/Slot relationships of ViewportWindow's
 	// toolbar buttons and menu items.
@@ -496,7 +3124,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 
 	// Circular feature placement is constructed here rather than declared in the Designer file,
 	// because the operation owns runtime state. Anchored to Split Plate so it sits at the top of
-	// the World Building menu.
+	// the MM menu.
 	GPlatesViewOperations::CircularFeatureOperation *circular_feature_operation =
 			new GPlatesViewOperations::CircularFeatureOperation(
 					get_application_state(), *this);
@@ -513,6 +3141,139 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			place_circular_features_action, SIGNAL(triggered()),
 			circular_feature_operation, SLOT(trigger()));
 
+	// Keep the MM tools together in the single Designer-owned menu so the normal
+	// menu bar and the full-screen GMenu expose the same operation set.
+	QAction *manage_flowlines_action = new QAction(tr("Manage Flowlines..."), this);
+	manage_flowlines_action->setObjectName("action_MM_Manage_Flowlines");
+	GPlatesViewOperations::FlowlineManagerOperation *flowline_manager_operation =
+			new GPlatesViewOperations::FlowlineManagerOperation(
+					get_application_state(), get_view_state(), this);
+	flowline_manager_operation->setParent(this);
+	QObject::connect(
+			manage_flowlines_action, SIGNAL(triggered()),
+			flowline_manager_operation, SLOT(trigger()));
+	QObject::connect(
+			flowline_manager_operation,
+			&GPlatesViewOperations::FlowlineManagerOperation::open_topology_tools_requested,
+			this,
+			[this]()
+			{
+				d_task_panel_ptr->choose_topology_tools_tab();
+				status_message(tr(
+						"Topology Tools opened for the reviewed boundary-audit handoff; the audit did not change any live topology."));
+			});
+	QAction *generate_craters_action = new QAction(tr("Generate Impact Craters..."), this);
+	generate_craters_action->setObjectName("action_MM_Generate_Impact_Craters");
+	GPlatesViewOperations::CraterGeneratorOperation *crater_generator_operation =
+			new GPlatesViewOperations::CraterGeneratorOperation(get_application_state(), this);
+	crater_generator_operation->setParent(this);
+	QObject::connect(
+			generate_craters_action, SIGNAL(triggered()),
+			crater_generator_operation, SLOT(trigger()));
+
+	// Present the complete native utility suite through one discoverable MM menu.
+	// Static QActions are shared with their original GPlates menus, so shortcuts,
+	// enabled state and signal wiring remain consistent everywhere.
+	menu_World_Building->clear();
+
+	QMenu *guided_workflows_menu = menu_World_Building->addMenu(tr("&Guided Workflows"));
+	guided_workflows_menu->addAction(worldbuilding_pasta_action);
+	guided_workflows_menu->addSeparator();
+	guided_workflows_menu->addAction(action_Open_Project);
+	guided_workflows_menu->addAction(action_Save_Project);
+	guided_workflows_menu->addAction(action_Manage_Feature_Collections);
+
+	QMenu *plate_geometry_menu = menu_World_Building->addMenu(tr("&Plate && Geometry"));
+	QAction *create_initial_continent_action = new QAction(
+			tr("Create Initial Continent..."), this);
+	create_initial_continent_action->setObjectName("action_MM_Create_Initial_Continent");
+	plate_geometry_menu->addAction(create_initial_continent_action);
+	plate_geometry_menu->addAction(place_circular_features_action);
+	plate_geometry_menu->addAction(action_Split_Plate);
+	plate_geometry_menu->addAction(action_Boolean_Polygons);
+	QObject::connect(create_initial_continent_action, SIGNAL(triggered()),
+			this, SLOT(handle_create_initial_continent()));
+
+	QMenu *rifting_spreading_menu = menu_World_Building->addMenu(tr("&Rifting && Spreading"));
+	QAction *propose_rifts_action = new QAction(tr("Build Voronoi Rift Network..."), this);
+	propose_rifts_action->setObjectName("action_MM_Propose_Initial_Rifts");
+	QAction *make_rift_action = new QAction(tr("Make Rift..."), this);
+	make_rift_action->setObjectName("action_MM_Make_Rift");
+	rifting_spreading_menu->addAction(propose_rifts_action);
+	rifting_spreading_menu->addAction(make_rift_action);
+	rifting_spreading_menu->addSeparator();
+	rifting_spreading_menu->addAction(action_Create_Ocean_Crust);
+	rifting_spreading_menu->addAction(action_Create_Triple_Junction_Crust);
+	rifting_spreading_menu->addAction(action_Create_Pacific_Plate);
+	rifting_spreading_menu->addAction(manage_flowlines_action);
+	QObject::connect(propose_rifts_action, SIGNAL(triggered()),
+			this, SLOT(handle_propose_initial_rifts()));
+	QObject::connect(make_rift_action, SIGNAL(triggered()),
+			this, SLOT(show_make_rift_window()));
+
+	QMenu *subduction_menu = menu_World_Building->addMenu(tr("&Subduction && Collision"));
+	QAction *initial_subduction_action = new QAction(
+			tr("Create Initial Subduction Zone..."), this);
+	initial_subduction_action->setObjectName("action_MM_Create_Initial_Subduction");
+	initial_subduction_action->setStatusTip(tr(
+			"Infer and review a far-margin trench from a continent, MOR and plate motion."));
+	QAction *subduction_lifecycle_action = new QAction(
+			tr("Subduction Effects && Lifecycle..."), this);
+	subduction_lifecycle_action->setObjectName("action_MM_Subduction_Effects_Lifecycle");
+	subduction_lifecycle_action->setStatusTip(tr(
+			"Preview and commit arcs, orogeny and reviewed trench lifecycle events."));
+	QAction *collision_orogeny_action = new QAction(tr("Collision && Accretion..."), this);
+	collision_orogeny_action->setObjectName("action_MM_Collision_Accretion");
+	QAction *post_collision_rift_action = new QAction(tr("Post-Collision Rifting..."), this);
+	post_collision_rift_action->setObjectName("action_MM_Post_Collision_Rifting");
+	subduction_menu->addAction(initial_subduction_action);
+	subduction_menu->addAction(subduction_lifecycle_action);
+	subduction_menu->addAction(action_Subduction_Cutter);
+	subduction_menu->addSeparator();
+	subduction_menu->addAction(collision_orogeny_action);
+	subduction_menu->addAction(post_collision_rift_action);
+	QObject::connect(initial_subduction_action, SIGNAL(triggered()),
+			this, SLOT(show_initial_subduction_window()));
+	QObject::connect(subduction_lifecycle_action, SIGNAL(triggered()),
+			this, SLOT(show_subduction_effects_window()));
+	QObject::connect(collision_orogeny_action, SIGNAL(triggered()),
+			this, SLOT(show_collision_orogeny_window()));
+	QObject::connect(post_collision_rift_action, SIGNAL(triggered()),
+			this, SLOT(show_post_collision_rift_window()));
+
+	QMenu *rotation_motion_menu = menu_World_Building->addMenu(tr("&Rotation && Motion"));
+	QAction *create_initial_rotation_action = new QAction(
+			tr("Create Initial Rotation Model..."), this);
+	create_initial_rotation_action->setObjectName("action_MM_Create_Initial_Rotation_Model");
+	QAction *advance_plate_motion_action = new QAction(tr("Advance Plate Motion..."), this);
+	advance_plate_motion_action->setObjectName("action_MM_Advance_Plate_Motion");
+	rotation_motion_menu->addAction(create_initial_rotation_action);
+	rotation_motion_menu->addAction(advance_plate_motion_action);
+	rotation_motion_menu->addAction(action_Rotation_File_Editor);
+	rotation_motion_menu->addAction(action_View_Rotation_Hierarchy);
+	rotation_motion_menu->addAction(action_Assign_Plate_IDs);
+	rotation_motion_menu->addSeparator();
+	rotation_motion_menu->addAction(action_Calculate_Reconstruction_Pole);
+	rotation_motion_menu->addAction(action_Finite_Rotation_Calculator);
+	QObject::connect(create_initial_rotation_action, SIGNAL(triggered()),
+			this, SLOT(handle_create_initial_rotation_file()));
+	QObject::connect(advance_plate_motion_action, SIGNAL(triggered()),
+			this, SLOT(handle_advance_plate_motion()));
+
+	QMenu *mantle_presentation_menu = menu_World_Building->addMenu(tr("&Mantle && Presentation"));
+	QAction *mantle_events_action = new QAction(tr("Generate Mantle Events..."), this);
+	mantle_events_action->setObjectName("action_MM_Generate_Mantle_Events");
+	mantle_presentation_menu->addAction(mantle_events_action);
+	mantle_presentation_menu->addAction(generate_craters_action);
+	mantle_presentation_menu->addAction(action_Manage_Colouring);
+	QObject::connect(mantle_events_action, SIGNAL(triggered()),
+			this, SLOT(show_mantle_events_window()));
+
+	QMenu *export_menu = menu_World_Building->addMenu(tr("&Export"));
+	export_menu->addAction(action_Export_Geometry_Snapshot);
+	export_menu->addAction(action_Export_Reconstruction);
+	export_menu->addAction(action_Export);
+
 	// Duplicate the menu structure for the full-screen-mode GMenu.
 	populate_gmenu_from_menubar();
 
@@ -521,7 +3282,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 
 	// Initialise the Recent Session menu (that must wait until after setupUi()).
 	d_session_menu_ptr->init(*menu_Open_Recent_Session);
-	
+
 	// FIXME: Set up the Task Panel in a more detailed fashion here.
 #if 1
 	d_reconstruction_view_widget_ptr->insert_task_panel(d_task_panel_ptr);
@@ -687,7 +3448,7 @@ GPlatesQtWidgets::ViewportWindow::handle_read_errors(
 	read_errors_dialog.clear();
 	read_errors_dialog.read_errors().accumulate(new_read_errors);
 	read_errors_dialog.update();
-	
+
 	// At this point we can either throw the dialog in the user's face,
 	// or pop up a small icon in the status bar which they can click to see the errors.
 	// How do we decide? Well, until we get UserPreferences, let's just pop up the icon
@@ -704,7 +3465,7 @@ GPlatesQtWidgets::ViewportWindow::handle_read_errors(
 }
 
 
-void	
+void
 GPlatesQtWidgets::ViewportWindow::connect_menu_actions()
 {
 	// If you want to add a new menu action, the steps are:
@@ -1151,7 +3912,7 @@ GPlatesQtWidgets::ViewportWindow::connect_utilities_menu_actions()
 				action_Open_Python_Console,
 				get_view_state().get_python_manager(),
 				this);
-		
+
 		// ----
 		QObject::connect(action_Open_Python_Console, SIGNAL(triggered()),
 				this, SLOT(pop_up_python_console()));
@@ -1242,6 +4003,26 @@ GPlatesQtWidgets::ViewportWindow::connect_world_building_menu_actions()
 			SIGNAL(triggered()),
 			this,
 			SLOT(handle_split_plate()));
+	QObject::connect(
+			action_Boolean_Polygons,
+			SIGNAL(triggered()),
+			this,
+			SLOT(show_boolean_polygons_window()));
+	QObject::connect(
+			action_Create_Ocean_Crust,
+			SIGNAL(triggered()),
+			this,
+			SLOT(handle_create_ocean_crust()));
+	QObject::connect(
+			action_Create_Triple_Junction_Crust,
+			SIGNAL(triggered()),
+			this,
+			SLOT(handle_create_triple_junction_crust()));
+	QObject::connect(
+			action_Create_Pacific_Plate,
+			SIGNAL(triggered()),
+			this,
+			SLOT(handle_create_pacific_plate()));
 	QObject::connect(
 			action_Subduction_Cutter,
 			SIGNAL(triggered()),
@@ -1536,7 +4317,7 @@ GPlatesQtWidgets::ViewportWindow::populate_gmenu_from_menubar()
 	// It is also difficult to do this in GMenu's constructor, where I'd prefer to put
 	// it, because at that time @a ViewportWindow::setupUi() hasn't been called yet,
 	// so the menu structure does not exist.
-	
+
 	// Find the GMenu by Qt object name. This is a lot more convenient for this kind
 	// of one-off setup than going through ReconstructionViewWidget, etc.
 	QMenu *gmenu = findChild<QMenu *>("GMenu");
@@ -1564,6 +4345,55 @@ GPlatesQtWidgets::ViewportWindow::get_view_state()
 }
 
 
+bool
+GPlatesQtWidgets::ViewportWindow::try_select_worldbuilding_mor()
+{
+	if (!d_create_ocean_crust_operation_ptr)
+	{
+		return false;
+	}
+	QString message;
+	const bool handled = d_create_ocean_crust_operation_ptr->select_focused_mor(message);
+	if (handled)
+	{
+		if (d_create_pacific_plate_operation_ptr)
+		{
+			if (d_create_ocean_crust_operation_ptr->selected_mors().size() == 3)
+			{
+				d_create_pacific_plate_operation_ptr->arm_seed_capture();
+				message += tr(" The next ordinary click captures the local void seed for Pacific-style plate birth.");
+			}
+			else
+			{
+				d_create_pacific_plate_operation_ptr->clear_seed();
+			}
+		}
+		status_message(message);
+	}
+	return handled;
+}
+
+
+bool
+GPlatesQtWidgets::ViewportWindow::try_capture_pacific_void_seed(
+		const GPlatesMaths::PointOnSphere &point_on_sphere,
+		bool is_on_earth)
+{
+	if (!d_create_pacific_plate_operation_ptr)
+	{
+		return false;
+	}
+	QString message;
+	const bool handled = d_create_pacific_plate_operation_ptr->capture_seed(
+			point_on_sphere, is_on_earth, message);
+	if (handled)
+	{
+		status_message(message);
+	}
+	return handled;
+}
+
+
 GPlatesQtWidgets::ReconstructionViewWidget &
 GPlatesQtWidgets::ViewportWindow::reconstruction_view_widget()
 {
@@ -1577,7 +4407,7 @@ GPlatesQtWidgets::ViewportWindow::reconstruction_view_widget() const
 }
 
 
-void	
+void
 GPlatesQtWidgets::ViewportWindow::set_up_task_panel_actions()
 {
 	ActionButtonBox &feature_actions = d_task_panel_ptr->feature_action_button_box();
@@ -1666,7 +4496,7 @@ GPlatesQtWidgets::ViewportWindow::enable_or_disable_feature_actions(
 {
 	// Note: Enabling/disabling canvas tools is now done in class 'EnableCanvasTool'.
 	bool is_feature_focused = feature_focus.focused_feature().is_valid();
-	
+
 	action_Query_Feature->setEnabled(is_feature_focused);
 	action_Edit_Feature->setEnabled(is_feature_focused);
 	action_Delete_Feature->setEnabled(is_feature_focused);
@@ -1944,10 +4774,10 @@ GPlatesQtWidgets::ViewportWindow::enable_stars_display()
 
 void
 GPlatesQtWidgets::ViewportWindow::update_tools_and_status_message()
-{	
-// FIXME: 
+{
+// FIXME:
 // There seems to be some sequencing bug where these actions_ never get enabled?
-// for now, just comment out ... 
+// for now, just comment out ...
 #if 0
 	bool globe_is_active = d_reconstruction_view_widget_ptr->globe_is_active();
 	action_Show_Arrow_Decorations->setEnabled(globe_is_active);
@@ -2401,6 +5231,1326 @@ GPlatesQtWidgets::ViewportWindow::pop_up_python_console()
 
 
 void
+GPlatesQtWidgets::ViewportWindow::handle_create_initial_continent()
+{
+	const GPlatesViewOperations::CreateInitialContinentOperation::Result result =
+			d_create_initial_continent_operation_ptr->trigger(this);
+	status_message(result.message);
+
+	if (result.outcome == GPlatesViewOperations::CreateInitialContinentOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Create Initial Continent"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::CreateInitialContinentOperation::OPERATION_COMPLETED)
+	{
+		QMessageBox::information(this, tr("Initial Continent Created"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_propose_initial_rifts()
+{
+	const GPlatesViewOperations::ProposeInitialRiftsOperation::Result result =
+			d_propose_initial_rifts_operation_ptr->trigger(this);
+	status_message(result.message);
+
+	if (result.outcome == GPlatesViewOperations::ProposeInitialRiftsOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Propose Initial Rifts"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::ProposeInitialRiftsOperation::OPERATION_COMPLETED)
+	{
+		QMessageBox::information(this, tr("Initial Rifts Committed"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::show_make_rift_window()
+{
+	update_make_rift_palette();
+	d_make_rift_dialog_ptr->show();
+	d_make_rift_dialog_ptr->raise();
+	d_make_rift_dialog_ptr->activateWindow();
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_make_rift_select_continent()
+{
+	const GPlatesViewOperations::MakeRiftOperation::Result result =
+			d_make_rift_operation_ptr->arm_continent_selection();
+	if (d_make_rift_operation_ptr->selection_mode() ==
+			GPlatesViewOperations::MakeRiftOperation::SELECTING_CONTINENT)
+	{
+		activate_choose_feature_tool(canvas_tool_workflows());
+	}
+	status_message(result.message);
+	update_make_rift_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_make_rift_select_rift()
+{
+	const GPlatesViewOperations::MakeRiftOperation::Result result =
+			d_make_rift_operation_ptr->arm_rift_selection();
+	status_message(result.message);
+	update_make_rift_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_make_rift_focus_changed(
+		GPlatesGui::FeatureFocus &)
+{
+	const GPlatesViewOperations::MakeRiftOperation::Result result =
+			d_make_rift_operation_ptr->capture_armed_selection();
+	if (result.outcome == GPlatesViewOperations::MakeRiftOperation::OPERATION_CANCELLED)
+	{
+		return;
+	}
+	status_message(result.message);
+	update_make_rift_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_make_rift()
+{
+	const GPlatesViewOperations::MakeRiftOperation::Result result =
+			d_make_rift_operation_ptr->cut(this);
+	status_message(result.message);
+	update_make_rift_palette(result.message);
+
+	switch (result.outcome)
+	{
+	case GPlatesViewOperations::MakeRiftOperation::RIFT_COMPLETED:
+		QMessageBox::information(this, tr("Rift Created"), result.message);
+		d_make_rift_dialog_ptr->hide();
+		break;
+	case GPlatesViewOperations::MakeRiftOperation::OPERATION_ERROR:
+		QMessageBox::warning(this, tr("Make Rift"), result.message);
+		break;
+	case GPlatesViewOperations::MakeRiftOperation::OPERATION_CANCELLED:
+		break;
+	case GPlatesViewOperations::MakeRiftOperation::SELECTION_ARMED:
+	case GPlatesViewOperations::MakeRiftOperation::CONTINENT_CAPTURED:
+	case GPlatesViewOperations::MakeRiftOperation::RIFT_CAPTURED:
+		break;
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::update_make_rift_palette(
+		const QString &message)
+{
+	if (!d_make_rift_select_continent_button_ptr ||
+			!d_make_rift_select_rift_button_ptr ||
+			!d_make_rift_cut_button_ptr)
+	{
+		return;
+	}
+	const GPlatesViewOperations::MakeRiftOperation::SelectionMode mode =
+			d_make_rift_operation_ptr->selection_mode();
+	d_make_rift_select_continent_button_ptr->setChecked(
+			mode == GPlatesViewOperations::MakeRiftOperation::SELECTING_CONTINENT);
+	d_make_rift_select_rift_button_ptr->setChecked(
+			mode == GPlatesViewOperations::MakeRiftOperation::SELECTING_RIFT);
+	d_make_rift_cut_button_ptr->setEnabled(d_make_rift_operation_ptr->can_cut());
+	d_make_rift_continent_status_label_ptr->setText(
+			d_make_rift_operation_ptr->continent_status());
+	d_make_rift_rift_status_label_ptr->setText(
+			d_make_rift_operation_ptr->rift_status());
+	d_make_rift_instruction_label_ptr->setText(
+			message.isEmpty()
+					? tr("Selections stay captured until the cut succeeds or a new continent is chosen.")
+					: message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::show_initial_subduction_window()
+{
+	update_initial_subduction_palette();
+	d_initial_subduction_dialog_ptr->show();
+	d_initial_subduction_dialog_ptr->raise();
+	d_initial_subduction_dialog_ptr->activateWindow();
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_initial_subduction_select_continent()
+{
+	const GPlatesViewOperations::GenerateInitialSubductionOperation::Result result =
+			d_generate_initial_subduction_operation_ptr->selection_mode() ==
+					GPlatesViewOperations::GenerateInitialSubductionOperation::SELECTING_CONTINENT
+				? d_generate_initial_subduction_operation_ptr->cancel_selection()
+				: d_generate_initial_subduction_operation_ptr->arm_continent_selection();
+	if (d_generate_initial_subduction_operation_ptr->selection_mode() ==
+			GPlatesViewOperations::GenerateInitialSubductionOperation::SELECTING_CONTINENT)
+	{
+		activate_choose_feature_tool(canvas_tool_workflows());
+	}
+	status_message(result.message);
+	update_initial_subduction_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_initial_subduction_select_mor()
+{
+	const GPlatesViewOperations::GenerateInitialSubductionOperation::Result result =
+			d_generate_initial_subduction_operation_ptr->selection_mode() ==
+					GPlatesViewOperations::GenerateInitialSubductionOperation::SELECTING_MOR
+				? d_generate_initial_subduction_operation_ptr->cancel_selection()
+				: d_generate_initial_subduction_operation_ptr->arm_mor_selection();
+	if (d_generate_initial_subduction_operation_ptr->selection_mode() ==
+			GPlatesViewOperations::GenerateInitialSubductionOperation::SELECTING_MOR)
+	{
+		activate_choose_feature_tool(canvas_tool_workflows());
+	}
+	status_message(result.message);
+	update_initial_subduction_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_initial_subduction_cancel_selection()
+{
+	const GPlatesViewOperations::GenerateInitialSubductionOperation::Result result =
+			d_generate_initial_subduction_operation_ptr->cancel_selection();
+	if (!result.message.isEmpty())
+	{
+		status_message(result.message);
+	}
+	update_initial_subduction_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_initial_subduction_focus_changed(
+		GPlatesGui::FeatureFocus &)
+{
+	const GPlatesViewOperations::GenerateInitialSubductionOperation::Result result =
+			d_generate_initial_subduction_operation_ptr->capture_armed_selection();
+	if (result.outcome == GPlatesViewOperations::GenerateInitialSubductionOperation::OPERATION_CANCELLED)
+	{
+		return;
+	}
+	status_message(result.message);
+	update_initial_subduction_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_generate_initial_subduction()
+{
+	const GPlatesViewOperations::GenerateInitialSubductionOperation::Result result =
+			d_generate_initial_subduction_operation_ptr->generate(this);
+	status_message(result.message);
+	update_initial_subduction_palette(result.message);
+
+	switch (result.outcome)
+	{
+	case GPlatesViewOperations::GenerateInitialSubductionOperation::SUBDUCTION_COMPLETED:
+		QMessageBox::information(this, tr("Subduction Zone Created"), result.message);
+		d_initial_subduction_dialog_ptr->hide();
+		break;
+	case GPlatesViewOperations::GenerateInitialSubductionOperation::OPERATION_ERROR:
+		QMessageBox::warning(this, tr("Opposite-Margin Subduction"), result.message);
+		break;
+	case GPlatesViewOperations::GenerateInitialSubductionOperation::SELECTION_ARMED:
+	case GPlatesViewOperations::GenerateInitialSubductionOperation::CONTINENT_CAPTURED:
+	case GPlatesViewOperations::GenerateInitialSubductionOperation::MOR_CAPTURED:
+	case GPlatesViewOperations::GenerateInitialSubductionOperation::OPERATION_CANCELLED:
+		break;
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_advance_plate_motion()
+{
+	const GPlatesViewOperations::AdvancePlateMotionOperation::Result result =
+			d_advance_plate_motion_operation_ptr->trigger(this);
+	status_message(result.message);
+	if (result.outcome == GPlatesViewOperations::AdvancePlateMotionOperation::OPERATION_COMPLETED)
+	{
+		QMessageBox::information(this, tr("Plate Motion Advanced"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::AdvancePlateMotionOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Advance Plate Motion"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_create_ocean_crust()
+{
+	const GPlatesViewOperations::CreateOceanCrustOperation::Result result =
+			d_create_ocean_crust_operation_ptr->trigger(this);
+	status_message(result.message);
+	if (result.outcome == GPlatesViewOperations::CreateOceanCrustOperation::SELECTION_REQUIRED)
+	{
+		activate_choose_feature_tool(canvas_tool_workflows());
+		QMessageBox::information(this, tr("Shift-Click Half-Stage MOR"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::CreateOceanCrustOperation::OPERATION_COMPLETED)
+	{
+		QMessageBox::information(this, tr("Oceanic Crust Generated"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::CreateOceanCrustOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Generate Oceanic Crust from MOR"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_create_initial_rotation_file()
+{
+	const GPlatesViewOperations::CreateInitialRotationFileOperation::Result result =
+			d_create_initial_rotation_file_operation_ptr->trigger(this);
+	status_message(result.message);
+	if (result.outcome == GPlatesViewOperations::CreateInitialRotationFileOperation::OPERATION_COMPLETED)
+	{
+		QMessageBox::information(this, tr("Rotation File Ready"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::CreateInitialRotationFileOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Create Rotation File"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::update_initial_subduction_palette(
+		const QString &message)
+{
+	if (!d_initial_subduction_select_continent_button_ptr ||
+			!d_initial_subduction_select_mor_button_ptr ||
+			!d_initial_subduction_generate_button_ptr)
+	{
+		return;
+	}
+	const GPlatesViewOperations::GenerateInitialSubductionOperation::SelectionMode mode =
+			d_generate_initial_subduction_operation_ptr->selection_mode();
+	d_initial_subduction_select_continent_button_ptr->setChecked(
+			mode == GPlatesViewOperations::GenerateInitialSubductionOperation::SELECTING_CONTINENT);
+	d_initial_subduction_select_mor_button_ptr->setChecked(
+			mode == GPlatesViewOperations::GenerateInitialSubductionOperation::SELECTING_MOR);
+	d_initial_subduction_generate_button_ptr->setEnabled(
+			d_generate_initial_subduction_operation_ptr->can_generate());
+	d_initial_subduction_continent_status_label_ptr->setText(
+			d_generate_initial_subduction_operation_ptr->continent_status());
+	d_initial_subduction_mor_status_label_ptr->setText(
+			d_generate_initial_subduction_operation_ptr->mor_status());
+	d_initial_subduction_instruction_label_ptr->setText(
+			message.isEmpty()
+					? tr("The yellow preview is the proposed trench; the green arrow is the inferred push direction. Nothing is written until you confirm.")
+					: message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::show_subduction_effects_window()
+{
+	update_subduction_effects_palette();
+	d_subduction_effects_dialog_ptr->show();
+	d_subduction_effects_dialog_ptr->raise();
+	d_subduction_effects_dialog_ptr->activateWindow();
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_subduction_effects_select_subduction()
+{
+	const GPlatesViewOperations::GenerateSubductionEffectsOperation::Result result =
+			d_generate_subduction_effects_operation_ptr->arm_subduction_selection();
+	if (d_generate_subduction_effects_operation_ptr->selection_mode() ==
+			GPlatesViewOperations::GenerateSubductionEffectsOperation::SELECTING_SUBDUCTION)
+	{
+		activate_choose_feature_tool(canvas_tool_workflows());
+	}
+	status_message(result.message);
+	update_subduction_effects_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_subduction_effects_select_continent()
+{
+	const GPlatesViewOperations::GenerateSubductionEffectsOperation::Result result =
+			d_generate_subduction_effects_operation_ptr->arm_continent_selection();
+	if (d_generate_subduction_effects_operation_ptr->selection_mode() ==
+			GPlatesViewOperations::GenerateSubductionEffectsOperation::SELECTING_CONTINENT)
+	{
+		activate_choose_feature_tool(canvas_tool_workflows());
+	}
+	status_message(result.message);
+	update_subduction_effects_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_subduction_effects_clear_continent()
+{
+	d_generate_subduction_effects_operation_ptr->clear_continent();
+	const QString message = tr(
+			"Overriding crust reference cleared. Auto mode now proposes an island-arc notation line and still detects every visible land intersection.");
+	status_message(message);
+	update_subduction_effects_palette(message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_subduction_effects_focus_changed(
+		GPlatesGui::FeatureFocus &)
+{
+	const GPlatesViewOperations::GenerateSubductionEffectsOperation::Result result =
+			d_generate_subduction_effects_operation_ptr->capture_armed_selection();
+	if (result.outcome ==
+			GPlatesViewOperations::GenerateSubductionEffectsOperation::OPERATION_CANCELLED)
+	{
+		return;
+	}
+	QString message = result.message;
+	if (result.outcome ==
+			GPlatesViewOperations::GenerateSubductionEffectsOperation::SUBDUCTION_CAPTURED)
+	{
+		const GPlatesModel::integer_plate_id_type suggested =
+				d_generate_subduction_effects_operation_ptr->suggested_subducting_plate();
+		if (suggested != 0)
+		{
+			QSignalBlocker blocker(d_subduction_subducting_plate_spin_ptr);
+			d_subduction_subducting_plate_spin_ptr->setValue(static_cast<int>(suggested));
+		}
+	}
+	if (result.outcome ==
+			GPlatesViewOperations::GenerateSubductionEffectsOperation::CONTINENT_CAPTURED)
+	{
+		const bool recommended_flip =
+				d_generate_subduction_effects_operation_ptr->recommended_polarity_flip();
+		QSignalBlocker blocker(d_subduction_effects_flip_polarity_check_ptr);
+		d_subduction_effects_flip_polarity_check_ptr->setChecked(recommended_flip);
+		if (recommended_flip)
+		{
+			message += tr(" The crust-side check reversed the proposal polarity; you can still edit that choice.");
+		}
+	}
+	status_message(message);
+	update_subduction_effects_palette(message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_subduction_effects_preview()
+{
+	GPlatesViewOperations::GenerateSubductionEffectsOperation::Options options;
+	const int interpretation = d_subduction_effect_type_combo_ptr->currentIndex();
+	if (interpretation == 0)
+	{
+		options.effect_type = d_generate_subduction_effects_operation_ptr->has_continent()
+				? GPlatesViewOperations::SubductionEffectsGeometry::ANDEAN_OROGENY
+				: GPlatesViewOperations::SubductionEffectsGeometry::ISLAND_ARC;
+	}
+	else if (interpretation == 1)
+	{
+		options.effect_type = GPlatesViewOperations::SubductionEffectsGeometry::ISLAND_ARC;
+	}
+	else if (interpretation == 2)
+	{
+		options.effect_type = GPlatesViewOperations::SubductionEffectsGeometry::ANDEAN_OROGENY;
+	}
+	else
+	{
+		options.effect_type = GPlatesViewOperations::SubductionEffectsGeometry::LARAMIDE_OROGENY;
+	}
+	options.flip_declared_polarity = d_subduction_effects_flip_polarity_check_ptr->isChecked();
+	options.allow_early_island_arc = d_subduction_effects_early_arc_check_ptr->isChecked();
+	options.island_arc_delay_ma = d_subduction_effects_arc_delay_spin_ptr->value();
+	options.trim_start_percent = d_subduction_effects_trim_start_spin_ptr->value();
+	options.trim_end_percent = d_subduction_effects_trim_end_spin_ptr->value();
+	options.offset_km = d_subduction_effects_offset_spin_ptr->value();
+	options.island_irregularity = d_subduction_effects_irregularity_spin_ptr->value() / 100.0;
+	options.belt_width_km = d_subduction_effects_belt_width_spin_ptr->value();
+	options.lifecycle_event = static_cast<GPlatesViewOperations::SubductionLifecyclePlanner::EventType>(
+			d_subduction_lifecycle_combo_ptr->currentIndex());
+	options.subducting_plate = d_subduction_subducting_plate_spin_ptr->value();
+	options.migration_offset_km = d_subduction_migration_offset_spin_ptr->value();
+	options.lifecycle_duration_ma = d_subduction_lifecycle_duration_spin_ptr->value();
+	options.isolates_plate_fragment = d_subduction_isolates_fragment_check_ptr->isChecked();
+
+	const GPlatesViewOperations::GenerateSubductionEffectsOperation::Result result =
+			d_generate_subduction_effects_operation_ptr->preview(options);
+	status_message(result.message);
+	update_subduction_effects_palette(result.message);
+	if (result.outcome ==
+			GPlatesViewOperations::GenerateSubductionEffectsOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Subduction Effects Preview"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_subduction_effects_commit()
+{
+	const GPlatesViewOperations::GenerateSubductionEffectsOperation::Result result =
+			d_generate_subduction_effects_operation_ptr->commit();
+	status_message(result.message);
+	update_subduction_effects_palette(result.message);
+	if (result.outcome ==
+			GPlatesViewOperations::GenerateSubductionEffectsOperation::EFFECTS_COMMITTED)
+	{
+		QMessageBox::information(this, tr("Subduction Effects Created"), result.message);
+	}
+	else if (result.outcome ==
+			GPlatesViewOperations::GenerateSubductionEffectsOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Commit Subduction Effects"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_subduction_effects_controls_changed()
+{
+	d_generate_subduction_effects_operation_ptr->clear_preview();
+	update_subduction_effects_palette(tr("Controls changed; preview the revised proposal before committing."));
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_subduction_effect_type_changed(
+		int index)
+{
+	if (index == 1)
+	{
+		d_subduction_effects_offset_spin_ptr->setValue(220);
+	}
+	else if (index == 2)
+	{
+		d_subduction_effects_offset_spin_ptr->setValue(180);
+		d_subduction_effects_belt_width_spin_ptr->setValue(100);
+	}
+	else if (index == 3)
+	{
+		d_subduction_effects_offset_spin_ptr->setValue(300);
+		d_subduction_effects_belt_width_spin_ptr->setValue(400);
+	}
+	handle_subduction_effects_controls_changed();
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::update_subduction_effects_palette(
+		const QString &message)
+{
+	if (!d_subduction_effects_preview_button_ptr ||
+			!d_subduction_effects_commit_button_ptr)
+	{
+		return;
+	}
+	const GPlatesViewOperations::GenerateSubductionEffectsOperation::SelectionMode mode =
+			d_generate_subduction_effects_operation_ptr->selection_mode();
+	d_subduction_effects_select_subduction_button_ptr->setChecked(
+			mode == GPlatesViewOperations::GenerateSubductionEffectsOperation::SELECTING_SUBDUCTION);
+	d_subduction_effects_select_continent_button_ptr->setChecked(
+			mode == GPlatesViewOperations::GenerateSubductionEffectsOperation::SELECTING_CONTINENT);
+	d_subduction_effects_subduction_status_label_ptr->setText(
+			d_generate_subduction_effects_operation_ptr->subduction_status());
+	d_subduction_effects_continent_status_label_ptr->setText(
+			d_generate_subduction_effects_operation_ptr->continent_status());
+	d_subduction_effects_clear_continent_button_ptr->setEnabled(
+			d_generate_subduction_effects_operation_ptr->has_continent());
+	const bool needs_continent = d_subduction_effect_type_combo_ptr->currentIndex() >= 2;
+	d_subduction_effects_preview_button_ptr->setEnabled(
+			d_generate_subduction_effects_operation_ptr->has_subduction() &&
+			(!needs_continent || d_generate_subduction_effects_operation_ptr->has_continent()));
+	d_subduction_effects_commit_button_ptr->setEnabled(
+			d_generate_subduction_effects_operation_ptr->has_preview() &&
+			d_subduction_lifecycle_combo_ptr->currentIndex() ==
+					GPlatesViewOperations::SubductionLifecyclePlanner::CONTINUE_SUBDUCTION);
+	d_subduction_effects_commit_button_ptr->setText(
+			d_subduction_lifecycle_combo_ptr->currentIndex() ==
+					GPlatesViewOperations::SubductionLifecyclePlanner::CONTINUE_SUBDUCTION
+				? tr("4. Commit Reviewed Features")
+				: tr("4. Plan Only - Commit Disabled"));
+	const int lifecycle_event = d_subduction_lifecycle_combo_ptr->currentIndex();
+	d_subduction_migration_offset_spin_ptr->setEnabled(
+			lifecycle_event == GPlatesViewOperations::SubductionLifecyclePlanner::TRENCH_EXTENSION ||
+			lifecycle_event == GPlatesViewOperations::SubductionLifecyclePlanner::ROLLBACK ||
+			lifecycle_event == GPlatesViewOperations::SubductionLifecyclePlanner::TRENCH_JUMP ||
+			lifecycle_event == GPlatesViewOperations::SubductionLifecyclePlanner::PLATE_INVASION);
+	d_subduction_lifecycle_duration_spin_ptr->setEnabled(
+			lifecycle_event == GPlatesViewOperations::SubductionLifecyclePlanner::FLAT_SLAB);
+	d_subduction_effects_instruction_label_ptr->setText(
+			message.isEmpty()
+					? tr("Aqua is the proposed island-arc notation line on the overriding plate; orange polygons are land-only active mountain belts. Yellow teeth point toward the selected overriding side. Use Flip polarity if that side is wrong.")
+					: message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::show_collision_orogeny_window()
+{
+	update_collision_palette();
+	d_collision_dialog_ptr->show();
+	d_collision_dialog_ptr->raise();
+	d_collision_dialog_ptr->activateWindow();
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_collision_select_incoming()
+{
+	const GPlatesViewOperations::CollisionOrogenyOperation::Result result =
+			d_collision_orogeny_operation_ptr->arm_incoming_selection();
+	if (d_collision_orogeny_operation_ptr->selection_mode() ==
+			GPlatesViewOperations::CollisionOrogenyOperation::SELECTING_INCOMING_CONTINENT)
+	{
+		activate_choose_feature_tool(canvas_tool_workflows());
+	}
+	status_message(result.message);
+	update_collision_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_collision_select_receiving()
+{
+	const GPlatesViewOperations::CollisionOrogenyOperation::Result result =
+			d_collision_orogeny_operation_ptr->arm_receiving_selection();
+	if (d_collision_orogeny_operation_ptr->selection_mode() ==
+			GPlatesViewOperations::CollisionOrogenyOperation::SELECTING_RECEIVING_CONTINENT)
+	{
+		activate_choose_feature_tool(canvas_tool_workflows());
+	}
+	status_message(result.message);
+	update_collision_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_collision_select_trench()
+{
+	const GPlatesViewOperations::CollisionOrogenyOperation::Result result =
+			d_collision_orogeny_operation_ptr->arm_trench_selection();
+	status_message(result.message);
+	update_collision_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_collision_clear_trench()
+{
+	d_collision_orogeny_operation_ptr->clear_trench();
+	const QString message = tr("Consumed trench cleared; collision features can still be previewed and committed.");
+	status_message(message);
+	update_collision_palette(message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_collision_focus_changed(
+		GPlatesGui::FeatureFocus &)
+{
+	const GPlatesViewOperations::CollisionOrogenyOperation::Result result =
+			d_collision_orogeny_operation_ptr->capture_armed_selection();
+	if (result.outcome == GPlatesViewOperations::CollisionOrogenyOperation::OPERATION_CANCELLED)
+	{
+		return;
+	}
+	status_message(result.message);
+	update_collision_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_collision_preview()
+{
+	GPlatesViewOperations::CollisionOrogenyOperation::Options options;
+	const int interpretation = d_collision_type_combo_ptr->currentIndex();
+	options.auto_classify = interpretation == 0;
+	if (interpretation == 1)
+	{
+		options.collision_type =
+				GPlatesViewOperations::CollisionGeometry::ARC_OR_TERRANE_ACCRETION;
+	}
+	else if (interpretation == 3)
+	{
+		options.collision_type =
+				GPlatesViewOperations::CollisionGeometry::HIMALAYAN_OROGENY;
+	}
+	else
+	{
+		options.collision_type = GPlatesViewOperations::CollisionGeometry::URAL_OROGENY;
+	}
+	options.precursor_collision_count = d_collision_precursor_spin_ptr->value();
+	options.contact_threshold_km = d_collision_contact_threshold_spin_ptr->value();
+	options.automatic_belt_width = d_collision_auto_width_check_ptr->isChecked();
+	options.belt_width_km = d_collision_belt_width_spin_ptr->value();
+	options.smoothing_iterations = d_collision_smoothing_spin_ptr->value();
+	options.belt_irregularity = d_collision_irregularity_spin_ptr->value() / 100.0;
+	options.active_duration_ma = d_collision_active_duration_spin_ptr->value();
+	options.old_orogen_age_ma = d_collision_old_age_spin_ptr->value();
+	options.terminate_consumed_trench = d_collision_terminate_trench_check_ptr->isChecked();
+	options.allow_non_convergent = d_collision_allow_nonconvergent_check_ptr->isChecked();
+	options.deform_contact_margins = d_collision_deform_margins_check_ptr->isChecked();
+	options.deformation_reach_km = d_collision_deformation_reach_spin_ptr->value();
+	options.retire_incoming_plate = d_collision_retire_incoming_check_ptr->isChecked();
+
+	const GPlatesViewOperations::CollisionOrogenyOperation::Result result =
+			d_collision_orogeny_operation_ptr->preview(options);
+	status_message(result.message);
+	update_collision_palette(result.message);
+	if (result.outcome == GPlatesViewOperations::CollisionOrogenyOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Collision Preview"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_collision_commit()
+{
+	const GPlatesViewOperations::CollisionOrogenyOperation::Result result =
+			d_collision_orogeny_operation_ptr->commit();
+	status_message(result.message);
+	update_collision_palette(result.message);
+	if (result.outcome == GPlatesViewOperations::CollisionOrogenyOperation::COLLISION_COMMITTED)
+	{
+		QMessageBox::information(this, tr("Collision Committed"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::CollisionOrogenyOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Commit Collision"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_collision_controls_changed()
+{
+	d_collision_orogeny_operation_ptr->clear_preview();
+	update_collision_palette(tr("Controls changed; preview the revised collision before committing."));
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_collision_type_changed(
+		int index)
+{
+	if (index == 1)
+	{
+		d_collision_belt_width_spin_ptr->setValue(120);
+	}
+	else if (index == 2)
+	{
+		d_collision_belt_width_spin_ptr->setValue(180);
+	}
+	else if (index == 3)
+	{
+		d_collision_belt_width_spin_ptr->setValue(450);
+	}
+	handle_collision_controls_changed();
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::update_collision_palette(
+		const QString &message)
+{
+	if (!d_collision_preview_button_ptr || !d_collision_commit_button_ptr)
+	{
+		return;
+	}
+	const GPlatesViewOperations::CollisionOrogenyOperation::SelectionMode mode =
+			d_collision_orogeny_operation_ptr->selection_mode();
+	d_collision_select_incoming_button_ptr->setChecked(
+			mode == GPlatesViewOperations::CollisionOrogenyOperation::SELECTING_INCOMING_CONTINENT);
+	d_collision_select_receiving_button_ptr->setChecked(
+			mode == GPlatesViewOperations::CollisionOrogenyOperation::SELECTING_RECEIVING_CONTINENT);
+	d_collision_select_trench_button_ptr->setChecked(
+			mode == GPlatesViewOperations::CollisionOrogenyOperation::SELECTING_CONSUMED_TRENCH);
+	d_collision_incoming_status_label_ptr->setText(
+			d_collision_orogeny_operation_ptr->incoming_status());
+	d_collision_receiving_status_label_ptr->setText(
+			d_collision_orogeny_operation_ptr->receiving_status());
+	d_collision_trench_status_label_ptr->setText(
+			d_collision_orogeny_operation_ptr->trench_status());
+	d_collision_clear_trench_button_ptr->setEnabled(
+			d_collision_orogeny_operation_ptr->has_trench());
+	d_collision_terminate_trench_check_ptr->setEnabled(
+			d_collision_orogeny_operation_ptr->has_trench());
+	d_collision_belt_width_spin_ptr->setEnabled(
+			!d_collision_auto_width_check_ptr->isChecked());
+	d_collision_deformation_reach_spin_ptr->setEnabled(
+			d_collision_deform_margins_check_ptr->isChecked());
+	d_collision_preview_button_ptr->setEnabled(
+			d_collision_orogeny_operation_ptr->has_incoming() &&
+			d_collision_orogeny_operation_ptr->has_receiving());
+	d_collision_commit_button_ptr->setEnabled(
+			d_collision_orogeny_operation_ptr->has_preview());
+	d_collision_instruction_label_ptr->setText(
+			message.isEmpty()
+					? tr("Fuchsia and blue are the original crust; green previews the welded younger margins; yellow is the optional consumed trench; aqua is the suture; orange is the orogenic belt. Plate retirement time-slices inherited crustal features onto the receiving Plate ID without rewriting older .rot history.")
+					: message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::show_post_collision_rift_window()
+{
+	update_post_collision_rift_palette();
+	d_post_collision_rift_dialog_ptr->show();
+	d_post_collision_rift_dialog_ptr->raise();
+	d_post_collision_rift_dialog_ptr->activateWindow();
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_post_collision_rift_select_host()
+{
+	const GPlatesViewOperations::PostCollisionRiftOperation::Result result =
+			d_post_collision_rift_operation_ptr->arm_host_selection();
+	if (d_post_collision_rift_operation_ptr->selection_mode() ==
+			GPlatesViewOperations::PostCollisionRiftOperation::SELECTING_HOST_CONTINENT)
+	{
+		activate_choose_feature_tool(canvas_tool_workflows());
+	}
+	status_message(result.message);
+	update_post_collision_rift_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_post_collision_rift_select_suture()
+{
+	const GPlatesViewOperations::PostCollisionRiftOperation::Result result =
+			d_post_collision_rift_operation_ptr->arm_suture_selection();
+	status_message(result.message);
+	update_post_collision_rift_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_post_collision_rift_focus_changed(
+		GPlatesGui::FeatureFocus &)
+{
+	const GPlatesViewOperations::PostCollisionRiftOperation::Result result =
+			d_post_collision_rift_operation_ptr->capture_armed_selection();
+	if (result.outcome == GPlatesViewOperations::PostCollisionRiftOperation::OPERATION_CANCELLED)
+	{
+		return;
+	}
+	if (result.outcome == GPlatesViewOperations::PostCollisionRiftOperation::HOST_CAPTURED)
+	{
+		const int source = static_cast<int>(
+				d_post_collision_rift_operation_ptr->source_plate_id());
+		const int suggested = static_cast<int>(
+				d_post_collision_rift_operation_ptr->suggest_new_plate_id());
+		d_post_collision_rift_left_plate_spin_ptr->setValue(source);
+		d_post_collision_rift_right_plate_spin_ptr->setValue(suggested);
+		d_post_collision_rift_left_name_ptr->setText(
+				tr("Plate %1 Rerift Continent").arg(source));
+		d_post_collision_rift_right_name_ptr->setText(
+				tr("Plate %1 Rerift Continent").arg(suggested));
+	}
+	status_message(result.message);
+	update_post_collision_rift_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_post_collision_rift_preview()
+{
+	GPlatesViewOperations::PostCollisionRiftOperation::Options options;
+	options.suture_offset_km = d_post_collision_rift_offset_spin_ptr->value();
+	options.wiggle = d_post_collision_rift_wiggle_spin_ptr->value() / 100.0;
+	options.maximum_segment_length_km = d_post_collision_rift_segment_spin_ptr->value();
+	options.end_extension_km = d_post_collision_rift_extension_spin_ptr->value();
+	options.side = d_post_collision_rift_side_combo_ptr->currentIndex() == 0 ? 1 : -1;
+	options.random_seed = static_cast<unsigned int>(d_post_collision_rift_seed_spin_ptr->value());
+	const GPlatesViewOperations::PostCollisionRiftOperation::Result result =
+			d_post_collision_rift_operation_ptr->preview(options);
+	status_message(result.message);
+	update_post_collision_rift_palette(result.message);
+	if (result.outcome == GPlatesViewOperations::PostCollisionRiftOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Post-Collision Rerift Preview"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_post_collision_rift_commit()
+{
+	const GPlatesViewOperations::PostCollisionRiftOperation::Result result =
+			d_post_collision_rift_operation_ptr->commit(
+				d_post_collision_rift_left_name_ptr->text(),
+				static_cast<GPlatesModel::integer_plate_id_type>(
+						d_post_collision_rift_left_plate_spin_ptr->value()),
+				d_post_collision_rift_right_name_ptr->text(),
+				static_cast<GPlatesModel::integer_plate_id_type>(
+						d_post_collision_rift_right_plate_spin_ptr->value()));
+	status_message(result.message);
+	if (result.outcome == GPlatesViewOperations::PostCollisionRiftOperation::RERIFT_COMMITTED)
+	{
+		d_post_collision_rift_operation_ptr->reset();
+		QMessageBox::information(this, tr("Post-Collision Rerift Committed"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::PostCollisionRiftOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Commit Post-Collision Rerift"), result.message);
+	}
+	update_post_collision_rift_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_post_collision_rift_controls_changed()
+{
+	d_post_collision_rift_operation_ptr->clear_preview();
+	update_post_collision_rift_palette(
+			tr("Controls changed; preview a new craton-safe route before committing."));
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::update_post_collision_rift_palette(
+		const QString &message)
+{
+	if (!d_post_collision_rift_preview_button_ptr || !d_post_collision_rift_commit_button_ptr)
+	{
+		return;
+	}
+	const GPlatesViewOperations::PostCollisionRiftOperation::SelectionMode mode =
+			d_post_collision_rift_operation_ptr->selection_mode();
+	d_post_collision_rift_select_host_button_ptr->setChecked(
+			mode == GPlatesViewOperations::PostCollisionRiftOperation::SELECTING_HOST_CONTINENT);
+	d_post_collision_rift_select_suture_button_ptr->setChecked(
+			mode == GPlatesViewOperations::PostCollisionRiftOperation::SELECTING_SUTURE);
+	d_post_collision_rift_host_status_label_ptr->setText(
+			d_post_collision_rift_operation_ptr->host_status());
+	d_post_collision_rift_suture_status_label_ptr->setText(
+			d_post_collision_rift_operation_ptr->suture_status());
+	d_post_collision_rift_preview_button_ptr->setEnabled(
+			d_post_collision_rift_operation_ptr->has_host() &&
+			d_post_collision_rift_operation_ptr->has_suture());
+	d_post_collision_rift_commit_button_ptr->setEnabled(
+			d_post_collision_rift_operation_ptr->has_preview());
+	d_post_collision_rift_instruction_label_ptr->setText(
+			message.isEmpty()
+					? tr("Blue is the inherited suture; yellow is the proposed rerift/MOR; aqua and orange are the two child sides. One child must retain the source Plate ID. Alternate seeds and small offset increases are tried automatically to avoid cratons.")
+					: message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::show_mantle_events_window()
+{
+	update_mantle_events_palette();
+	d_mantle_events_dialog_ptr->show();
+	d_mantle_events_dialog_ptr->raise();
+	d_mantle_events_dialog_ptr->activateWindow();
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_mantle_events_select_continent()
+{
+	const GPlatesViewOperations::GenerateMantleEventsOperation::Result result =
+			d_generate_mantle_events_operation_ptr->arm_continent_selection();
+	if (d_generate_mantle_events_operation_ptr->selection_mode() ==
+			GPlatesViewOperations::GenerateMantleEventsOperation::SELECTING_CONTINENT)
+	{
+		activate_choose_feature_tool(canvas_tool_workflows());
+	}
+	status_message(result.message);
+	update_mantle_events_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_mantle_events_select_rift()
+{
+	const GPlatesViewOperations::GenerateMantleEventsOperation::Result result =
+			d_generate_mantle_events_operation_ptr->arm_rift_selection();
+	status_message(result.message);
+	update_mantle_events_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_mantle_events_clear_rift()
+{
+	d_generate_mantle_events_operation_ptr->clear_rift();
+	const QString message = tr("Rift trigger cleared; choose Random placement or select another rift.");
+	status_message(message);
+	update_mantle_events_palette(message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_mantle_events_focus_changed(
+		GPlatesGui::FeatureFocus &)
+{
+	const GPlatesViewOperations::GenerateMantleEventsOperation::Result result =
+			d_generate_mantle_events_operation_ptr->capture_armed_selection();
+	if (result.outcome == GPlatesViewOperations::GenerateMantleEventsOperation::OPERATION_CANCELLED)
+	{
+		return;
+	}
+	status_message(result.message);
+	update_mantle_events_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_mantle_events_preview()
+{
+	GPlatesViewOperations::GenerateMantleEventsOperation::Options options;
+	options.rift_triggered = d_mantle_events_placement_combo_ptr->currentIndex() == 0;
+	options.lip_diameter_km = d_mantle_events_diameter_spin_ptr->value();
+	options.lip_irregularity = d_mantle_events_irregularity_spin_ptr->value() / 100.0;
+	options.maximum_segment_length_km = d_mantle_events_segment_spin_ptr->value();
+	options.random_seed = static_cast<unsigned int>(d_mantle_events_seed_spin_ptr->value());
+	options.active_lip_duration_ma = d_mantle_events_active_duration_spin_ptr->value();
+	options.create_hotspot = d_mantle_events_create_hotspot_check_ptr->isChecked();
+	options.hotspot_lifetime_ma = d_mantle_events_hotspot_lifetime_spin_ptr->value();
+	options.trail_step_ma = d_mantle_events_trail_step_spin_ptr->value();
+	options.mantle_plate_id = static_cast<GPlatesModel::integer_plate_id_type>(
+			d_mantle_events_mantle_plate_spin_ptr->value());
+	const GPlatesViewOperations::GenerateMantleEventsOperation::Result result =
+			d_generate_mantle_events_operation_ptr->preview(options);
+	status_message(result.message);
+	update_mantle_events_palette(result.message);
+	if (result.outcome == GPlatesViewOperations::GenerateMantleEventsOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("LIP and Hotspot Preview"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_mantle_events_commit()
+{
+	const GPlatesViewOperations::GenerateMantleEventsOperation::Result result =
+			d_generate_mantle_events_operation_ptr->commit();
+	status_message(result.message);
+	if (result.outcome == GPlatesViewOperations::GenerateMantleEventsOperation::EVENTS_COMMITTED)
+	{
+		d_generate_mantle_events_operation_ptr->reset();
+		QMessageBox::information(this, tr("LIP and Hotspot Event Committed"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::GenerateMantleEventsOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Commit LIP and Hotspot Event"), result.message);
+	}
+	update_mantle_events_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_mantle_events_controls_changed()
+{
+	d_generate_mantle_events_operation_ptr->clear_preview();
+	update_mantle_events_palette(
+			tr("Controls changed; preview the revised mantle event before committing."));
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::update_mantle_events_palette(
+		const QString &message)
+{
+	if (!d_mantle_events_preview_button_ptr || !d_mantle_events_commit_button_ptr)
+	{
+		return;
+	}
+	const GPlatesViewOperations::GenerateMantleEventsOperation::SelectionMode mode =
+			d_generate_mantle_events_operation_ptr->selection_mode();
+	d_mantle_events_select_continent_button_ptr->setChecked(
+			mode == GPlatesViewOperations::GenerateMantleEventsOperation::SELECTING_CONTINENT);
+	d_mantle_events_select_rift_button_ptr->setChecked(
+			mode == GPlatesViewOperations::GenerateMantleEventsOperation::SELECTING_RIFT);
+	d_mantle_events_continent_status_label_ptr->setText(
+			d_generate_mantle_events_operation_ptr->continent_status());
+	d_mantle_events_rift_status_label_ptr->setText(
+			d_generate_mantle_events_operation_ptr->rift_status());
+	d_mantle_events_clear_rift_button_ptr->setEnabled(
+			d_generate_mantle_events_operation_ptr->has_rift());
+	const bool rift_required = d_mantle_events_placement_combo_ptr->currentIndex() == 0;
+	d_mantle_events_preview_button_ptr->setEnabled(
+			d_generate_mantle_events_operation_ptr->has_continent() &&
+			(!rift_required || d_generate_mantle_events_operation_ptr->has_rift()));
+	d_mantle_events_commit_button_ptr->setEnabled(
+			d_generate_mantle_events_operation_ptr->has_preview());
+	const bool create_hotspot = d_mantle_events_create_hotspot_check_ptr->isChecked();
+	d_mantle_events_hotspot_lifetime_spin_ptr->setEnabled(create_hotspot);
+	d_mantle_events_trail_step_spin_ptr->setEnabled(create_hotspot);
+	d_mantle_events_mantle_plate_spin_ptr->setEnabled(create_hotspot);
+	d_mantle_events_instruction_label_ptr->setText(
+			message.isEmpty()
+					? tr("Magenta is the contained LIP footprint, aqua is the mantle-fixed hotspot seed, orange is the optional rift trigger, and white is the selected host crust. Oversized proposals shrink visibly and report their effective diameter.")
+					: message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::apply_artifexia_preset()
+{
+	const ArtifexiaPresetResult result = apply_artifexia_presentation(*this);
+
+	const QString message = tr(
+			"Feature-type lists now show Artifexia's %1 types. Its saved draw styles were applied to %2 matching loaded/generated layer(s)%3.")
+			.arg(result.feature_type_count)
+			.arg(result.matching_layer_count)
+			.arg(result.unavailable_style_count
+					? tr("; %1 style(s) were unavailable").arg(result.unavailable_style_count)
+					: QString());
+	status_message(message);
+	QMessageBox::information(this, tr("Artifexia Project Preset"), message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_create_triple_junction_crust()
+{
+	const GPlatesViewOperations::CreateTripleJunctionCrustOperation::Result result =
+			d_create_triple_junction_crust_operation_ptr->trigger(this);
+	status_message(result.message);
+	if (result.outcome == GPlatesViewOperations::CreateTripleJunctionCrustOperation::SELECTION_REQUIRED)
+	{
+		activate_choose_feature_tool(canvas_tool_workflows());
+		QMessageBox::information(this, tr("Shift-Click Three Half-Stage MORs"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::CreateTripleJunctionCrustOperation::OPERATION_COMPLETED)
+	{
+		QMessageBox::information(this, tr("RRR Triple-Junction Crust Generated"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::CreateTripleJunctionCrustOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Generate RRR Triple-Junction Crust"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_create_pacific_plate()
+{
+	const GPlatesViewOperations::CreatePacificPlateOperation::Result result =
+			d_create_pacific_plate_operation_ptr->trigger(this);
+	status_message(result.message);
+	if (result.outcome == GPlatesViewOperations::CreatePacificPlateOperation::SELECTION_REQUIRED)
+	{
+		activate_choose_feature_tool(canvas_tool_workflows());
+		QMessageBox::information(this, tr("Select MORs and Local Void"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::CreatePacificPlateOperation::OPERATION_COMPLETED)
+	{
+		QMessageBox follow_up(
+				QMessageBox::Information,
+				tr("Pacific-Style Plate Created"),
+				result.message,
+				QMessageBox::NoButton,
+				this);
+		QPushButton *open_rotation_editor = follow_up.addButton(
+				tr("Open Rotation File Editor"), QMessageBox::ActionRole);
+		follow_up.addButton(QMessageBox::Close);
+		follow_up.exec();
+		if (follow_up.clickedButton() == open_rotation_editor)
+		{
+			handle_rotation_file_editor();
+		}
+	}
+	else if (result.outcome == GPlatesViewOperations::CreatePacificPlateOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Create Pacific-Style Plate"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::show_boolean_polygons_window()
+{
+	update_boolean_palette();
+	d_boolean_polygon_dialog_ptr->show();
+	d_boolean_polygon_dialog_ptr->raise();
+	d_boolean_polygon_dialog_ptr->activateWindow();
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_boolean_select_first()
+{
+	const GPlatesViewOperations::BooleanPolygonOperation::Result result =
+			d_boolean_polygon_operation_ptr->arm_first_selection();
+	status_message(result.message);
+	update_boolean_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_boolean_select_operand()
+{
+	const GPlatesViewOperations::BooleanPolygonOperation::Result result =
+			d_boolean_polygon_operation_ptr->arm_operand_selection();
+	status_message(result.message);
+	update_boolean_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_boolean_remove_operand()
+{
+	d_boolean_polygon_operation_ptr->remove_last_operand();
+	const QString message = tr("Removed the most recently selected operand; preview invalidated.");
+	status_message(message);
+	update_boolean_palette(message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_boolean_clear_operands()
+{
+	d_boolean_polygon_operation_ptr->clear_operands();
+	const QString message = tr("Operand selection cleared; the first polygon is unchanged.");
+	status_message(message);
+	update_boolean_palette(message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_boolean_preview()
+{
+	GPlatesViewOperations::SubductionCutterGeometry::BooleanOperation operation =
+			GPlatesViewOperations::SubductionCutterGeometry::POLYGON_UNION;
+	switch (d_boolean_operation_combo_ptr->currentIndex())
+	{
+	case 1:
+		operation = GPlatesViewOperations::SubductionCutterGeometry::POLYGON_DIFFERENCE;
+		break;
+	case 2:
+		operation = GPlatesViewOperations::SubductionCutterGeometry::POLYGON_INTERSECTION;
+		break;
+	case 3:
+		operation = GPlatesViewOperations::SubductionCutterGeometry::POLYGON_SYMMETRIC_DIFFERENCE;
+		break;
+	default:
+		break;
+	}
+	const GPlatesViewOperations::BooleanPolygonOperation::Result result =
+			d_boolean_polygon_operation_ptr->preview(operation);
+	status_message(result.message);
+	update_boolean_palette(result.message);
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_boolean_focus_changed(
+		GPlatesGui::FeatureFocus &)
+{
+	if (d_boolean_polygon_operation_ptr->selection_mode() ==
+			GPlatesViewOperations::BooleanPolygonOperation::NOT_SELECTING)
+	{
+		return;
+	}
+	const GPlatesViewOperations::BooleanPolygonOperation::Result result =
+			d_boolean_polygon_operation_ptr->capture_armed_selection();
+	if (!result.message.isEmpty())
+	{
+		status_message(result.message);
+		update_boolean_palette(result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_boolean_apply()
+{
+	GPlatesViewOperations::SubductionCutterGeometry::BooleanOperation operation =
+			GPlatesViewOperations::SubductionCutterGeometry::POLYGON_UNION;
+	switch (d_boolean_operation_combo_ptr->currentIndex())
+	{
+	case 1:
+		operation = GPlatesViewOperations::SubductionCutterGeometry::POLYGON_DIFFERENCE;
+		break;
+	case 2:
+		operation = GPlatesViewOperations::SubductionCutterGeometry::POLYGON_INTERSECTION;
+		break;
+	case 3:
+		operation = GPlatesViewOperations::SubductionCutterGeometry::POLYGON_SYMMETRIC_DIFFERENCE;
+		break;
+	default:
+		break;
+	}
+
+	const GPlatesViewOperations::BooleanPolygonOperation::Result result =
+			d_boolean_polygon_operation_ptr->apply(operation);
+	status_message(result.message);
+	update_boolean_palette(result.message);
+	if (result.outcome == GPlatesViewOperations::BooleanPolygonOperation::BOOLEAN_COMPLETED)
+	{
+		d_boolean_polygon_dialog_ptr->hide();
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_boolean_cancel()
+{
+	d_boolean_polygon_operation_ptr->reset();
+	d_boolean_polygon_dialog_ptr->hide();
+	update_boolean_palette(tr("Boolean Polygons cancelled; no data changed."));
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::update_boolean_palette(
+		const QString &message)
+{
+	const GPlatesViewOperations::BooleanPolygonOperation::SelectionMode mode =
+			d_boolean_polygon_operation_ptr->selection_mode();
+	{
+		const QSignalBlocker blocker(d_boolean_select_first_button_ptr);
+		d_boolean_select_first_button_ptr->setChecked(
+				mode == GPlatesViewOperations::BooleanPolygonOperation::SELECTING_FIRST);
+	}
+	{
+		const QSignalBlocker blocker(d_boolean_select_operand_button_ptr);
+		d_boolean_select_operand_button_ptr->setChecked(
+				mode == GPlatesViewOperations::BooleanPolygonOperation::SELECTING_OPERAND);
+	}
+
+	d_boolean_first_status_label_ptr->setText(
+			d_boolean_polygon_operation_ptr->first_status());
+	d_boolean_operands_status_label_ptr->setText(
+			d_boolean_polygon_operation_ptr->operands_status());
+	d_boolean_select_operand_button_ptr->setEnabled(
+			d_boolean_polygon_operation_ptr->has_first());
+	d_boolean_clear_operands_button_ptr->setEnabled(
+			d_boolean_polygon_operation_ptr->operand_count() > 0);
+	d_boolean_remove_operand_button_ptr->setEnabled(
+			d_boolean_polygon_operation_ptr->operand_count() > 0);
+	d_boolean_preview_button_ptr->setEnabled(
+			d_boolean_polygon_operation_ptr->has_first() &&
+			d_boolean_polygon_operation_ptr->operand_count() > 0);
+	d_boolean_apply_button_ptr->setEnabled(
+			d_boolean_polygon_operation_ptr->preview_ready());
+	d_boolean_instruction_label_ptr->setText(message.isEmpty()
+			? tr("Select the first polygon, add one or more operands, choose the operation, and review the green non-destructive preview. Apply and Finish becomes available only for that reviewed result.")
+			: message);
+}
+
+
+void
 GPlatesQtWidgets::ViewportWindow::handle_split_plate()
 {
 	const GPlatesViewOperations::SplitPlateOperation::Result result =
@@ -2443,11 +6593,11 @@ GPlatesQtWidgets::ViewportWindow::handle_subduction_cutter()
 
 	if (result.outcome == GPlatesViewOperations::SubductionCutterOperation::OPERATION_ERROR)
 	{
-		QMessageBox::warning(this, tr("Subduction Cutter"), result.message);
+		QMessageBox::warning(this, tr("Retire Subducted Oceanic Crust"), result.message);
 	}
 	else if (result.outcome == GPlatesViewOperations::SubductionCutterOperation::CUT_COMPLETED)
 	{
-		QMessageBox::information(this, tr("Subduction Cutter Complete"), result.message);
+		QMessageBox::information(this, tr("Oceanic-Crust Retirement Complete"), result.message);
 	}
 }
 

@@ -101,6 +101,12 @@ set(srcs
     ProjectMetadata.h
     PropertyExtractors.cc
     PropertyExtractors.h
+    ProjectTimestampSchedule.cc
+    ProjectTimestampSchedule.h
+    WorldbuildingExportProfile.cc
+    WorldbuildingExportProfile.h
+    WorldbuildingProjectManifest.cc
+    WorldbuildingProjectManifest.h
     RasterLayerParams.cc
     RasterLayerParams.h
     RasterLayerProxy.cc

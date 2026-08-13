@@ -561,7 +561,7 @@ GPlatesQtWidgets::CreateFeatureDialog::CreateFeatureDialog(
 	d_relative_plate_id_widget(new EditPlateIdWidget(this)),
 	d_left_plate_id(new EditPlateIdWidget(this)),
 	d_right_plate_id(new EditPlateIdWidget(this)),
-	d_time_period_widget(new EditTimePeriodWidget(this)),
+	d_time_period_widget(new EditTimePeriodWidget(this, &view_state_.get_application_state())),
 	d_name_widget(new EditStringWidget(this)),
 	d_create_conjugate_feature_checkbox(new QCheckBox(this)),
 	d_choose_feature_type_widget(

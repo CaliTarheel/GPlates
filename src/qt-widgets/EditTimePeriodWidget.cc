@@ -27,6 +27,8 @@
 
 #include "EditTimePeriodWidget.h"
 
+#include "app-logic/ApplicationState.h"
+#include "app-logic/UserPreferences.h"
 #include "property-values/GmlTimePeriod.h"
 #include "property-values/GmlTimeInstant.h"
 #include "model/ModelUtils.h"
@@ -99,8 +101,16 @@ const QString GPlatesQtWidgets::EditTimePeriodWidget::s_help_dialog_title = QObj
 
 
 GPlatesQtWidgets::EditTimePeriodWidget::EditTimePeriodWidget(
-		QWidget *parent_):
+		QWidget *parent_) :
+	EditTimePeriodWidget(parent_, NULL)
+{  }
+
+
+GPlatesQtWidgets::EditTimePeriodWidget::EditTimePeriodWidget(
+		QWidget *parent_,
+		GPlatesAppLogic::ApplicationState *application_state_):
 	AbstractEditWidget(parent_),
+	d_application_state_ptr(application_state_),
 	d_help_dialog(new InformationDialog(s_help_dialog_text, s_help_dialog_title, this))
 {
 	setupUi(this);
@@ -149,8 +159,24 @@ GPlatesQtWidgets::EditTimePeriodWidget::reset_widget_to_default_values()
 	// manipulation was failing, since the spinbox was grabbing the keyboard.
 	// This widget is due for a redesign anyway.
 	spinbox_time_of_appearance->selectAll();
-	spinbox_time_of_appearance->setValue(0);
-	spinbox_time_of_disappearance->setValue(0);
+	double default_begin_time = 0.0;
+	double default_end_time = 0.0;
+	if (d_application_state_ptr)
+	{
+		const GPlatesAppLogic::UserPreferences &preferences =
+				d_application_state_ptr->get_user_preferences();
+		const double current_time = d_application_state_ptr->get_current_reconstruction_time();
+		if (preferences.get_value("feature_creation/default_begin_time_to_current").toBool())
+		{
+			default_begin_time = current_time;
+		}
+		if (preferences.get_value("feature_creation/default_end_time_to_current").toBool())
+		{
+			default_end_time = current_time;
+		}
+	}
+	spinbox_time_of_appearance->setValue(default_begin_time);
+	spinbox_time_of_disappearance->setValue(default_end_time);
 	spinbox_time_of_appearance->setDisabled(false);
 	spinbox_time_of_disappearance->setDisabled(false);
 	checkbox_appearance_is_distant_past->setChecked(false);
