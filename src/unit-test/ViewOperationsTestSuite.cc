@@ -28,6 +28,24 @@
 
 #include "unit-test/ViewOperationsTestSuite.h"
 #include "unit-test/TestSuiteFilter.h"
+#include "unit-test/AdvancePlateMotionGeometryTest.h"
+#include "unit-test/BoundarySectionGraphTest.h"
+#include "unit-test/BooleanPolygonGeometryTest.h"
+#include "unit-test/CollisionAccretionGuardrailsTest.h"
+#include "unit-test/CollisionGeometryTest.h"
+#include "unit-test/GeologyEventLedgerTest.h"
+#include "unit-test/PostCollisionRiftGeometryTest.h"
+#include "unit-test/MantleEventGeometryTest.h"
+#include "unit-test/InitialContinentGeometryTest.h"
+#include "unit-test/InitialRiftGeometryTest.h"
+#include "unit-test/InitialRotationFileTest.h"
+#include "unit-test/InitialSubductionGeometryTest.h"
+#include "unit-test/OceanCrustBandBuilderTest.h"
+#include "unit-test/PacificPlateGeometryTest.h"
+#include "unit-test/SubductionLifecyclePlannerTest.h"
+#include "unit-test/SubductionEffectsGeometryTest.h"
+#include "unit-test/TripleJunctionGeometryTest.h"
+#include "unit-test/WorldbuildingAuditReportTest.h"
 
 GPlatesUnitTest::ViewOperationsTestSuite::ViewOperationsTestSuite(
 		unsigned level) : 
@@ -40,7 +58,24 @@ GPlatesUnitTest::ViewOperationsTestSuite::ViewOperationsTestSuite(
 void 
 GPlatesUnitTest::ViewOperationsTestSuite::construct_maps()
 {
-	//ADD YOUR TEST SUITE HERE
+	ADD_TESTSUITE(AdvancePlateMotionGeometry);
+	ADD_TESTSUITE(BoundarySectionGraph);
+	ADD_TESTSUITE(BooleanPolygonGeometry);
+	ADD_TESTSUITE(CollisionAccretionGuardrails);
+	ADD_TESTSUITE(CollisionGeometry);
+	ADD_TESTSUITE(GeologyEventLedger);
+	ADD_TESTSUITE(PostCollisionRiftGeometry);
+	ADD_TESTSUITE(MantleEventGeometry);
+	ADD_TESTSUITE(InitialContinentGeometry);
+	ADD_TESTSUITE(InitialRiftGeometry);
+	ADD_TESTSUITE(InitialRotationFile);
+	ADD_TESTSUITE(InitialSubductionGeometry);
+	ADD_TESTSUITE(OceanCrustBandBuilder);
+	ADD_TESTSUITE(PacificPlateGeometry);
+	ADD_TESTSUITE(SubductionLifecyclePlanner);
+	ADD_TESTSUITE(SubductionEffectsGeometry);
+	ADD_TESTSUITE(TripleJunctionGeometry);
+	ADD_TESTSUITE(WorldbuildingAuditReport);
 }
 
 

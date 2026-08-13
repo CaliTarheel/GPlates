@@ -38,6 +38,7 @@
 #include "maths/PointOnSphere.h"
 
 #include "qt-widgets/FeaturePropertiesDialog.h"
+#include "qt-widgets/ViewportWindow.h"
 
 #include "view-operations/RenderedGeometryCollection.h"
 #include "view-operations/RenderedGeometryUtils.h"
@@ -70,7 +71,8 @@ GPlatesCanvasTools::ClickGeometry::ClickGeometry(
 void
 GPlatesCanvasTools::ClickGeometry::handle_activation()
 {
-	set_status_bar_message(QT_TR_NOOP("Click a geometry to choose a feature. Shift+click to query immediately."));
+	set_status_bar_message(QT_TR_NOOP(
+			"Click a geometry to choose it. Shift+click a half-stage MOR to queue it for ocean-crust generation; other Shift+clicks query immediately."));
 
 	// Only display focused feature when this tool is active.
 	d_rendered_geom_collection.get_main_rendered_layer(d_main_rendered_layer_type)->set_active();
@@ -89,6 +91,19 @@ void
 GPlatesCanvasTools::ClickGeometry::handle_left_click(
 		const GPlatesMaths::PointOnSphere &point_on_sphere,
 		bool is_on_earth,
+		double proximity_inclusion_threshold)
+{
+	if (d_view_state_ptr.try_capture_pacific_void_seed(point_on_sphere, is_on_earth))
+	{
+		return;
+	}
+	focus_clicked_geometry(point_on_sphere, proximity_inclusion_threshold);
+}
+
+
+void
+GPlatesCanvasTools::ClickGeometry::focus_clicked_geometry(
+		const GPlatesMaths::PointOnSphere &point_on_sphere,
 		double proximity_inclusion_threshold)
 {
 	d_clicked_geom_seq.clear();
@@ -115,10 +130,12 @@ GPlatesCanvasTools::ClickGeometry::handle_shift_left_click(
 		bool is_on_earth,
 		double proximity_inclusion_threshold)
 {
-	handle_left_click(
-			point_on_sphere,
-			is_on_earth,
-			proximity_inclusion_threshold);
+	focus_clicked_geometry(point_on_sphere, proximity_inclusion_threshold);
+
+	if (d_view_state_ptr.try_select_worldbuilding_mor())
+	{
+		return;
+	}
 
 	// If there is a feature focused, we'll assume that the user wants to look at it in detail.
 	if (d_feature_focus_ptr.is_valid())

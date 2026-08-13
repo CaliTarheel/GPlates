@@ -82,7 +82,7 @@ GPlatesQtWidgets::EditWidgetGroupBox::EditWidgetGroupBox(
 	d_edit_string_list_widget_ptr(new EditStringListWidget(this)),
 	d_edit_string_widget_ptr(new EditStringWidget(this)),
 	d_edit_time_instant_widget_ptr(new EditTimeInstantWidget(this)),
-	d_edit_time_period_widget_ptr(new EditTimePeriodWidget(this)),
+	d_edit_time_period_widget_ptr(new EditTimePeriodWidget(this, &view_state_.get_application_state())),
 	d_edit_time_sequence_widget_ptr(new EditTimeSequenceWidget(view_state_.get_application_state(), this)),
 	d_edit_verb(tr("Edit"))
 {

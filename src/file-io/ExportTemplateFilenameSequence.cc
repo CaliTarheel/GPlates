@@ -26,6 +26,7 @@
 
 #include <cmath>
 #include <ostream>
+#include <stdexcept>
 
 #include "ExportTemplateFilenameSequence.h"
 
@@ -43,6 +44,19 @@ GPlatesFileIO::ExportTemplateFilename::validate_filename_template(
 	ExportTemplateFilenameSequenceImpl::validate_filename_template(
 			filename_template,
 			check_filename_variation);
+}
+
+GPlatesFileIO::ExportTemplateFilenameSequence::ExportTemplateFilenameSequence(
+		const QString &filename_template,
+		const GPlatesModel::integer_plate_id_type &reconstruction_anchor_plate_id,
+		const QString &default_recon_tree_layer_name,
+		const std::vector<double> &reconstruction_times)
+{
+	if (reconstruction_times.empty())
+		throw std::invalid_argument("An explicit export timestamp sequence cannot be empty.");
+	d_impl.reset(new ExportTemplateFilenameSequenceImpl(
+			filename_template, reconstruction_anchor_plate_id,
+			default_recon_tree_layer_name, reconstruction_times));
 }
 
 

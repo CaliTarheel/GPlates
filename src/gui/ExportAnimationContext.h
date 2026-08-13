@@ -27,6 +27,7 @@
 #define GPLATES_GUI_EXPORTANIMATIONCONTEXT_H
 
 #include <map>
+#include <vector>
 
 #include <QDir>
 #include <QString>
@@ -158,6 +159,21 @@ namespace GPlatesGui
 				const GPlatesUtils::AnimationSequence::SequenceInfo &seq)
 		{
 			d_sequence_info = seq;
+			d_explicit_reconstruction_times.clear();
+		}
+
+		/**
+		 * Overrides the uniform frame calculation with an exact, non-uniform list.
+		 * The list order is the export order and must not be regularised.
+		 */
+		void
+		set_explicit_reconstruction_times(
+				const std::vector<double> &reconstruction_times);
+
+		const std::vector<double> &
+		get_explicit_reconstruction_times() const
+		{
+			return d_explicit_reconstruction_times;
 		}
 		                                
 
@@ -242,6 +258,9 @@ namespace GPlatesGui
 		 * because the Export Snapshot/Sequence dialogs were smushed together.
 		 */
 		GPlatesUtils::AnimationSequence::SequenceInfo d_sequence_info;
+
+		/** Exact frame times, empty for the existing single/uniform export modes. */
+		std::vector<double> d_explicit_reconstruction_times;
 		
 		/**
 		 * View State pointer, which needs to be accessible to the various

@@ -53,6 +53,16 @@
 #include "model/FeatureHandle.h"
 
 
+class QLabel;
+class QPushButton;
+class QDialog;
+class QCheckBox;
+class QComboBox;
+class QDoubleSpinBox;
+class QLineEdit;
+class QSpinBox;
+
+
 namespace GPlatesAppLogic
 {
 	class ApplicationState;
@@ -99,10 +109,25 @@ namespace GPlatesPresentation
 
 namespace GPlatesViewOperations
 {
+	class AdvancePlateMotionOperation;
+	class BooleanPolygonOperation;
 	class CloneOperation;
+	class CollisionOrogenyOperation;
+	class CreateInitialContinentOperation;
+	class CreateInitialRotationFileOperation;
+	class CreateOceanCrustOperation;
+	class CreatePacificPlateOperation;
+	class CreateTripleJunctionCrustOperation;
+	class CratonPlateIdLabels;
 	class DeleteFeatureOperation;
+	class GenerateInitialSubductionOperation;
+	class GenerateMantleEventsOperation;
+	class GenerateSubductionEffectsOperation;
+	class MakeRiftOperation;
 	class PlateDirectionArrowsOperation;
 	class PlateIdReassignmentOperation;
+	class ProposeInitialRiftsOperation;
+	class PostCollisionRiftOperation;
 	class RotationFileEditorOperation;
 	class SplitPlateOperation;
 	class SubductionCutterOperation;
@@ -174,6 +199,20 @@ namespace GPlatesQtWidgets
 		//! Returns the view state.
 		GPlatesPresentation::ViewState &
 		get_view_state();
+
+		/**
+		 * Gives the Worldbuilding Pasta MOR selection first refusal on a
+		 * Shift-click. Returns false so other Shift-click behaviour can continue
+		 * when the focused feature is not a supported half-stage MOR.
+		 */
+		bool
+		try_select_worldbuilding_mor();
+
+		/** Gives an armed Pacific-plate seed capture first refusal on an ordinary click. */
+		bool
+		try_capture_pacific_void_seed(
+				const GPlatesMaths::PointOnSphere &point_on_sphere,
+				bool is_on_earth);
 
 		ReconstructionViewWidget &
 		reconstruction_view_widget();
@@ -527,6 +566,205 @@ namespace GPlatesQtWidgets
 		pop_up_python_console();
 
 		void
+		handle_create_initial_continent();
+
+		void
+		show_boolean_polygons_window();
+
+		void
+		handle_boolean_select_first();
+
+		void
+		handle_boolean_select_operand();
+
+		void
+		handle_boolean_remove_operand();
+
+		void
+		handle_boolean_clear_operands();
+
+		void
+		handle_boolean_focus_changed(
+				GPlatesGui::FeatureFocus &feature_focus);
+
+		void
+		handle_boolean_preview();
+
+		void
+		handle_boolean_apply();
+
+		void
+		handle_boolean_cancel();
+
+		void
+		update_boolean_palette(
+				const QString &message = QString());
+
+		void
+		handle_propose_initial_rifts();
+
+		void
+		show_make_rift_window();
+
+		void
+		handle_make_rift_select_continent();
+
+		void
+		handle_make_rift_select_rift();
+
+		void
+		handle_make_rift_focus_changed(
+				GPlatesGui::FeatureFocus &feature_focus);
+
+		void
+		handle_make_rift();
+
+		void
+		show_initial_subduction_window();
+
+		void
+		handle_initial_subduction_select_continent();
+
+		void
+		handle_initial_subduction_select_mor();
+
+		void
+		handle_initial_subduction_cancel_selection();
+
+		void
+		handle_initial_subduction_focus_changed(
+				GPlatesGui::FeatureFocus &feature_focus);
+
+		void
+		handle_generate_initial_subduction();
+
+		void
+		show_subduction_effects_window();
+
+		void
+		handle_subduction_effects_select_subduction();
+
+		void
+		handle_subduction_effects_select_continent();
+
+		void
+		handle_subduction_effects_clear_continent();
+
+		void
+		handle_subduction_effects_focus_changed(
+				GPlatesGui::FeatureFocus &feature_focus);
+
+		void
+		handle_subduction_effects_preview();
+
+		void
+		handle_subduction_effects_commit();
+
+		void
+		handle_subduction_effects_controls_changed();
+
+		void
+		handle_subduction_effect_type_changed(
+				int index);
+
+		void
+		show_collision_orogeny_window();
+
+		void
+		handle_collision_select_incoming();
+
+		void
+		handle_collision_select_receiving();
+
+		void
+		handle_collision_select_trench();
+
+		void
+		handle_collision_clear_trench();
+
+		void
+		handle_collision_focus_changed(
+				GPlatesGui::FeatureFocus &feature_focus);
+
+		void
+		handle_collision_preview();
+
+		void
+		handle_collision_commit();
+
+		void
+		handle_collision_controls_changed();
+
+		void
+		handle_collision_type_changed(
+				int index);
+
+		void
+		show_post_collision_rift_window();
+
+		void
+		handle_post_collision_rift_select_host();
+
+		void
+		handle_post_collision_rift_select_suture();
+
+		void
+		handle_post_collision_rift_focus_changed(
+				GPlatesGui::FeatureFocus &feature_focus);
+
+		void
+		handle_post_collision_rift_preview();
+
+		void
+		handle_post_collision_rift_commit();
+
+		void
+		handle_post_collision_rift_controls_changed();
+
+		void
+		show_mantle_events_window();
+
+		void
+		handle_mantle_events_select_continent();
+
+		void
+		handle_mantle_events_select_rift();
+
+		void
+		handle_mantle_events_clear_rift();
+
+		void
+		handle_mantle_events_focus_changed(
+				GPlatesGui::FeatureFocus &feature_focus);
+
+		void
+		handle_mantle_events_preview();
+
+		void
+		handle_mantle_events_commit();
+
+		void
+		handle_mantle_events_controls_changed();
+
+		void
+		handle_advance_plate_motion();
+
+		void
+		handle_create_ocean_crust();
+
+		void
+		handle_create_triple_junction_crust();
+
+		void
+		handle_create_pacific_plate();
+
+		void
+		handle_create_initial_rotation_file();
+
+		void
+		apply_artifexia_preset();
+
+		void
 		handle_split_plate();
 
 		void
@@ -537,6 +775,30 @@ namespace GPlatesQtWidgets
 
 		void
 		open_dataset_webpage();
+
+		void
+		update_make_rift_palette(
+				const QString &message = QString());
+
+		void
+		update_post_collision_rift_palette(
+				const QString &message = QString());
+
+		void
+		update_mantle_events_palette(
+				const QString &message = QString());
+
+		void
+		update_initial_subduction_palette(
+				const QString &message = QString());
+
+		void
+		update_subduction_effects_palette(
+				const QString &message = QString());
+
+		void
+		update_collision_palette(
+				const QString &message = QString());
 		
 	private:
 
@@ -573,8 +835,53 @@ namespace GPlatesQtWidgets
 		//! For cloning a feature.
 		boost::scoped_ptr<GPlatesViewOperations::CloneOperation> d_clone_operation_ptr;
 
+		//! For persistent union, subtraction, intersection and symmetric difference of polygons.
+		boost::scoped_ptr<GPlatesViewOperations::BooleanPolygonOperation> d_boolean_polygon_operation_ptr;
+
+		//! For reviewing continent collisions, sutures and collisional orogenies.
+		boost::scoped_ptr<GPlatesViewOperations::CollisionOrogenyOperation> d_collision_orogeny_operation_ptr;
+
+		//! For rerifting a welded assemblage near an inherited suture.
+		boost::scoped_ptr<GPlatesViewOperations::PostCollisionRiftOperation> d_post_collision_rift_operation_ptr;
+
+		//! For reviewable LIP, hotspot and native MotionPath generation.
+		boost::scoped_ptr<GPlatesViewOperations::GenerateMantleEventsOperation> d_generate_mantle_events_operation_ptr;
+
 		//! For deleting a feature.
 		boost::scoped_ptr<GPlatesViewOperations::DeleteFeatureOperation> d_delete_feature_operation_ptr;
+
+		//! For generating a Worldbuilding Pasta initial continent and its cratons.
+		boost::scoped_ptr<GPlatesViewOperations::CreateInitialContinentOperation> d_create_initial_continent_operation_ptr;
+
+		//! For creating, validating, saving and loading the initial plate circuit.
+		boost::scoped_ptr<GPlatesViewOperations::CreateInitialRotationFileOperation> d_create_initial_rotation_file_operation_ptr;
+
+		//! For proposing the next younger rotation poles and turn-specific flowlines.
+		boost::scoped_ptr<GPlatesViewOperations::AdvancePlateMotionOperation> d_advance_plate_motion_operation_ptr;
+
+		//! For creating a separate editable ocean-crust age band from recorded plate motion.
+		boost::scoped_ptr<GPlatesViewOperations::CreateOceanCrustOperation> d_create_ocean_crust_operation_ptr;
+
+		//! RRR mode sharing the MOR selection and ocean-crust builder with the basic workflow.
+		boost::scoped_ptr<GPlatesViewOperations::CreateTripleJunctionCrustOperation> d_create_triple_junction_crust_operation_ptr;
+
+		//! Local seeded plate-birth mode sharing the MOR selection and geometry services.
+		boost::scoped_ptr<GPlatesViewOperations::CreatePacificPlateOperation> d_create_pacific_plate_operation_ptr;
+
+		//! For proposing, reviewing and committing an initial rift system.
+		boost::scoped_ptr<GPlatesViewOperations::ProposeInitialRiftsOperation> d_propose_initial_rifts_operation_ptr;
+
+		//! For persistently selecting a continent and arbitrary rift polyline, then cutting it.
+		boost::scoped_ptr<GPlatesViewOperations::MakeRiftOperation> d_make_rift_operation_ptr;
+
+		//! For deriving a broad opposite-margin trench from a rifted continent and half-stage MOR.
+		boost::scoped_ptr<GPlatesViewOperations::GenerateInitialSubductionOperation> d_generate_initial_subduction_operation_ptr;
+
+		//! For reviewing and committing island arcs and active-margin mountain belts.
+		boost::scoped_ptr<GPlatesViewOperations::GenerateSubductionEffectsOperation> d_generate_subduction_effects_operation_ptr;
+
+		//! Automatically displays each visible Craton feature's reconstruction plate ID.
+		boost::scoped_ptr<GPlatesViewOperations::CratonPlateIdLabels> d_craton_plate_id_labels_ptr;
 
 		//! For splitting a polygon feature with a selected polyline.
 		boost::scoped_ptr<GPlatesViewOperations::SplitPlateOperation> d_split_plate_operation_ptr;
@@ -658,6 +965,134 @@ namespace GPlatesQtWidgets
 
 		//! Associated Markdown documents, editor/preview and project metadata status.
 		QPointer<ProjectDocumentsDockWidget> d_project_documents_dock_ptr;
+
+		//! Floating palette for procedural worldbuilding operations.
+		QPointer<QDockWidget> d_worldbuilding_pasta_dock_ptr;
+
+		//! Persistent modeless polygon Boolean workflow.
+		QPointer<QDialog> d_boolean_polygon_dialog_ptr;
+		QPointer<QPushButton> d_boolean_select_first_button_ptr;
+		QPointer<QPushButton> d_boolean_select_operand_button_ptr;
+		QPointer<QPushButton> d_boolean_remove_operand_button_ptr;
+		QPointer<QPushButton> d_boolean_clear_operands_button_ptr;
+		QPointer<QPushButton> d_boolean_preview_button_ptr;
+		QPointer<QPushButton> d_boolean_apply_button_ptr;
+		QPointer<QPushButton> d_boolean_cancel_button_ptr;
+		QPointer<QLabel> d_boolean_first_status_label_ptr;
+		QPointer<QLabel> d_boolean_operands_status_label_ptr;
+		QPointer<QLabel> d_boolean_instruction_label_ptr;
+		QPointer<QComboBox> d_boolean_operation_combo_ptr;
+
+		//! Persistent modeless workflow window launched by the palette's Make Rift button.
+		QPointer<QDialog> d_make_rift_dialog_ptr;
+		QPointer<QPushButton> d_make_rift_select_continent_button_ptr;
+		QPointer<QPushButton> d_make_rift_select_rift_button_ptr;
+		QPointer<QPushButton> d_make_rift_cut_button_ptr;
+		QPointer<QLabel> d_make_rift_continent_status_label_ptr;
+		QPointer<QLabel> d_make_rift_rift_status_label_ptr;
+		QPointer<QLabel> d_make_rift_instruction_label_ptr;
+
+		//! Persistent modeless workflow window for the first active-margin step.
+		QPointer<QDialog> d_initial_subduction_dialog_ptr;
+		QPointer<QPushButton> d_initial_subduction_select_continent_button_ptr;
+		QPointer<QPushButton> d_initial_subduction_select_mor_button_ptr;
+		QPointer<QPushButton> d_initial_subduction_generate_button_ptr;
+		QPointer<QLabel> d_initial_subduction_continent_status_label_ptr;
+		QPointer<QLabel> d_initial_subduction_mor_status_label_ptr;
+		QPointer<QLabel> d_initial_subduction_instruction_label_ptr;
+
+		//! Persistent review window for subduction-driven island arcs and mountain belts.
+		QPointer<QDialog> d_subduction_effects_dialog_ptr;
+		QPointer<QPushButton> d_subduction_effects_select_subduction_button_ptr;
+		QPointer<QPushButton> d_subduction_effects_select_continent_button_ptr;
+		QPointer<QPushButton> d_subduction_effects_clear_continent_button_ptr;
+		QPointer<QPushButton> d_subduction_effects_preview_button_ptr;
+		QPointer<QPushButton> d_subduction_effects_commit_button_ptr;
+		QPointer<QLabel> d_subduction_effects_subduction_status_label_ptr;
+		QPointer<QLabel> d_subduction_effects_continent_status_label_ptr;
+		QPointer<QLabel> d_subduction_effects_instruction_label_ptr;
+		QPointer<QComboBox> d_subduction_effect_type_combo_ptr;
+		QPointer<QComboBox> d_subduction_lifecycle_combo_ptr;
+		QPointer<QSpinBox> d_subduction_subducting_plate_spin_ptr;
+		QPointer<QDoubleSpinBox> d_subduction_migration_offset_spin_ptr;
+		QPointer<QDoubleSpinBox> d_subduction_lifecycle_duration_spin_ptr;
+		QPointer<QCheckBox> d_subduction_isolates_fragment_check_ptr;
+		QPointer<QCheckBox> d_subduction_effects_flip_polarity_check_ptr;
+		QPointer<QCheckBox> d_subduction_effects_early_arc_check_ptr;
+		QPointer<QDoubleSpinBox> d_subduction_effects_arc_delay_spin_ptr;
+		QPointer<QDoubleSpinBox> d_subduction_effects_trim_start_spin_ptr;
+		QPointer<QDoubleSpinBox> d_subduction_effects_trim_end_spin_ptr;
+		QPointer<QDoubleSpinBox> d_subduction_effects_offset_spin_ptr;
+		QPointer<QDoubleSpinBox> d_subduction_effects_irregularity_spin_ptr;
+		QPointer<QDoubleSpinBox> d_subduction_effects_belt_width_spin_ptr;
+
+		//! Persistent review window for continental collision and collisional orogeny.
+		QPointer<QDialog> d_collision_dialog_ptr;
+		QPointer<QPushButton> d_collision_select_incoming_button_ptr;
+		QPointer<QPushButton> d_collision_select_receiving_button_ptr;
+		QPointer<QPushButton> d_collision_select_trench_button_ptr;
+		QPointer<QPushButton> d_collision_clear_trench_button_ptr;
+		QPointer<QPushButton> d_collision_preview_button_ptr;
+		QPointer<QPushButton> d_collision_commit_button_ptr;
+		QPointer<QLabel> d_collision_incoming_status_label_ptr;
+		QPointer<QLabel> d_collision_receiving_status_label_ptr;
+		QPointer<QLabel> d_collision_trench_status_label_ptr;
+		QPointer<QLabel> d_collision_instruction_label_ptr;
+		QPointer<QComboBox> d_collision_type_combo_ptr;
+		QPointer<QSpinBox> d_collision_precursor_spin_ptr;
+		QPointer<QDoubleSpinBox> d_collision_contact_threshold_spin_ptr;
+		QPointer<QCheckBox> d_collision_auto_width_check_ptr;
+		QPointer<QDoubleSpinBox> d_collision_belt_width_spin_ptr;
+		QPointer<QSpinBox> d_collision_smoothing_spin_ptr;
+		QPointer<QDoubleSpinBox> d_collision_irregularity_spin_ptr;
+		QPointer<QDoubleSpinBox> d_collision_active_duration_spin_ptr;
+		QPointer<QDoubleSpinBox> d_collision_old_age_spin_ptr;
+		QPointer<QCheckBox> d_collision_terminate_trench_check_ptr;
+		QPointer<QCheckBox> d_collision_allow_nonconvergent_check_ptr;
+		QPointer<QCheckBox> d_collision_deform_margins_check_ptr;
+		QPointer<QDoubleSpinBox> d_collision_deformation_reach_spin_ptr;
+		QPointer<QCheckBox> d_collision_retire_incoming_check_ptr;
+
+		//! Persistent post-collision suture-reactivation and rerifting review.
+		QPointer<QDialog> d_post_collision_rift_dialog_ptr;
+		QPointer<QPushButton> d_post_collision_rift_select_host_button_ptr;
+		QPointer<QPushButton> d_post_collision_rift_select_suture_button_ptr;
+		QPointer<QPushButton> d_post_collision_rift_preview_button_ptr;
+		QPointer<QPushButton> d_post_collision_rift_commit_button_ptr;
+		QPointer<QLabel> d_post_collision_rift_host_status_label_ptr;
+		QPointer<QLabel> d_post_collision_rift_suture_status_label_ptr;
+		QPointer<QLabel> d_post_collision_rift_instruction_label_ptr;
+		QPointer<QDoubleSpinBox> d_post_collision_rift_offset_spin_ptr;
+		QPointer<QDoubleSpinBox> d_post_collision_rift_wiggle_spin_ptr;
+		QPointer<QDoubleSpinBox> d_post_collision_rift_segment_spin_ptr;
+		QPointer<QDoubleSpinBox> d_post_collision_rift_extension_spin_ptr;
+		QPointer<QComboBox> d_post_collision_rift_side_combo_ptr;
+		QPointer<QSpinBox> d_post_collision_rift_seed_spin_ptr;
+		QPointer<QLineEdit> d_post_collision_rift_left_name_ptr;
+		QPointer<QLineEdit> d_post_collision_rift_right_name_ptr;
+		QPointer<QSpinBox> d_post_collision_rift_left_plate_spin_ptr;
+		QPointer<QSpinBox> d_post_collision_rift_right_plate_spin_ptr;
+
+		//! Persistent LIP, hotspot and native hotspot-trail review.
+		QPointer<QDialog> d_mantle_events_dialog_ptr;
+		QPointer<QPushButton> d_mantle_events_select_continent_button_ptr;
+		QPointer<QPushButton> d_mantle_events_select_rift_button_ptr;
+		QPointer<QPushButton> d_mantle_events_clear_rift_button_ptr;
+		QPointer<QPushButton> d_mantle_events_preview_button_ptr;
+		QPointer<QPushButton> d_mantle_events_commit_button_ptr;
+		QPointer<QLabel> d_mantle_events_continent_status_label_ptr;
+		QPointer<QLabel> d_mantle_events_rift_status_label_ptr;
+		QPointer<QLabel> d_mantle_events_instruction_label_ptr;
+		QPointer<QComboBox> d_mantle_events_placement_combo_ptr;
+		QPointer<QDoubleSpinBox> d_mantle_events_diameter_spin_ptr;
+		QPointer<QDoubleSpinBox> d_mantle_events_irregularity_spin_ptr;
+		QPointer<QDoubleSpinBox> d_mantle_events_segment_spin_ptr;
+		QPointer<QSpinBox> d_mantle_events_seed_spin_ptr;
+		QPointer<QDoubleSpinBox> d_mantle_events_active_duration_spin_ptr;
+		QPointer<QCheckBox> d_mantle_events_create_hotspot_check_ptr;
+		QPointer<QDoubleSpinBox> d_mantle_events_hotspot_lifetime_spin_ptr;
+		QPointer<QDoubleSpinBox> d_mantle_events_trail_step_spin_ptr;
+		QPointer<QSpinBox> d_mantle_events_mantle_plate_spin_ptr;
 
 		/**
 		 * The central widget in the main window containing everything except the menubar,
