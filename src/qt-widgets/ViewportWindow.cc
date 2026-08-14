@@ -139,6 +139,7 @@
 
 #include "view-operations/CloneOperation.h"
 #include "view-operations/DeleteFeatureOperation.h"
+#include "view-operations/PlateIdReassignmentOperation.h"
 #include "view-operations/RenderedGeometryCollection.h"
 #include "view-operations/RenderedGeometryParameters.h"
 #include "view-operations/UndoRedo.h"
@@ -203,6 +204,11 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			new GPlatesViewOperations::DeleteFeatureOperation(
 				get_view_state().get_feature_focus(),
 				get_application_state())),
+	d_plate_id_reassignment_operation_ptr(
+			new GPlatesViewOperations::PlateIdReassignmentOperation(
+				get_application_state(),
+				get_view_state(),
+				this)),
 	d_dialogs_ptr(
 			new GPlatesGui::Dialogs(
 				get_application_state(),
@@ -257,6 +263,19 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	d_inside_update_redo_action_tooltip(false)
 {
 	setupUi(this);
+
+	QAction *reassign_plate_id_action = new QAction(
+			tr("Reassign Focused Feature Without Jumping..."), this);
+	reassign_plate_id_action->setObjectName("action_Reassign_Plate_ID_Without_Jumping");
+	reassign_plate_id_action->setStatusTip(
+			tr("Copy or move the focused feature to a new Plate ID while preserving its current position"));
+	menu_Features->addSeparator();
+	menu_Features->addAction(reassign_plate_id_action);
+	QObject::connect(
+			reassign_plate_id_action,
+			SIGNAL(triggered()),
+			d_plate_id_reassignment_operation_ptr.get(),
+			SLOT(trigger()));
 
 	// FIXME: remove this when all non Qt widget state has been moved into ViewState.
 	// This is a temporary solution to avoiding passing ViewportWindow references around

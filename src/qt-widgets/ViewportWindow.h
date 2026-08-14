@@ -94,6 +94,7 @@ namespace GPlatesViewOperations
 {
 	class CloneOperation;
 	class DeleteFeatureOperation;
+	class PlateIdReassignmentOperation;
 }
 
 namespace GPlatesQtWidgets
@@ -526,6 +527,8 @@ namespace GPlatesQtWidgets
 
 		//! For deleting a feature.
 		boost::scoped_ptr<GPlatesViewOperations::DeleteFeatureOperation> d_delete_feature_operation_ptr;
+
+		boost::scoped_ptr<GPlatesViewOperations::PlateIdReassignmentOperation> d_plate_id_reassignment_operation_ptr;
 
 
 		/**
