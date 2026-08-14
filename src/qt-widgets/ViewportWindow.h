@@ -94,6 +94,7 @@ namespace GPlatesViewOperations
 {
 	class CloneOperation;
 	class DeleteFeatureOperation;
+	class RotationFileEditorOperation;
 }
 
 namespace GPlatesQtWidgets
@@ -487,6 +488,9 @@ namespace GPlatesQtWidgets
 		pop_up_python_console();
 
 		void
+		handle_rotation_file_editor();
+
+		void
 		open_dataset_webpage();
 		
 	private:
@@ -526,6 +530,9 @@ namespace GPlatesQtWidgets
 
 		//! For deleting a feature.
 		boost::scoped_ptr<GPlatesViewOperations::DeleteFeatureOperation> d_delete_feature_operation_ptr;
+
+		//! For motion-preserving plate circuit edits in loaded rotation collections.
+		boost::scoped_ptr<GPlatesViewOperations::RotationFileEditorOperation> d_rotation_file_editor_operation_ptr;
 
 
 		/**
