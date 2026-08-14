@@ -141,6 +141,7 @@
 #include "view-operations/DeleteFeatureOperation.h"
 #include "view-operations/RenderedGeometryCollection.h"
 #include "view-operations/RenderedGeometryParameters.h"
+#include "view-operations/SplitPlateOperation.h"
 #include "view-operations/UndoRedo.h"
 
 namespace GPlatesQtWidgets
@@ -201,6 +202,10 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 				get_view_state())),
 	d_delete_feature_operation_ptr(
 			new GPlatesViewOperations::DeleteFeatureOperation(
+				get_view_state().get_feature_focus(),
+				get_application_state())),
+	d_split_plate_operation_ptr(
+			new GPlatesViewOperations::SplitPlateOperation(
 				get_view_state().get_feature_focus(),
 				get_application_state())),
 	d_dialogs_ptr(
@@ -607,6 +612,7 @@ GPlatesQtWidgets::ViewportWindow::connect_menu_actions()
 	connect_reconstruction_menu_actions();
 	connect_utilities_menu_actions();
 	connect_tools_menu_actions();
+	connect_world_building_menu_actions();
 	connect_window_menu_actions();
 	connect_help_menu_actions();
 }
@@ -1107,6 +1113,17 @@ GPlatesQtWidgets::ViewportWindow::connect_window_menu_actions()
 	// ----
 	QObject::connect(action_Full_Screen, SIGNAL(triggered(bool)),
 			d_full_screen_mode, SLOT(toggle_full_screen(bool)));
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::connect_world_building_menu_actions()
+{
+	QObject::connect(
+			action_Split_Plate,
+			SIGNAL(triggered()),
+			this,
+			SLOT(handle_split_plate()));
 }
 
 
@@ -2092,6 +2109,40 @@ void
 GPlatesQtWidgets::ViewportWindow::pop_up_python_console()
 {
 	d_view_state.get_python_manager().pop_up_python_console();
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_split_plate()
+{
+	const GPlatesViewOperations::SplitPlateOperation::Result result =
+			d_split_plate_operation_ptr->trigger();
+
+	status_message(result.message);
+
+	switch (result.outcome)
+	{
+	case GPlatesViewOperations::SplitPlateOperation::POLYGON_CAPTURED:
+		QMessageBox::information(
+				this,
+				tr("Split Plate — Polygon Captured"),
+				result.message);
+		break;
+
+	case GPlatesViewOperations::SplitPlateOperation::SPLIT_COMPLETED:
+		QMessageBox::information(
+				this,
+				tr("Split Plate Complete"),
+				result.message);
+		break;
+
+	case GPlatesViewOperations::SplitPlateOperation::OPERATION_ERROR:
+		QMessageBox::warning(
+				this,
+				tr("Split Plate"),
+				result.message);
+		break;
+	}
 }
 
 

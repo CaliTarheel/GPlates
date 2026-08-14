@@ -188,6 +188,12 @@
     <addaction name="action_Configure_Geometry_Rendering"/>
     <addaction name="separator"/>
    </widget>
+   <widget class="QMenu" name="menu_World_Building">
+    <property name="title">
+     <string>&amp;World Building</string>
+    </property>
+    <addaction name="action_Split_Plate"/>
+   </widget>
    <widget class="QMenu" name="menu_Features">
     <property name="title">
      <string>Fe&amp;atures</string>
@@ -245,10 +251,22 @@
    <addaction name="menu_Reconstruction"/>
    <addaction name="menu_Utilities"/>
    <addaction name="menu_Tools"/>
+   <addaction name="menu_World_Building"/>
    <addaction name="menu_Window"/>
    <addaction name="menu_Help"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
+  <action name="action_Split_Plate">
+   <property name="text">
+    <string>&amp;Split Plate</string>
+   </property>
+   <property name="toolTip">
+    <string>Split a polygon using a polyline</string>
+   </property>
+   <property name="statusTip">
+    <string>Capture a selected polygon, then select a polyline and split the polygon into two features.</string>
+   </property>
+  </action>
   <action name="action_Cut">
    <property name="enabled">
     <bool>false</bool>
