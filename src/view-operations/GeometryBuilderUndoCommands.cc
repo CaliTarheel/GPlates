@@ -154,6 +154,128 @@ GPlatesViewOperations::GeometryBuilderMovePointUndoCommand::mergeWith(
 }
 
 
+void
+GPlatesViewOperations::GeometryBuilderMovePointsUndoCommand::redo()
+{
+	RenderedGeometryCollection::UpdateGuard update_guard;
+
+	d_undo_operations.clear();
+	d_undo_operations.reserve(d_points_to_move.size());
+
+	for (indexed_point_seq_type::size_type point = 0; point < d_points_to_move.size(); ++point)
+	{
+		// Any geometries snapped to this point. Copied because 'move_point_in_current_geometry'
+		// takes them by non-const reference, and because redo() may run more than once.
+		//
+		// If Snap Vertices is off, or nothing was within the threshold of this point, this is
+		// empty and the call below behaves exactly as it did before snapping was considered.
+		std::vector<GPlatesViewOperations::SecondaryGeometry> secondary_geometries;
+		if (point < d_secondary_geometries_per_point.size())
+		{
+			secondary_geometries = d_secondary_geometries_per_point[point];
+		}
+
+		// A snapped vertex is coincident with the vertex it is snapped to, so it moves to that
+		// vertex's new position. This matches what GeometryBuilderMovePointUndoCommand does for
+		// a single-vertex drag.
+		std::vector<GPlatesMaths::PointOnSphere> secondary_points(
+				secondary_geometries.size(),
+				d_points_to_move[point].second);
+
+		const bool is_intermediate_move =
+				d_is_intermediate_move || point + 1 < d_points_to_move.size();
+
+		d_undo_operations.push_back(
+				d_geometry_builder.move_point_in_current_geometry(
+						d_points_to_move[point].first,
+						d_points_to_move[point].second,
+						secondary_geometries,
+						secondary_points,
+						is_intermediate_move));
+	}
+}
+
+
+void
+GPlatesViewOperations::GeometryBuilderMovePointsUndoCommand::undo()
+{
+	RenderedGeometryCollection::UpdateGuard update_guard;
+
+	for (std::vector<GeometryBuilder::UndoOperation>::reverse_iterator undo = d_undo_operations.rbegin();
+			undo != d_undo_operations.rend();
+			++undo)
+	{
+		d_geometry_builder.undo(*undo);
+	}
+}
+
+
+bool
+GPlatesViewOperations::GeometryBuilderMovePointsUndoCommand::mergeWith(
+		const QUndoCommand *other_command)
+{
+	const GeometryBuilderMovePointsUndoCommand *other_move_command =
+			dynamic_cast<const GeometryBuilderMovePointsUndoCommand *>(other_command);
+	if (other_move_command == NULL ||
+			&other_move_command->d_geometry_builder != &d_geometry_builder ||
+			other_move_command->d_points_to_move.size() != d_points_to_move.size())
+	{
+		return false;
+	}
+
+	for (indexed_point_seq_type::size_type point = 0; point < d_points_to_move.size(); ++point)
+	{
+		if (other_move_command->d_points_to_move[point].first != d_points_to_move[point].first)
+		{
+			return false;
+		}
+	}
+
+	d_points_to_move = other_move_command->d_points_to_move;
+	// Take the later command's snapped geometries too. They are resolved once when the drag starts
+	// and so are normally identical, but the merged command should not keep a stale copy.
+	d_secondary_geometries_per_point = other_move_command->d_secondary_geometries_per_point;
+	if (!other_move_command->d_is_intermediate_move)
+	{
+		d_is_intermediate_move = false;
+	}
+
+	return true;
+}
+
+
+void
+GPlatesViewOperations::GeometryBuilderRemovePointsUndoCommand::redo()
+{
+	RenderedGeometryCollection::UpdateGuard update_guard;
+
+	d_undo_operations.clear();
+	d_undo_operations.reserve(d_point_indices_to_remove.size());
+	for (std::vector<GeometryBuilder::PointIndex>::const_iterator point_index =
+				d_point_indices_to_remove.begin();
+			point_index != d_point_indices_to_remove.end();
+			++point_index)
+	{
+		d_undo_operations.push_back(
+				d_geometry_builder.remove_point_from_current_geometry(*point_index));
+	}
+}
+
+
+void
+GPlatesViewOperations::GeometryBuilderRemovePointsUndoCommand::undo()
+{
+	RenderedGeometryCollection::UpdateGuard update_guard;
+
+	for (std::vector<GeometryBuilder::UndoOperation>::reverse_iterator undo = d_undo_operations.rbegin();
+			undo != d_undo_operations.rend();
+			++undo)
+	{
+		d_geometry_builder.undo(*undo);
+	}
+}
+
+
 bool
 GPlatesViewOperations::GeometryBuilderSetGeometryTypeUndoCommand::mergeWith(
 		const QUndoCommand *other_command)

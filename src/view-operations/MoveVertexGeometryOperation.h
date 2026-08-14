@@ -30,6 +30,9 @@
 
 #include <boost/noncopyable.hpp>
 #include <boost/optional.hpp>
+#include <set>
+#include <utility>
+#include <vector>
 #include <QObject>
 
 #include "maths/ConstGeometryOnSphereVisitor.h"
@@ -244,6 +247,24 @@ namespace GPlatesViewOperations
 				const GPlatesMaths::PointOnSphere &oriented_pos_on_sphere,
 				const double &closeness_inclusion_threshold);
 
+		//! Toggle the vertex nearest a Shift-click in the persistent selection.
+		void
+		toggle_vertex_selection(
+				const GPlatesMaths::PointOnSphere &oriented_pos_on_sphere,
+				const double &closeness_inclusion_threshold);
+
+		//! Begin, extend and complete a Shift-drag spherical lasso.
+		void
+		begin_lasso(
+				const GPlatesMaths::PointOnSphere &oriented_pos_on_sphere);
+
+		void
+		update_lasso(
+				const GPlatesMaths::PointOnSphere &oriented_pos_on_sphere);
+
+		void
+		end_lasso();
+
 	public Q_SLOTS:
 		// NOTE: all signals/slots should use namespace scope for all arguments
 		//       otherwise differences between signals and slots will cause Qt
@@ -264,13 +285,33 @@ namespace GPlatesViewOperations
 				double threshold,
 				bool should_use_plate_id,
 				GPlatesModel::integer_plate_id_type plate_id);
+
+		void
+		handle_delete_selected_vertices_requested();
+
+		void
+		handle_average_selected_vertex_positions_requested();
 	
 	private:
-		
+
+		//! A geometry found near a vertex, and the index of its nearest vertex.
+		typedef std::pair<
+				GPlatesAppLogic::ReconstructionGeometry::non_null_ptr_to_const_type,
+				unsigned int>
+						secondary_geometry_hit_type;
+
+		//! The geometries snapped to a single vertex.
+		typedef std::vector<SecondaryGeometry> secondary_geometry_seq_type;
+
+		//! Snapped geometries per selected vertex.
+		typedef std::vector<secondary_geometry_seq_type> secondary_geometry_per_point_seq_type;
+
 		/**
 		 * This is used to build geometry. We move vertices with it.
 		 */
 		GeometryBuilder &d_geometry_builder;
+
+		GPlatesCanvasTools::ModifyGeometryState &d_modify_geometry_state;
 
 		/**
 		 * We call this when we activate/deactivate.
@@ -303,6 +344,10 @@ namespace GPlatesViewOperations
 		 */
 		RenderedGeometryCollection::child_layer_owner_ptr_type d_highlight_point_layer_ptr;
 
+		/** Selected vertices and the in-progress lasso, drawn above regular points. */
+		RenderedGeometryCollection::child_layer_owner_ptr_type d_selected_points_layer_ptr;
+		RenderedGeometryCollection::child_layer_owner_ptr_type d_lasso_layer_ptr;
+
 		/**
 		 * Used by undo/redo to make sure appropriate tool is active
 		 * when the undo/redo happens.
@@ -333,7 +378,24 @@ namespace GPlatesViewOperations
 		 * Is the user hovering over a vertex                                                                     
 		 */
 		bool d_is_vertex_highlighted;		
-		
+
+		bool d_is_active;
+		bool d_is_lassoing;
+
+		std::set<GeometryBuilder::PointIndex> d_selected_vertex_indices;
+		std::vector<GPlatesMaths::PointOnSphere> d_lasso_points;
+		boost::optional<GPlatesMaths::PointOnSphere> d_drag_anchor_point;
+		std::vector<GPlatesMaths::PointOnSphere> d_drag_original_points;
+
+		/**
+		 * Geometries snapped to each vertex of the current selection, parallel to
+		 * @a d_drag_original_points and to the points passed to the move command.
+		 *
+		 * Empty when Snap Vertices is off, or when nothing was found within the threshold, in
+		 * which case a group move behaves exactly as it did before snapping was considered.
+		 */
+		secondary_geometry_per_point_seq_type d_drag_secondary_geometries;
+
 		/**
 		 * Does the user want to check nearby vertices of other geometries                                                                     
 		 */
@@ -369,6 +431,35 @@ namespace GPlatesViewOperations
 		move_vertex(
 				const GPlatesMaths::PointOnSphere &oriented_pos_on_sphere,
 				bool is_intermediate_move);
+
+		void
+		move_selected_vertices(
+				const GPlatesMaths::PointOnSphere &oriented_pos_on_sphere,
+				bool is_intermediate_move);
+
+		void
+		move_selected_vertices_to(
+				const std::vector<GPlatesMaths::PointOnSphere> &positions,
+				bool is_intermediate_move,
+				const QString &undo_text,
+				UndoRedo::CommandId command_id = UndoRedo::CommandId(),
+				const secondary_geometry_per_point_seq_type &secondary_geometries_per_point =
+						secondary_geometry_per_point_seq_type());
+
+		void
+		delete_selected_vertices();
+
+		void
+		average_selected_vertex_positions();
+
+		void
+		clear_vertex_selection();
+
+		void
+		publish_vertex_selection_state();
+
+		bool
+		can_delete_selected_vertices() const;
 
 		/**
 		 * Test proximity to the points (at vertices) to the position on sphere and
@@ -421,10 +512,34 @@ namespace GPlatesViewOperations
 		void
 		update_highlight_rendered_point(
 				const GeometryBuilder::PointIndex highlight_point_index);
+
+		void
+		update_selected_rendered_points();
+
+		void
+		update_lasso_rendered_geometry();
 		
 		/**
+		 * Returns the nearest geometry (other than the focused one) with a vertex within the
+		 * snapping threshold of @a point_on_sphere, along with the index of that vertex.
+		 *
+		 * Honours the plate-id filter. Returns none if nothing qualifies.
+		 */
+		boost::optional<secondary_geometry_hit_type>
+		find_secondary_geometry_near(
+				const GPlatesMaths::PointOnSphere &point_on_sphere);
+
+		/**
+		 * Resolves snapping for every vertex in the current selection, sending the results to the
+		 * geometry builder for rendering and recording them in @a d_drag_secondary_geometries so a
+		 * group drag can carry them along.
+		 */
+		void
+		update_secondary_geometries_for_selection();
+
+		/**
 		 * Checks for nearby vertices in other geometries, and sends any results to the geometry builder.
-		 */		
+		 */
 		void
 		update_secondary_geometries(
 				const GPlatesMaths::PointOnSphere &point_on_sphere);
