@@ -29,6 +29,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QTemporaryDir>
+#include <QStringList>
 
 #include "app-logic/PlanetaryParameters.h"
 #include "app-logic/ProjectDocumentRegistry.h"
@@ -66,6 +67,7 @@ TEST(ProjectMetadataTest, front_matter_parsing)
 	EXPECT_FALSE(no_front_matter.has_front_matter);
 	EXPECT_TRUE(no_front_matter.is_valid);
 	EXPECT_FALSE(no_front_matter.planet_radius_metres);
+	EXPECT_FALSE(no_front_matter.required_timestamps_ma);
 
 	const GPlatesAppLogic::ProjectMetadata delimiter_not_on_first_line =
 			GPlatesAppLogic::ProjectMetadataParser::parse("# Notes\n---\ngplates:\n  planet:\n    radius_m: 1\n---\n");
@@ -93,6 +95,216 @@ TEST(ProjectMetadataTest, front_matter_parsing)
 					"---\n");
 	ASSERT_TRUE(floating_radius.planet_radius_metres);
 	EXPECT_DOUBLE_EQ(floating_radius.planet_radius_metres.get(), 6900000.25);
+
+	// Required project timestamps alongside a planet radius. Radius-less metadata is
+	// valid too and is covered below.
+	const GPlatesAppLogic::ProjectMetadata timestamps =
+			GPlatesAppLogic::ProjectMetadataParser::parse(
+					"---\n"
+					"gplates:\n"
+					"  schema_version: 1\n"
+					"  planet:\n"
+					"    radius_m: 6371000\n"
+					"  reconstruction:\n"
+					"    required_timestamps_ma: \"1000, 950, 900, 850, 800, 750, 700, 650, 600, 560, 520, 480, 440, 400, 370, 340, 310, 280, 250, 225, 200, 180, 160, 140, 120, 100, 80, 60, 40, 20, 10, 0\"\n"
+					"---\n");
+	EXPECT_TRUE(timestamps.is_valid);
+	ASSERT_TRUE(timestamps.planet_radius_metres);
+	ASSERT_TRUE(timestamps.required_timestamps_ma);
+	ASSERT_EQ(timestamps.required_timestamps_ma->size(), 32u);
+	EXPECT_EQ(timestamps.required_timestamps_ma->front(), 1000.0);
+	EXPECT_EQ(timestamps.required_timestamps_ma->back(), 0.0);
+
+	// Saying nothing about timestamps is valid - absent means no schedule is active, which is a
+	// different thing from a schedule that is present and malformed.
+	const GPlatesAppLogic::ProjectMetadata no_timestamps =
+			GPlatesAppLogic::ProjectMetadataParser::parse(
+					"---\n"
+					"gplates:\n"
+					"  schema_version: 1\n"
+					"  planet:\n"
+					"    radius_m: 6371000\n"
+					"---\n");
+	EXPECT_TRUE(no_timestamps.is_valid);
+	EXPECT_TRUE(no_timestamps.required_timestamps_are_valid);
+	EXPECT_FALSE(no_timestamps.required_timestamps_ma);
+
+	// A malformed schedule must not disturb an otherwise-good radius: the two are validated
+	// independently, since they are unrelated concerns that happen to share a document.
+	const GPlatesAppLogic::ProjectMetadata independent_fields =
+			GPlatesAppLogic::ProjectMetadataParser::parse(
+					"---\n"
+					"gplates:\n"
+					"  schema_version: 1\n"
+					"  planet:\n"
+					"    radius_m: 6371000\n"
+					"  reconstruction:\n"
+					"    required_timestamps_ma: \"100, 50, 50, 0\"\n"
+					"---\n");
+	EXPECT_FALSE(independent_fields.is_valid);
+	EXPECT_TRUE(independent_fields.planet_radius_is_valid);
+	ASSERT_TRUE(independent_fields.planet_radius_metres);
+	EXPECT_DOUBLE_EQ(independent_fields.planet_radius_metres.get(), 6371000.0);
+	EXPECT_FALSE(independent_fields.required_timestamps_are_valid);
+	EXPECT_FALSE(independent_fields.required_timestamps_diagnostic.isEmpty());
+
+	// The radius is optional. A document that says nothing about its planet is describing Earth,
+	// which is applied downstream by PlanetaryParameters rather than invented here.
+	const GPlatesAppLogic::ProjectMetadata no_radius =
+			GPlatesAppLogic::ProjectMetadataParser::parse(
+					"---\n"
+					"gplates:\n"
+					"  schema_version: 1\n"
+					"  resolution:\n"
+					"    default_km: 250\n"
+					"---\n");
+	EXPECT_TRUE(no_radius.is_valid);
+	EXPECT_TRUE(no_radius.diagnostic.isEmpty());
+	EXPECT_TRUE(no_radius.planet_radius_is_valid);
+	EXPECT_FALSE(no_radius.planet_radius_metres);
+	ASSERT_TRUE(no_radius.default_resolution_km);
+	EXPECT_DOUBLE_EQ(no_radius.default_resolution_km.get(), 250.0);
+
+	// Front matter carrying nothing at all is well-formed, not an error.
+	const GPlatesAppLogic::ProjectMetadata empty_front_matter =
+			GPlatesAppLogic::ProjectMetadataParser::parse("---\ngplates:\n  schema_version: 1\n---\n");
+	EXPECT_TRUE(empty_front_matter.has_front_matter);
+	EXPECT_TRUE(empty_front_matter.is_valid);
+	EXPECT_FALSE(empty_front_matter.planet_radius_metres);
+
+	// The point of the whole arrangement: one unusable value costs only its own field. This
+	// document has a bad radius, a bad granularity and a bad per-feature-type override, and every
+	// other field in it still arrives intact.
+	const GPlatesAppLogic::ProjectMetadata salvaged =
+			GPlatesAppLogic::ProjectMetadataParser::parse(
+					"---\n"
+					"gplates:\n"
+					"  schema_version: 1\n"
+					"  planet:\n"
+					"    radius_m: 0\n"
+					"  resolution:\n"
+					"    default_km: 500\n"
+					"    by_feature_type:\n"
+					"      MidOceanRidge: 250\n"
+					"      Coastline: -3\n"
+					"  reconstruction:\n"
+					"    required_timestamps_ma: \"1000, 500, 0\"\n"
+					"    granularity_my: nonsense\n"
+					"  subduction:\n"
+					"    initiation_my: 10\n"
+					"---\n");
+	EXPECT_FALSE(salvaged.is_valid);
+
+	// The three bad fields are unset, and each is named in the diagnostic along with its value.
+	EXPECT_FALSE(salvaged.planet_radius_is_valid);
+	EXPECT_FALSE(salvaged.planet_radius_metres);
+	EXPECT_FALSE(salvaged.granularity_my);
+	EXPECT_FALSE(salvaged.resolution_km_by_feature_type.contains("gpml:Coastline"));
+	EXPECT_TRUE(salvaged.diagnostic.contains("radius_m"));
+	EXPECT_TRUE(salvaged.diagnostic.contains("granularity_my"));
+	EXPECT_TRUE(salvaged.diagnostic.contains("Coastline"));
+	EXPECT_TRUE(salvaged.diagnostic.contains("still being used"));
+
+	// Everything else survived.
+	ASSERT_TRUE(salvaged.default_resolution_km);
+	EXPECT_DOUBLE_EQ(salvaged.default_resolution_km.get(), 500.0);
+	ASSERT_TRUE(salvaged.resolution_km_by_feature_type.contains("gpml:MidOceanRidge"));
+	EXPECT_DOUBLE_EQ(salvaged.resolution_km_by_feature_type.value("gpml:MidOceanRidge"), 250.0);
+	EXPECT_TRUE(salvaged.required_timestamps_are_valid);
+	ASSERT_TRUE(salvaged.required_timestamps_ma);
+	ASSERT_EQ(salvaged.required_timestamps_ma->size(), 3u);
+	ASSERT_TRUE(salvaged.subduction_initiation_my);
+	EXPECT_DOUBLE_EQ(salvaged.subduction_initiation_my.get(), 10.0);
+
+	// A document that could not be parsed at all is still fatal - there is nothing to salvage,
+	// because nothing was successfully read. Contrast with the case above.
+	const GPlatesAppLogic::ProjectMetadata unparseable =
+			GPlatesAppLogic::ProjectMetadataParser::parse(
+					"---\n"
+					"gplates:\n"
+					"  planet:\n"
+					"    radius_m: 6371000\n"
+					"  reconstruction:\n"
+					"    required_timestamps_ma: \"1000, 500, 0\"\n"
+					"  resolution: [500]\n"
+					"---\n");
+	EXPECT_FALSE(unparseable.is_valid);
+	EXPECT_FALSE(unparseable.required_timestamps_ma);
+	EXPECT_FALSE(unparseable.planet_radius_metres);
+
+	// Granularity and the subduction rates. The template documents all of these, so a document
+	// setting them expects them to mean something rather than being accepted and ignored.
+	const GPlatesAppLogic::ProjectMetadata intent =
+			GPlatesAppLogic::ProjectMetadataParser::parse(
+					"---\n"
+					"gplates:\n"
+					"  schema_version: 1\n"
+					"  planet:\n"
+					"    radius_m: 6371000\n"
+					"  reconstruction:\n"
+					"    granularity_my: 5\n"
+					"  subduction:\n"
+					"    initiation_my: 10\n"
+					"    propagation_km_per_my: 30\n"
+					"    reversal_my: 8\n"
+					"    breakoff_my: 15\n"
+					"---\n");
+	EXPECT_TRUE(intent.is_valid);
+	ASSERT_TRUE(intent.granularity_my);
+	EXPECT_DOUBLE_EQ(intent.granularity_my.get(), 5.0);
+	ASSERT_TRUE(intent.subduction_initiation_my);
+	EXPECT_DOUBLE_EQ(intent.subduction_initiation_my.get(), 10.0);
+	ASSERT_TRUE(intent.subduction_propagation_km_per_my);
+	EXPECT_DOUBLE_EQ(intent.subduction_propagation_km_per_my.get(), 30.0);
+	ASSERT_TRUE(intent.subduction_reversal_my);
+	EXPECT_DOUBLE_EQ(intent.subduction_reversal_my.get(), 8.0);
+	ASSERT_TRUE(intent.subduction_breakoff_my);
+	EXPECT_DOUBLE_EQ(intent.subduction_breakoff_my.get(), 15.0);
+
+	// Each is independently optional: pinning one down leaves the rest to the consumer's own
+	// defaults rather than forcing the whole section to be written out.
+	const GPlatesAppLogic::ProjectMetadata partial_intent =
+			GPlatesAppLogic::ProjectMetadataParser::parse(
+					"---\n"
+					"gplates:\n"
+					"  schema_version: 1\n"
+					"  planet:\n"
+					"    radius_m: 6371000\n"
+					"  subduction:\n"
+					"    reversal_my: 12\n"
+					"---\n");
+	EXPECT_TRUE(partial_intent.is_valid);
+	EXPECT_FALSE(partial_intent.granularity_my);
+	EXPECT_FALSE(partial_intent.subduction_initiation_my);
+	EXPECT_FALSE(partial_intent.subduction_propagation_km_per_my);
+	EXPECT_FALSE(partial_intent.subduction_breakoff_my);
+	ASSERT_TRUE(partial_intent.subduction_reversal_my);
+	EXPECT_DOUBLE_EQ(partial_intent.subduction_reversal_my.get(), 12.0);
+
+	// The whole PROJECT-template.md front matter, with every documented key present and set to
+	// the value the template ships. A template that does not parse is worse than no template.
+	const GPlatesAppLogic::ProjectMetadata whole_template =
+			GPlatesAppLogic::ProjectMetadataParser::parse(
+					"---\n"
+					"gplates:\n"
+					"  schema_version: 1\n"
+					"  planet:\n"
+					"    radius_m: 6371000\n"
+					"  resolution:\n"
+					"    default_km: 500\n"
+					"    by_feature_type:\n"
+					"      MidOceanRidge: 250\n"
+					"  reconstruction:\n"
+					"    required_timestamps_ma: \"1000, 500, 0\"\n"
+					"    granularity_my: 5\n"
+					"  subduction:\n"
+					"    initiation_my: 10\n"
+					"    propagation_km_per_my: 30\n"
+					"    reversal_my: 8\n"
+					"    breakoff_my: 15\n"
+					"---\n");
+	EXPECT_TRUE(whole_template.is_valid);
+	EXPECT_TRUE(whole_template.diagnostic.isEmpty());
 }
 
 
@@ -166,13 +378,26 @@ TEST(ProjectMetadataTest, invalid_front_matter)
 			<< "---\ngplates:\n  planet:\n    radius_m: [1]\n---\n"
 			<< "---\ngplates:\n  planet:\n    radius_m: .inf\n---\n"
 			<< "---\ngplates:\n  planet:\n    radius_m: nan\n---\n"
-			<< "---\nradius: 6900000\n---\n"
 			<< "---\ngplates:\n  planet:\n    radius_m: 1\n    radius_m: 2\n---\n"
-			<< "---\ngplates:\n  planet:\n    radius_m: 1\n";
+			<< "---\ngplates:\n  planet:\n    radius_m: 1\n"
+			// Present but unusable is a mistake in the document, and deliberately not the same
+			// as absent - saying nothing leaves the consumer its own default, saying zero does
+			// not. Every optional number is held to this, not just the ones with consumers today.
+			<< "---\ngplates:\n  planet:\n    radius_m: 6371000\n  resolution:\n    default_km: 0\n---\n"
+			<< "---\ngplates:\n  planet:\n    radius_m: 6371000\n  reconstruction:\n    granularity_my: 0\n---\n"
+			<< "---\ngplates:\n  planet:\n    radius_m: 6371000\n  reconstruction:\n    granularity_my: -5\n---\n"
+			<< "---\ngplates:\n  planet:\n    radius_m: 6371000\n  reconstruction:\n    granularity_my: soon\n---\n"
+			<< "---\ngplates:\n  planet:\n    radius_m: 6371000\n  subduction:\n    initiation_my: -1\n---\n"
+			<< "---\ngplates:\n  planet:\n    radius_m: 6371000\n  subduction:\n    propagation_km_per_my: 0\n---\n"
+			<< "---\ngplates:\n  planet:\n    radius_m: 6371000\n  subduction:\n    reversal_my: .inf\n---\n"
+			<< "---\ngplates:\n  planet:\n    radius_m: 6371000\n  subduction:\n    breakoff_my: nan\n---\n";
 
 	for (int index = 0; index < invalid_documents.size(); ++index)
 	{
+		// Name the document in the failure output - otherwise a failure here says only that one
+		// of nineteen unnamed iterations went wrong.
 		SCOPED_TRACE(invalid_documents[index].toStdString());
+
 		const GPlatesAppLogic::ProjectMetadata metadata =
 				GPlatesAppLogic::ProjectMetadataParser::parse(invalid_documents[index]);
 		EXPECT_TRUE(metadata.has_front_matter);
@@ -265,6 +490,21 @@ TEST(ProjectMetadataTest, invalid_metadata_fallback)
 	EXPECT_EQ(
 			parameters.radius_source(),
 			GPlatesAppLogic::PlanetaryParameters::INVALID_PROJECT_METADATA_USING_EARTH_DEFAULT);
+
+	// Front matter that simply does not mention the planet falls back to Earth the quiet way, with
+	// no diagnostic. This is the distinction the parser draws: saying nothing is Earth by
+	// omission, while saying something unusable - the invalid document above - keeps the Earth
+	// radius but says so.
+	const QString silent_path = QDir(temporary_directory.path()).filePath("silent.md");
+	ASSERT_NO_FATAL_FAILURE(write_utf8_file(
+			silent_path, "---\ngplates:\n  schema_version: 1\n---\n\n# Notes\n"));
+	const int silent_index = registry.add_document(silent_path);
+	ASSERT_TRUE(registry.set_primary_document(silent_index));
+	EXPECT_EQ(parameters.radius_source(), GPlatesAppLogic::PlanetaryParameters::EARTH_DEFAULT);
+	EXPECT_TRUE(parameters.radius_diagnostic().isEmpty());
+	EXPECT_DOUBLE_EQ(
+			parameters.effective_radius_metres(),
+			GPlatesUtils::Earth::EQUATORIAL_RADIUS_KMS * 1000.0);
 }
 
 
@@ -326,4 +566,7 @@ TEST(ProjectMetadataTest, radius_scaling)
 	const double velocity_at_radius_2 =
 			GPlatesMaths::calculate_velocity_vector(point_a, stage_rotation, 1.0, 2000.0).magnitude().dval();
 	EXPECT_NEAR(velocity_at_radius_2 / velocity_at_radius_1, 2.0, 2e-12);
+
+	const double angular_area = 0.25;
+	EXPECT_NEAR((angular_area * 2.0 * 2.0) / (angular_area * 1.0 * 1.0), 4.0, 4e-12);
 }

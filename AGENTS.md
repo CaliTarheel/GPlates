@@ -2,6 +2,13 @@
 
 Guidance for AI coding agents working in this repository.
 
+## This fork
+
+`CaliTarheel/GPlates` uses `gplates` as its development and default branch, tracking
+upstream `GPlates/GPlates:main`. Base pull requests within this fork on `gplates`;
+references to `main` below describe upstream's branch model. Both product workflows
+also run on the fork's `gplates` branch.
+
 ## One repo, two products
 
 GPlates (Qt desktop app) and pyGPlates (Boost.Python extension module) are built from the

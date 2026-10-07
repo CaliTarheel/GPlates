@@ -1,9 +1,13 @@
 ## About this fork
 
-This unofficial fork combines the worldbuilding and editing tools from SR1 with
+This unofficial fork combines the worldbuilding and editing tools from SR1 and
+the fork's development branch with
 the upstream [`GPlates/GPlates:main`](https://github.com/GPlates/GPlates/tree/main)
 development line. GPlates and pyGPlates share the same sources and use upstream's
 Git-derived development versions.
+
+This fork's development branch is `gplates`; it tracks upstream `main` and builds
+both products in CI. Base contributions to this fork on `gplates`.
 
 The desktop additions include circular feature placement, Split Plate and
 oceanic-crust retirement; rotation editing, keyframe copying and drift correction;
@@ -13,10 +17,36 @@ presets. `DN.txt` and `WorldbuildingPasta.txt` are bundled beside the Windows
 executable. Naturalize Coastline and automatic reopening of the last project are
 not part of SR1.
 
+Project documents also support explicit timestamp schedules, older/younger time
+navigation, an optional view-range lock, and per-field metadata validation.
+Holding Shift while digitising clamps a segment to the project's intended
+resolution. `PROJECT-template.md` documents the supported front-matter keys and
+is bundled with the desktop application.
+
 The original [SR1 release and UX manual](https://github.com/CaliTarheel/GPlates/releases/tag/2.6.0-dev8-SR1)
 remain available. Use the platform build guides below for this source tree;
 `FRONTIER.md`, `SR_PR_INTEGRATION.md` and `build-sr0a.cmd` describe older snapshots.
 Report issues with this fork to this repository, rather than upstream.
+
+### General User Experience
+
+- **Multi-vertex geometry editing.** With the Move Vertex tool, **Shift-click** a vertex to add it to the selection, or **Shift-drag** a lasso around several at once, then drag any one of them to move the whole selection together — [#5](https://github.com/CaliTarheel/GPlates/pull/5)
+- **Select Last Created Feature**, in the **Edit** menu directly below Redo. Available once you have created a feature. If that feature is not visible at the current reconstruction time, the view moves into its lifetime first, so you are taken to it rather than to an empty globe — [#9](https://github.com/CaliTarheel/GPlates/pull/9)
+- **Rotation Hierarchy viewer**, under the **Reconstruction** menu, for reading the plate circuit as a tree — [#18](https://github.com/CaliTarheel/GPlates/pull/18)
+- **Active Feature Types preferences.** Choose which feature types are offered when creating or changing a feature, so the list holds the twenty types you use rather than every type in the GPGIM — [#19](https://github.com/CaliTarheel/GPlates/pull/19)
+- **Save and load active feature type lists.** In **Preferences > Active Feature Types**, curate a list and save it beside your project, hand it to someone else, or keep it in version control. Two lists are supplied next to `gplates.exe` — `DN.txt` and `WorldbuildingPasta.txt` — [#47](https://github.com/CaliTarheel/GPlates/pull/47)
+- **Configurable Absolute Age draw style**, with usable defaults and worked examples — [#2](https://github.com/CaliTarheel/GPlates/pull/2)
+- **Double-click a Begin or End time** — either the number itself or the label beside it — to fill in the reconstruction time you are currently viewing, instead of reading it off the main window and typing it back in. Works both when creating a feature and when editing an existing feature's properties. The spinbox step arrows are untouched and still step — [#43](https://github.com/CaliTarheel/GPlates/pull/43)
+
+### Behind the Scenes
+
+- Files stored under non-ASCII paths now load and save reliably — [#16](https://github.com/CaliTarheel/GPlates/pull/16)
+- Opening a project or clearing a session no longer aborts the application. Two discarded `Scribe` transcribe results were throwing from a destructor, which reaches `std::terminate` without unwinding, so no handler could catch it and nothing was logged — [#50](https://github.com/CaliTarheel/GPlates/pull/50)
+- Qt's font-probe logging no longer floods the log. Opening a dialog could produce twenty lines of `qt.text.font.db: OpenType support missing...`, which is Qt falling back between fonts and nothing to act on — [#48](https://github.com/CaliTarheel/GPlates/pull/48)
+
+### World Building
+
+- **Place Circular Features.** **World Building > Place Circular Features...** opens a placement window that stays open while you work. Choose the appearance time, whether the result is a polygon or a closed polyline, a maximum radius, and which feature collection it goes into; then place circles with the usual two-click small-circle interaction, with a live preview clamped to the radius you set. Each one becomes a real undoable feature that stays valid through to the present and saves with the project — [#53](https://github.com/CaliTarheel/GPlates/pull/53)
 
 
 <div align="center">

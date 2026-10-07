@@ -30,7 +30,7 @@ the existing session/project archive. Paths use the same relative-path and
 missing-file recovery machinery as other project files; document contents are
 not embedded in the archive.
 
-## Planetary-radius metadata
+## Typed project metadata
 
 Only the Primary Project Document supplies metadata. Supported front matter
 must begin on its first line and use the following schema:
@@ -41,6 +41,18 @@ gplates:
   schema_version: 1
   planet:
     radius_m: 6900000
+  resolution:
+    default_km: 500
+    by_feature_type:
+      MidOceanRidge: 250
+  reconstruction:
+    required_timestamps_ma: "1000, 950, 900, 850, 800, 750, 700, 650, 600, 560, 520, 480, 440, 400, 370, 340, 310, 280, 250, 225, 200, 180, 160, 140, 120, 100, 80, 60, 40, 20, 10, 0"
+    granularity_my: 5
+  subduction:
+    initiation_my: 10
+    propagation_km_per_my: 30
+    reversal_my: 8
+    breakoff_my: 15
 ---
 
 # Honua
@@ -48,20 +60,66 @@ gplates:
 Project notes begin here.
 ```
 
-`gplates.planet.radius_m` is a finite, positive number in metres. Schema
-version 1 is supported; omitting `schema_version` currently implies version 1.
-Unknown keys are ignored and are never rewritten. A bare `radius` key is not
-recognized, and units are never inferred from prose.
+`gplates.planet.radius_m` is a finite, positive number in metres. It is
+optional: a document that says nothing about its planet is describing Earth, and
+GPlates applies Earth's radius without complaint. Schema version 1 is supported;
+omitting `schema_version` currently implies version 1. Unknown keys are ignored
+and are never rewritten. A bare `radius` key is not recognized, and units are
+never inferred from prose.
+
+`gplates.reconstruction.required_timestamps_ma` is an optional quoted,
+comma-separated scalar. Ages must be finite values from 0 through 10000 Ma,
+strictly descending from older to younger, with no duplicates and at least two
+entries. GPlates preserves the supplied values as the authoritative Project
+Timeline; it does not sort, regularize, interpolate, or rewrite them. Hold
+**Alt** while clicking the backward (`<<`) or forward (`>>`) View buttons to
+move to the adjacent older or younger Project Timestamp.
+
+`gplates.resolution.default_km` is the intended level of detail, expressed as
+the longest segment a line should have. `by_feature_type` overrides it for named
+feature types, written without their `gpml:` prefix because a colon inside a
+YAML key would have to be quoted. It is a statement of intent, not a rule
+enforced behind the user's back: holding **Shift** while placing a vertex clamps
+that vertex to this distance from the previous one, and a plain click is
+untouched.
+
+`gplates.reconstruction.granularity_my` is the step, in My, the world is meant
+to be evolved by, and the `gplates.subduction` rates say how quickly subduction
+spreads once it exists: `initiation_my` from onset to a working arc,
+`propagation_km_per_my` along a trench's own strike, `reversal_my` for a
+polarity reversal, and `breakoff_my` for slab detachment after a collision.
+These describe processes that take a known amount of time, so a tool modelling
+one can tell whether the project's step makes it a single event or something
+watched over several steps. They are rules of thumb rather than constants, which
+is why they live in the project rather than being compiled in.
+
+Every field is optional, and each stands or falls on its own. Radius, resolution,
+granularity and subduction values must be finite and positive when present.
+Saying nothing leaves a consumer its own default, which is deliberately not
+the same as saying zero. Timestamp ages can include zero as described above.
+
+A bad value costs only its own field. That field is left unset, so its consumer
+applies the default it would have used had the document said nothing, and the
+reason is reported — naming the offending value, and saying that the rest of the
+document is still being used. A radius of zero does not discard the timestamp
+schedule; an unreadable schedule does not discard the resolution; one unusable
+`by_feature_type` override does not discard the others or the project default.
+
+This applies only to values. A document that could not be parsed at all — a
+missing closing delimiter, broken indentation, a duplicate key, a construct
+outside the supported subset, an unsupported `schema_version` — fails as a
+whole, because nothing was successfully read and there is nothing to salvage.
 
 After the primary document is saved or reloaded, GPlates reparses it and
 updates the project-wide effective radius. Measurement distances and polygon
 areas, reconstructed linear velocities, and velocity-field calculations use
 that value. Geometry and rotations remain angular/unit-sphere calculations.
 
-No primary document, no front matter, an unreadable document, or invalid or
-unsupported metadata preserves the existing behavior: GPlates uses its exact
-existing Earth equatorial-radius constant. Invalid metadata also produces a
-non-blocking diagnostic in the Project Documents panel.
+No primary document, no front matter, or an omitted radius uses the exact
+existing Earth equatorial-radius constant without a warning. An unreadable or
+structurally invalid document, or an invalid radius, also uses that default
+and reports a non-blocking diagnostic in the Project Documents panel. A valid
+radius remains active when another field has an invalid value.
 
 ## Supported YAML subset and limitations
 
@@ -83,10 +141,14 @@ physical distance, area, or linear velocity.
 2. Set `project.md` as primary, save the GPlates project, close it, and reopen
    it. Confirm document order and the primary marker are restored.
 3. Edit Markdown and confirm the Preview tab renders it.
-4. Add valid radius front matter and save. Confirm the panel reports Project
-   Markdown as the radius source and a physical measurement changes.
+4. Add valid radius and timestamp front matter and save. Confirm the panel
+   reports Project Markdown as the radius source, a physical measurement
+   changes, and Alt-click navigation follows the exact irregular schedule.
 5. Enter an invalid radius and save. Confirm a warning appears and the exact
    Earth default is used.
-6. Move a Markdown file outside GPlates. Confirm it is marked missing and use
+6. Restore the radius, duplicate one timestamp, and save. Confirm the radius
+   remains active while Project Timeline navigation reports the invalid
+   schedule and falls back to the ordinary frame step.
+7. Move a Markdown file outside GPlates. Confirm it is marked missing and use
    Locate to repair the association.
-7. Remove a document from the project and confirm the file remains on disk.
+8. Remove a document from the project and confirm the file remains on disk.

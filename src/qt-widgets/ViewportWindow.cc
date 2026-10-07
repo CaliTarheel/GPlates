@@ -484,6 +484,17 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			SLOT(handle_map_feature_context_menu(
 					const QPointF &, bool, Qt::MouseButton, Qt::KeyboardModifiers)));
 
+	// Project timestamp navigation reports where it landed, or why it could not move, in the
+	// status bar - the same place ordinary time changes are reported.
+	QObject::connect(
+			&get_view_state().get_animation_controller(),
+			&GPlatesGui::AnimationController::project_timestamp_navigation_message,
+			this,
+			[this](const QString &message)
+			{
+				status_message(message);
+			});
+
 	// Connect all the Signal/Slot relationships of ViewportWindow's
 	// toolbar buttons and menu items.
 	connect_menu_actions();

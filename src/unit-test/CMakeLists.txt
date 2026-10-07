@@ -18,6 +18,7 @@ set(srcs
     GsmlXmlQueryTest.cc
     MipmapperTest.cc
     ProjectMetadataTest.cc
+    ProjectTimestampScheduleTest.cc
     RealTest.cc
     ScribeExportUnitTest.h
     SmartNodeLinkedListTest.cc
