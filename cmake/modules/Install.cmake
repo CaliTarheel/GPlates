@@ -280,6 +280,33 @@ _post_import(os.path.dirname(__file__))
 endif()
 
 
+#
+#
+# Install the feature-type preset lists (but only for the gplates target).
+#
+# These are plain text lists loaded from Preferences > Active Feature Types > Load..., and they sit
+# beside the executable rather than in a subfolder so that someone who has never used GPlates can
+# find them without being told where to look. Anyone can edit their own copy, or replace it with a
+# newer one from the repository, without needing a new build.
+#
+if (GPLATES_BUILD_GPLATES)
+    foreach (_preset_list "DN.txt" "WorldbuildingPasta.txt")
+        if (EXISTS "${PROJECT_SOURCE_DIR}/${_preset_list}")
+            if (GPLATES_INSTALL_STANDALONE)
+                # For standalone we want to bundle everything together so it's relocatable.
+                if (APPLE)
+                    install(FILES "${PROJECT_SOURCE_DIR}/${_preset_list}" DESTINATION ${STANDALONE_BASE_INSTALL_DIR}/gplates.app/Contents/Resources)
+                else()
+                    install(FILES "${PROJECT_SOURCE_DIR}/${_preset_list}" DESTINATION ${STANDALONE_BASE_INSTALL_DIR})
+                endif()
+            else()
+                install(FILES "${PROJECT_SOURCE_DIR}/${_preset_list}" DESTINATION share/gplates)
+            endif()
+        endif()
+    endforeach()
+endif()
+
+
 # Install geodata if requested (but only for the gplates target).
 #
 # The variables GPLATES_INSTALL_GEO_DATA and GPLATES_INSTALL_GEO_DATA_SOURCE_DIR are cache variables that the user can set to control this.

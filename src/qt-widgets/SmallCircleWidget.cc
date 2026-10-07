@@ -69,6 +69,40 @@ GPlatesQtWidgets::SmallCircleWidget::SmallCircleWidget(
 }
 
 void
+GPlatesQtWidgets::SmallCircleWidget::set_maximum_radius_radians(
+		boost::optional<double> maximum_radius_radians)
+{
+	if (maximum_radius_radians && maximum_radius_radians.get() <= 0.0)
+	{
+		d_maximum_radius_radians = boost::none;
+		return;
+	}
+
+	d_maximum_radius_radians = maximum_radius_radians;
+}
+
+GPlatesMaths::SmallCircle
+GPlatesQtWidgets::SmallCircleWidget::constrain_circle(
+		const GPlatesMaths::SmallCircle &circle) const
+{
+	if (!d_maximum_radius_radians ||
+			circle.colatitude().dval() <= d_maximum_radius_radians.get())
+	{
+		return circle;
+	}
+
+	return GPlatesMaths::SmallCircle::create_colatitude(
+			circle.axis_vector(),
+			GPlatesMaths::Real(d_maximum_radius_radians.get()));
+}
+
+void
+GPlatesQtWidgets::SmallCircleWidget::notify_circle_completed()
+{
+	Q_EMIT circle_completed();
+}
+
+void
 GPlatesQtWidgets::SmallCircleWidget::set_default_states()
 {
     button_create_feature->setEnabled(false);

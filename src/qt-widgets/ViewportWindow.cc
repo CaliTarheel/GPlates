@@ -32,9 +32,12 @@
 #include <boost/foreach.hpp>
 #include <boost/bind/bind.hpp>
 
+#include <QAction>
 #include <QActionGroup>
 #include <QColor>
+#include <QList>
 #include <QCoreApplication>
+#include <QCursor>
 #include <QDesktopServices>
 #include <QDockWidget>
 #include <QDragEnterEvent>
@@ -44,6 +47,7 @@
 #include <QInputDialog>
 #include <QLocale>
 #include <QMessageBox>
+#include <QMenu>
 #include <QMimeData>
 #include <QProcess>
 #include <QProgressBar>
@@ -66,6 +70,7 @@
 #include "GlobeAndMapWidget.h"
 #include "ImportRasterDialog.h"
 #include "ImportScalarField3DDialog.h"
+#include "MapCanvas.h"
 #include "MapView.h"
 #include "PythonConsoleDialog.h"
 #include "QtWidgetUtils.h"
@@ -73,6 +78,7 @@
 #include "ReconstructionViewWidget.h"
 #include "SaveFileDialog.h"
 #include "SearchResultsDockWidget.h"
+#include "ProjectDocumentsDockWidget.h"
 #include "TaskPanel.h"
 #include "VisualLayersDialog.h"
 
@@ -82,10 +88,14 @@
 #include "api/Sleeper.h"
 
 #include "app-logic/ApplicationState.h"
+#include "app-logic/PlanetaryParameters.h"
 #include "app-logic/AppLogicUtils.h"
 #include "app-logic/FeatureCollectionFileIO.h"
 #include "app-logic/FeatureCollectionFileState.h"
+#include "app-logic/PlateVelocityUtils.h"
+#include "app-logic/ReconstructionFeatureProperties.h"
 #include "app-logic/ReconstructionGeometryUtils.h"
+#include "app-logic/VelocityDeltaTime.h"
 
 #include "canvas-tools/GeometryOperationState.h"
 #include "canvas-tools/MeasureDistanceState.h"
@@ -101,6 +111,7 @@
 #include "global/python.h"
 
 #include "gui/AnimationController.h"
+#include "gui/AddClickedGeometriesToFeatureTable.h"
 #include "gui/CanvasToolWorkflows.h"
 #include "gui/DockState.h"
 #include "gui/Dialogs.h"
@@ -109,6 +120,7 @@
 #include "gui/FullScreenMode.h"
 #include "gui/GuiDebug.h"
 #include "gui/ImportMenu.h"
+#include "gui/MapProjection.h"
 #include "gui/PythonManager.h"
 #include "gui/RenderSettings.h"
 #include "gui/SessionMenu.h"
@@ -119,17 +131,33 @@
 #include "model/Model.h"
 #include "model/types.h"
 
+#include "maths/Centroid.h"
+#include "maths/LatLonPoint.h"
+#include "maths/MultiPointOnSphere.h"
+#include "maths/PointOnSphere.h"
+#include "maths/PolygonOnSphere.h"
+#include "maths/PolylineOnSphere.h"
+#include "maths/UnitVector3D.h"
+#include "maths/Vector3D.h"
+
 #include "presentation/SessionManagement.h"
 #include "presentation/ViewState.h"
 
 #include "utils/ComponentManager.h"
 #include "utils/DeferredCallEvent.h"
+#include "utils/Earth.h"
 #include "utils/Profile.h"
 
 #include "view-operations/CloneOperation.h"
 #include "view-operations/DeleteFeatureOperation.h"
+#include "view-operations/PlateDirectionArrowsOperation.h"
+#include "view-operations/PlateIdReassignmentOperation.h"
+#include "view-operations/CircularFeatureOperation.h"
 #include "view-operations/RenderedGeometryCollection.h"
 #include "view-operations/RenderedGeometryParameters.h"
+#include "view-operations/RotationFileEditorOperation.h"
+#include "view-operations/SplitPlateOperation.h"
+#include "view-operations/SubductionCutterOperation.h"
 #include "view-operations/UndoRedo.h"
 
 namespace GPlatesQtWidgets
@@ -192,6 +220,28 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			new GPlatesViewOperations::DeleteFeatureOperation(
 				get_view_state().get_feature_focus(),
 				get_application_state())),
+	d_split_plate_operation_ptr(
+			new GPlatesViewOperations::SplitPlateOperation(
+				get_view_state().get_feature_focus(),
+				get_application_state())),
+	d_subduction_cutter_operation_ptr(
+			new GPlatesViewOperations::SubductionCutterOperation(
+				get_application_state(),
+				get_view_state())),
+	d_rotation_file_editor_operation_ptr(
+			new GPlatesViewOperations::RotationFileEditorOperation(
+				get_application_state())),
+	d_plate_id_reassignment_operation_ptr(
+			new GPlatesViewOperations::PlateIdReassignmentOperation(
+				get_application_state(),
+				get_view_state(),
+				this)),
+	d_plate_direction_arrows_operation_ptr(
+			new GPlatesViewOperations::PlateDirectionArrowsOperation(
+				get_application_state(),
+				get_view_state(),
+				get_view_state().get_rendered_geometry_collection(),
+				this)),
 	d_dialogs_ptr(
 			new GPlatesGui::Dialogs(
 				get_application_state(),
@@ -207,6 +257,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 				*this,
 				get_application_state().get_feature_collection_file_state(),
 				get_application_state().get_feature_collection_file_io(),
+				get_application_state().get_project_document_registry(),
 				get_view_state().get_session_management(),
 				this)),
 	d_file_io_feedback_ptr(
@@ -230,6 +281,7 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 				this)),
 	d_search_results_dock_ptr(NULL),
 	d_canvas_tools_dock_ptr(NULL),
+	d_project_documents_dock_ptr(NULL),
 	d_reconstruction_view_widget_ptr(
 			new ReconstructionViewWidget(
 				*this,
@@ -244,6 +296,53 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	d_inside_update_redo_action_tooltip(false)
 {
 	setupUi(this);
+
+	QAction *reassign_plate_id_action = new QAction(
+			tr("Reassign Focused Feature Without Jumping..."), this);
+	reassign_plate_id_action->setObjectName("action_Reassign_Plate_ID_Without_Jumping");
+	reassign_plate_id_action->setStatusTip(
+			tr("Copy or move the focused feature to a new Plate ID while preserving its current position"));
+	menu_Features->addSeparator();
+	menu_Features->addAction(reassign_plate_id_action);
+	QObject::connect(
+			reassign_plate_id_action,
+			SIGNAL(triggered()),
+			d_plate_id_reassignment_operation_ptr.get(),
+			SLOT(trigger()));
+
+	QAction *bulk_plate_id_action = new QAction(
+			tr("Bulk Plate ID Operations..."), this);
+	bulk_plate_id_action->setObjectName("action_Bulk_Plate_ID_Operations");
+	bulk_plate_id_action->setStatusTip(
+			tr("Copy, move, or delete all visible features belonging to a Plate ID"));
+	menu_Features->addAction(bulk_plate_id_action);
+	QObject::connect(
+			bulk_plate_id_action,
+			SIGNAL(triggered()),
+			d_plate_id_reassignment_operation_ptr.get(),
+			SLOT(trigger_bulk()));
+
+	QAction *show_plate_direction_arrows_action = new QAction(
+			tr("Show Plate Direction Arrows..."), this);
+	show_plate_direction_arrows_action->setObjectName("action_Show_Plate_Direction_Arrows");
+	show_plate_direction_arrows_action->setStatusTip(
+			tr("Draw motion arrows directly on visible features without a velocity domain"));
+	QAction *clear_plate_direction_arrows_action = new QAction(
+			tr("Clear Plate Direction Arrows"), this);
+	clear_plate_direction_arrows_action->setObjectName("action_Clear_Plate_Direction_Arrows");
+	menu_Reconstruction->addSeparator();
+	menu_Reconstruction->addAction(show_plate_direction_arrows_action);
+	menu_Reconstruction->addAction(clear_plate_direction_arrows_action);
+	QObject::connect(
+			show_plate_direction_arrows_action,
+			SIGNAL(triggered()),
+			d_plate_direction_arrows_operation_ptr.get(),
+			SLOT(show_dialog()));
+	QObject::connect(
+			clear_plate_direction_arrows_action,
+			SIGNAL(triggered()),
+			d_plate_direction_arrows_operation_ptr.get(),
+			SLOT(clear()));
 
 	// FIXME: remove this when all non Qt widget state has been moved into ViewState.
 	// This is a temporary solution to avoiding passing ViewportWindow references around
@@ -275,6 +374,26 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			*this);
 	d_canvas_tools_dock_ptr->dock_at_left();
 
+	// Project documents are ordinary Markdown files associated with this session.
+	d_project_documents_dock_ptr = new ProjectDocumentsDockWidget(
+			*d_dock_state_ptr,
+			get_view_state(),
+			*this);
+	d_project_documents_dock_ptr->dock_at_right();
+	d_project_documents_dock_ptr->hide();
+
+	// Keep physical distance and area measurements synchronized with project metadata.
+	d_measure_distance_state_ptr->set_radius(
+			get_application_state().get_planetary_parameters().effective_radius_kilometres());
+	QObject::connect(
+			&get_application_state().get_planetary_parameters(),
+			&GPlatesAppLogic::PlanetaryParameters::effective_radius_changed,
+			this,
+			[this](double radius_metres)
+			{
+				d_measure_distance_state_ptr->set_radius(radius_metres / 1000.0);
+			});
+
 	// Specify which dock widget area should occupy the bottom left corner of the main window.
 	//
 	// Previously the canvas tools were in a QToolBar which is a primary window around the central
@@ -302,6 +421,26 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			*this,
 			this);
 
+	d_select_last_created_feature_action = new QAction(tr("Select Last Created Feature"), this);
+	d_select_last_created_feature_action->setObjectName("action_Select_Last_Created_Feature");
+	d_select_last_created_feature_action->setStatusTip(
+			tr("Focus the most recently created feature, including outside its valid time."
+				" Available once a feature has been created."));
+	d_select_last_created_feature_action->setEnabled(false);
+	// Note: this action is added to the Edit menu in 'connect_edit_menu_actions()' rather than
+	// here, because it is positioned relative to the Redo action, which does not exist until
+	// then (it is created from the QUndoGroup at runtime).
+	QObject::connect(
+			d_select_last_created_feature_action,
+			SIGNAL(triggered()),
+			this,
+			SLOT(select_last_created_feature()));
+	QObject::connect(
+			&d_task_panel_ptr->digitisation_widget().get_create_feature_dialog(),
+			SIGNAL(feature_created(GPlatesModel::FeatureHandle::weak_ref)),
+			this,
+			SLOT(remember_created_feature(GPlatesModel::FeatureHandle::weak_ref)));
+
 	// Switch to the appropriate task panel tab when a canvas tool is activated.
 	QObject::connect(
 			&canvas_tool_workflows(),
@@ -324,9 +463,49 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 			get_view_state(),
 			*this);
 
+	// Feature statistics are a window-level context action, so they remain
+	// available regardless of which canvas workflow is currently active.
+	QObject::connect(
+			&globe_canvas(),
+			SIGNAL(mouse_clicked(
+					const GPlatesMaths::PointOnSphere &,
+					const GPlatesMaths::PointOnSphere &,
+					bool, Qt::MouseButton, Qt::KeyboardModifiers)),
+			this,
+			SLOT(handle_globe_feature_context_menu(
+					const GPlatesMaths::PointOnSphere &,
+					const GPlatesMaths::PointOnSphere &,
+					bool, Qt::MouseButton, Qt::KeyboardModifiers)));
+	QObject::connect(
+			&map_view(),
+			SIGNAL(mouse_clicked(
+					const QPointF &, bool, Qt::MouseButton, Qt::KeyboardModifiers)),
+			this,
+			SLOT(handle_map_feature_context_menu(
+					const QPointF &, bool, Qt::MouseButton, Qt::KeyboardModifiers)));
+
 	// Connect all the Signal/Slot relationships of ViewportWindow's
 	// toolbar buttons and menu items.
 	connect_menu_actions();
+
+	// Circular feature placement is constructed here rather than declared in the Designer file,
+	// because the operation owns runtime state. Anchored to Split Plate so it sits at the top of
+	// the World Building menu.
+	GPlatesViewOperations::CircularFeatureOperation *circular_feature_operation =
+			new GPlatesViewOperations::CircularFeatureOperation(
+					get_application_state(), *this);
+	circular_feature_operation->setParent(this);
+	QAction *place_circular_features_action = new QAction(
+			tr("Place Circular Features..."), this);
+	place_circular_features_action->setObjectName("action_Place_Circular_Features");
+	place_circular_features_action->setStatusTip(tr(
+			"Draw size-limited circular polyline or polygon features that persist to the present"));
+	menu_World_Building->insertAction(
+			action_Split_Plate,
+			place_circular_features_action);
+	QObject::connect(
+			place_circular_features_action, SIGNAL(triggered()),
+			circular_feature_operation, SLOT(trigger()));
 
 	// Duplicate the menu structure for the full-screen-mode GMenu.
 	populate_gmenu_from_menubar();
@@ -536,6 +715,7 @@ GPlatesQtWidgets::ViewportWindow::connect_menu_actions()
 	connect_reconstruction_menu_actions();
 	connect_utilities_menu_actions();
 	connect_tools_menu_actions();
+	connect_world_building_menu_actions();
 	connect_window_menu_actions();
 	connect_help_menu_actions();
 }
@@ -646,6 +826,28 @@ GPlatesQtWidgets::ViewportWindow::connect_edit_menu_actions()
 			SLOT(update_redo_action_tooltip()));
 	add_shortcut_to_tooltip(d_undo_action_ptr);
 	add_shortcut_to_tooltip(d_redo_action_ptr);
+
+	// Place "Select Last Created Feature" directly below Redo.
+	//
+	// Getting back to the feature you just made belongs with the undo/redo navigation actions,
+	// which is where a user looks for it. It is not in the Designer file for the same reason Undo
+	// and Redo are not: Redo is created from the QUndoGroup at runtime, so we have to find where
+	// it ended up and insert after it.
+	const QList<QAction *> edit_menu_actions = menu_Edit->actions();
+	const int redo_action_index = edit_menu_actions.indexOf(d_redo_action_ptr);
+	if (redo_action_index >= 0 &&
+		redo_action_index + 1 < edit_menu_actions.size())
+	{
+		menu_Edit->insertAction(
+				edit_menu_actions.at(redo_action_index + 1),
+				d_select_last_created_feature_action);
+	}
+	else
+	{
+		// Redo isn't where we expect it - better to have the action at the end of the Edit menu
+		// than to silently lose it.
+		menu_Edit->addAction(d_select_last_created_feature_action);
+	}
 	// ----
 	QObject::connect(action_Query_Feature, SIGNAL(triggered()),
 			&dialogs().feature_properties_dialog(), SLOT(choose_query_widget_and_open()));
@@ -782,6 +984,88 @@ GPlatesQtWidgets::ViewportWindow::connect_features_menu_actions()
 
 
 void
+GPlatesQtWidgets::ViewportWindow::remember_created_feature(
+		GPlatesModel::FeatureHandle::weak_ref feature)
+{
+	d_last_created_feature = feature;
+	d_select_last_created_feature_action->setEnabled(feature.is_valid());
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::select_last_created_feature()
+{
+	if (!d_last_created_feature.is_valid())
+	{
+		d_select_last_created_feature_action->setEnabled(false);
+		status_message(tr("The last-created feature is no longer available."));
+		return;
+	}
+
+	// Move the view into the feature's lifetime first, if it is not already there.
+	//
+	// A feature created at, say, 200 Ma simply is not drawn once the view is scrubbed to 0 Ma, so
+	// focusing it would select something the user cannot see - which is the situation this action
+	// exists to rescue them from. Adjusting the time before focusing also means the feature has
+	// been reconstructed by the time we ask for focus, so its geometry is there to be picked.
+	//
+	// Times are in Ma before present, so the feature exists when
+	// disappearance <= time <= appearance.
+	QString time_change_message;
+	GPlatesAppLogic::ReconstructionFeatureProperties feature_properties;
+	feature_properties.visit_feature(d_last_created_feature);
+
+	const double current_time = get_application_state().get_current_reconstruction_time();
+	if (!feature_properties.is_feature_defined_at_recon_time(current_time))
+	{
+		boost::optional<double> view_time;
+
+		const boost::optional<GPlatesPropertyValues::GeoTimeInstant> &appearance =
+				feature_properties.get_time_of_appearance();
+		const boost::optional<GPlatesPropertyValues::GeoTimeInstant> &disappearance =
+				feature_properties.get_time_of_disappearance();
+
+		if (appearance &&
+			appearance->is_real() &&
+			current_time > appearance->value())
+		{
+			// The view is older than the feature: it has not appeared yet.
+			view_time = appearance->value();
+		}
+		else if (disappearance &&
+			disappearance->is_real() &&
+			current_time < disappearance->value())
+		{
+			// The view is younger than the feature: it has already gone.
+			view_time = disappearance->value();
+		}
+
+		if (view_time)
+		{
+			get_application_state().set_reconstruction_time(view_time.get());
+			time_change_message = tr(" The view moved to %1 Ma to show it.")
+					.arg(view_time.get());
+		}
+		else
+		{
+			// Defined nowhere we can reach - a distant-past/future bound, or no valid time at
+			// all. Focus it anyway; say so rather than implying it is on screen.
+			time_change_message = tr(" It is outside the current view time and may not be visible.");
+		}
+	}
+
+	GPlatesGui::FeatureFocus &feature_focus = get_view_state().get_feature_focus();
+	feature_focus.set_focus(d_last_created_feature);
+	if (feature_focus.focused_feature() != d_last_created_feature)
+	{
+		status_message(tr("The last-created feature has no geometry and cannot be selected."));
+		return;
+	}
+	status_message(tr("Selected the last-created feature.") + time_change_message);
+}
+
+
+void
 GPlatesQtWidgets::ViewportWindow::connect_reconstruction_menu_actions()
 {
 	QObject::connect(action_Reconstruct_to_Time, SIGNAL(triggered()),
@@ -803,6 +1087,8 @@ GPlatesQtWidgets::ViewportWindow::connect_reconstruction_menu_actions()
 			&dialogs(), SLOT(pop_up_specify_anchored_plate_id_dialog()));
 	QObject::connect(action_View_Reconstruction_Poles, SIGNAL(triggered()),
 			&dialogs(), SLOT(pop_up_total_reconstruction_poles_dialog()));
+	QObject::connect(action_View_Rotation_Hierarchy, SIGNAL(triggered()),
+			&dialogs(), SLOT(pop_up_rotation_hierarchy_dialog()));
 	// ----
 	QObject::connect(action_Export, SIGNAL(triggered()),
 			&dialogs(), SLOT(pop_up_export_animation_dialog()));
@@ -852,6 +1138,8 @@ GPlatesQtWidgets::ViewportWindow::connect_tools_menu_actions()
 		d_canvas_tools_dock_ptr, SLOT(use_small_canvas_tool_icons(bool)));
 	QObject::connect(action_Configure_Geometry_Rendering, SIGNAL(triggered()),
 			&dialogs(), SLOT(pop_up_configure_canvas_tool_geometry_render_parameters_dialog()));
+	QObject::connect(action_Rotation_File_Editor, SIGNAL(triggered()),
+			this, SLOT(handle_rotation_file_editor()));
 
 	// Populate the Tools menu with a sub-menu for each canvas tool workflow.
 	// And for each workflow populate its sub-menu with the workflow tool actions.
@@ -898,11 +1186,32 @@ GPlatesQtWidgets::ViewportWindow::connect_window_menu_actions()
 	menu_Window->insertAction(action_Show_Bottom_Panel_Placeholder, action_show_bottom_panel);
 	menu_Window->removeAction(action_Show_Bottom_Panel_Placeholder);
 
+	QAction *action_show_project_documents = d_project_documents_dock_ptr->toggleViewAction();
+	action_show_project_documents->setText(tr("Show Project &Documents"));
+	action_show_project_documents->setObjectName("action_Show_Project_Documents");
+	menu_Window->insertAction(action_Log_Dialog, action_show_project_documents);
+
 	QObject::connect(action_Log_Dialog, SIGNAL(triggered()),
 			&dialogs(), SLOT(pop_up_log_dialog()));
 	// ----
 	QObject::connect(action_Full_Screen, SIGNAL(triggered(bool)),
 			d_full_screen_mode, SLOT(toggle_full_screen(bool)));
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::connect_world_building_menu_actions()
+{
+	QObject::connect(
+			action_Split_Plate,
+			SIGNAL(triggered()),
+			this,
+			SLOT(handle_split_plate()));
+	QObject::connect(
+			action_Subduction_Cutter,
+			SIGNAL(triggered()),
+			this,
+			SLOT(handle_subduction_cutter()));
 }
 
 
@@ -927,10 +1236,182 @@ GPlatesQtWidgets::ViewportWindow::canvas_tool_bar_dock_widget()
 }
 
 
+void
+GPlatesQtWidgets::ViewportWindow::handle_globe_feature_context_menu(
+		const GPlatesMaths::PointOnSphere &click_position,
+		const GPlatesMaths::PointOnSphere &oriented_click_position,
+		bool is_on_globe,
+		Qt::MouseButton button,
+		Qt::KeyboardModifiers modifiers)
+{
+	Q_UNUSED(modifiers);
+
+	if (button != Qt::RightButton || !is_on_globe)
+	{
+		return;
+	}
+	show_feature_context_menu_at_point(
+			oriented_click_position,
+			globe_canvas().current_proximity_inclusion_threshold(click_position));
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_map_feature_context_menu(
+		const QPointF &click_position,
+		bool is_on_surface,
+		Qt::MouseButton button,
+		Qt::KeyboardModifiers modifiers)
+{
+	Q_UNUSED(modifiers);
+
+	if (button != Qt::RightButton || !is_on_surface)
+	{
+		return;
+	}
+	const boost::optional<GPlatesMaths::LatLonPoint> lat_lon =
+			map_view().map_canvas().map().projection().inverse_transform(click_position);
+	if (!lat_lon)
+	{
+		return;
+	}
+	const GPlatesMaths::PointOnSphere point_on_sphere = GPlatesMaths::make_point_on_sphere(*lat_lon);
+	show_feature_context_menu_at_point(
+			point_on_sphere,
+			map_view().current_proximity_inclusion_threshold(point_on_sphere));
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::show_feature_context_menu_at_point(
+		const GPlatesMaths::PointOnSphere &point_on_sphere,
+		double proximity_inclusion_threshold)
+{
+	std::vector<GPlatesAppLogic::ReconstructionGeometry::non_null_ptr_to_const_type> clicked_geometries;
+	GPlatesGui::get_clicked_geometries(
+			clicked_geometries,
+			point_on_sphere,
+			proximity_inclusion_threshold,
+			get_view_state().get_rendered_geometry_collection());
+	if (clicked_geometries.empty())
+	{
+		return;
+	}
+
+	GPlatesGui::add_clicked_geometries_to_feature_table(
+			clicked_geometries,
+			*this,
+			get_view_state().get_feature_table_model(),
+			get_view_state().get_feature_focus(),
+			get_application_state().get_reconstruct_graph());
+	show_focused_feature_context_menu(QCursor::pos());
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::show_focused_feature_context_menu(
+		const QPoint &global_position)
+{
+	GPlatesAppLogic::ReconstructionGeometry::maybe_null_ptr_to_const_type reconstruction_geometry =
+			get_view_state().get_feature_focus().associated_reconstruction_geometry();
+	if (!reconstruction_geometry)
+	{
+		return;
+	}
+
+	const boost::optional<const GPlatesAppLogic::ReconstructedFeatureGeometry *> rfg =
+			GPlatesAppLogic::ReconstructionGeometryUtils::get_reconstruction_geometry_derived_type<
+					const GPlatesAppLogic::ReconstructedFeatureGeometry *>(reconstruction_geometry);
+	if (!rfg)
+	{
+		return;
+	}
+
+	const GPlatesMaths::GeometryOnSphere &geometry = *(*rfg)->reconstructed_geometry();
+	boost::optional<GPlatesMaths::UnitVector3D> centroid;
+	try
+	{
+		if (const GPlatesMaths::PointOnSphere *point = dynamic_cast<const GPlatesMaths::PointOnSphere *>(&geometry))
+		{
+			centroid = point->position_vector();
+		}
+		else if (const GPlatesMaths::MultiPointOnSphere *multi_point =
+				dynamic_cast<const GPlatesMaths::MultiPointOnSphere *>(&geometry))
+		{
+			centroid = GPlatesMaths::Centroid::calculate_points_centroid(*multi_point);
+		}
+		else if (const GPlatesMaths::PolylineOnSphere *polyline =
+				dynamic_cast<const GPlatesMaths::PolylineOnSphere *>(&geometry))
+		{
+			centroid = GPlatesMaths::Centroid::calculate_outline_centroid(*polyline);
+		}
+		else if (const GPlatesMaths::PolygonOnSphere *polygon =
+				dynamic_cast<const GPlatesMaths::PolygonOnSphere *>(&geometry))
+		{
+			centroid = GPlatesMaths::Centroid::calculate_interior_centroid(*polygon);
+		}
+	}
+	catch (...)
+	{
+		centroid = boost::none;
+	}
+
+	QString speed_text = tr("Average speed over previous 50 My: unavailable");
+	if (centroid && (*rfg)->reconstruction_plate_id())
+	{
+		try
+		{
+			const double reconstruction_time =
+					get_application_state().get_current_reconstruction().get_reconstruction_time();
+			const GPlatesMaths::Vector3D velocity =
+					GPlatesAppLogic::PlateVelocityUtils::calculate_velocity_vector(
+							GPlatesMaths::PointOnSphere(*centroid),
+							*(*rfg)->reconstruction_plate_id(),
+							(*rfg)->get_reconstruction_tree_creator(),
+							reconstruction_time,
+							50.0,
+							GPlatesAppLogic::VelocityDeltaTime::T_PLUS_DELTA_T_TO_T);
+			speed_text = tr("Average speed over previous 50 My: %1 cm/yr")
+					.arg(QLocale().toString(velocity.magnitude().dval(), 'f', 2));
+		}
+		catch (...)
+		{
+			// Leave the unavailable label for incomplete or degenerate rotation data.
+		}
+	}
+
+	QString area_text = tr("Total area: not applicable to this geometry");
+	if (const GPlatesMaths::PolygonOnSphere *polygon =
+			dynamic_cast<const GPlatesMaths::PolygonOnSphere *>(&geometry))
+	{
+		const double radius_km = GPlatesUtils::Earth::MEAN_RADIUS_KMS;
+		const double area_sq_km = polygon->get_area().dval() * radius_km * radius_km;
+		area_text = tr("Total area: %1 km²").arg(QLocale().toString(area_sq_km, 'f', 0));
+	}
+
+	QMenu menu(this);
+	QAction *heading = menu.addAction(tr("Feature Statistics"));
+	heading->setEnabled(false);
+	menu.addSeparator();
+	QAction *speed_action = menu.addAction(speed_text);
+	QAction *area_action = menu.addAction(area_text);
+	speed_action->setEnabled(false);
+	area_action->setEnabled(false);
+	menu.exec(global_position);
+}
+
+
 GPlatesQtWidgets::SearchResultsDockWidget &
 GPlatesQtWidgets::ViewportWindow::search_results_dock_widget()
 {
 	return *d_search_results_dock_ptr;
+}
+
+
+GPlatesQtWidgets::ProjectDocumentsDockWidget &
+GPlatesQtWidgets::ViewportWindow::project_documents_dock_widget()
+{
+	return *d_project_documents_dock_ptr;
 }
 
 
@@ -1874,6 +2355,76 @@ void
 GPlatesQtWidgets::ViewportWindow::pop_up_python_console()
 {
 	d_view_state.get_python_manager().pop_up_python_console();
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_split_plate()
+{
+	const GPlatesViewOperations::SplitPlateOperation::Result result =
+			d_split_plate_operation_ptr->trigger();
+
+	status_message(result.message);
+
+	switch (result.outcome)
+	{
+	case GPlatesViewOperations::SplitPlateOperation::POLYGON_CAPTURED:
+		QMessageBox::information(
+				this,
+				tr("Split Plate — Polygon Captured"),
+				result.message);
+		break;
+
+	case GPlatesViewOperations::SplitPlateOperation::SPLIT_COMPLETED:
+		QMessageBox::information(
+				this,
+				tr("Split Plate Complete"),
+				result.message);
+		break;
+
+	case GPlatesViewOperations::SplitPlateOperation::OPERATION_ERROR:
+		QMessageBox::warning(
+				this,
+				tr("Split Plate"),
+				result.message);
+		break;
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_subduction_cutter()
+{
+	const GPlatesViewOperations::SubductionCutterOperation::Result result =
+			d_subduction_cutter_operation_ptr->trigger(this);
+	status_message(result.message);
+
+	if (result.outcome == GPlatesViewOperations::SubductionCutterOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Subduction Cutter"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::SubductionCutterOperation::CUT_COMPLETED)
+	{
+		QMessageBox::information(this, tr("Subduction Cutter Complete"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_rotation_file_editor()
+{
+	const GPlatesViewOperations::RotationFileEditorOperation::Result result =
+			d_rotation_file_editor_operation_ptr->trigger(this);
+	status_message(result.message);
+
+	if (result.outcome == GPlatesViewOperations::RotationFileEditorOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Rotation File Editor"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::RotationFileEditorOperation::OPERATION_COMPLETED)
+	{
+		QMessageBox::information(this, tr("Rotation File Editor"), result.message);
+	}
 }
 
 

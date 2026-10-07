@@ -1,0 +1,44 @@
+# GPlates active feature type list.
+# One qualified feature type per line. Blank lines and lines beginning with '#'
+# are ignored. Load this file from Preferences > Active Feature Types.
+#
+# Deric's worldbuilding feature set.
+#
+# Every entry below was checked against the GPGIM shipped with this version of
+# GPlates, so each one exists and will appear in the Active Feature Types list.
+
+gpml:ContinentalCrust
+gpml:ContinentalRift
+gpml:Craton
+
+# "Hotspot/Hotspot Trail" is two feature types in GPlates - the hotspot itself
+# and the trail it leaves - so both are included.
+gpml:HotSpot
+gpml:HotSpotTrail
+
+gpml:Flowline
+gpml:IslandArc
+gpml:LargeIgneousProvince
+gpml:MidOceanRidge
+gpml:OceanicCrust
+gpml:OrogenicBelt
+
+# Raster is how images are brought into a project, so it is needed for that even
+# if rasters are not otherwise used.
+gpml:Raster
+
+gpml:SubductionZone
+gpml:Suture
+
+# Topologies. TopologicalClosedPlateBoundary is the one asked for; the other two
+# are the remaining topological feature types GPlates offers, included so that
+# building and resolving topologies is not blocked by a hidden type.
+#
+# Note that the *sections* a topology is built from are ordinary features -
+# MidOceanRidge, SubductionZone, Transform - which are already in this list.
+gpml:TopologicalClosedPlateBoundary
+gpml:TopologicalNetwork
+gpml:TopologicalSlabBoundary
+
+gpml:Transform
+gpml:UnclassifiedFeature

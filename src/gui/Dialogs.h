@@ -80,6 +80,7 @@ namespace GPlatesQtWidgets
 	class ManageFeatureCollectionsDialog;
 	class PreferencesDialog;
 	class ReadErrorAccumulationDialog;
+	class RotationHierarchyDialog;
 	class SetCameraViewpointDialog;
 	class SetProjectionDialog;
 	class ShapefileAttributeViewerDialog;
@@ -203,6 +204,9 @@ namespace GPlatesGui
 
 		GPlatesQtWidgets::ReadErrorAccumulationDialog &
 		read_error_accumulation_dialog();
+
+		GPlatesQtWidgets::RotationHierarchyDialog &
+		rotation_hierarchy_dialog();
 
 		GPlatesQtWidgets::SetCameraViewpointDialog &
 		set_camera_viewpoint_dialog();
@@ -330,6 +334,9 @@ namespace GPlatesGui
 		pop_up_read_error_accumulation_dialog();
 
 		void
+		pop_up_rotation_hierarchy_dialog();
+
+		void
 		pop_up_set_camera_viewpoint_dialog();
 
 		void
@@ -405,6 +412,7 @@ namespace GPlatesGui
 			DIALOG_MANAGE_FEATURE_COLLECTIONS,
 			DIALOG_PREFERENCES,
 			DIALOG_READ_ERROR_ACCUMULATION,
+			DIALOG_ROTATION_HIERARCHY,
 			DIALOG_SET_CAMERA_VIEWPOINT,
 			DIALOG_SET_PROJECTION,
 			DIALOG_SHAPEFILE_ATTRIBUTE_VIEWER,

@@ -27,6 +27,24 @@ include (Version)
 # before this file is processed, so the 'set()' here becomes the no-op instead).
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE BOOL "Generate compile_commands.json (for clangd/IDE tooling).")
 
+# CMake 4.4.0 can generate a malformed Ninja rule for Microsoft's resource
+# compiler on Windows. The rule omits the `cmake -E cmcldeps` launcher and
+# starts with `RC <source> ...`, which invokes rc.exe with cmcldeps arguments
+# and fails with RC1107. Disabling cmcldeps for RC files makes CMake emit the
+# normal direct rc.exe command. Keep this narrowly version-gated so later CMake
+# releases regain resource dependency scanning once the generator is fixed.
+#
+# This must precede project(), where CMake initialises language support. An
+# explicit command-line value still wins.
+if (CMAKE_HOST_WIN32 AND
+        CMAKE_GENERATOR MATCHES "^Ninja" AND
+        CMAKE_VERSION VERSION_EQUAL "4.4.0" AND
+        NOT DEFINED CMAKE_NINJA_CMCLDEPS_RC)
+    set(CMAKE_NINJA_CMCLDEPS_RC 0 CACHE BOOL
+            "Disable CMake 4.4.0's broken Ninja cmcldeps rule for Windows RC files.")
+    message(STATUS "Disabled CMake 4.4.0 Ninja cmcldeps for Windows resource files")
+endif()
+
 #
 # Make an active conda environment discoverable to CMake's dependency search.
 #

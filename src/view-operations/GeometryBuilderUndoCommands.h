@@ -26,6 +26,9 @@
 #ifndef GPLATES_VIEWOPERATIONS_GEOMETRYBUILDERUNDOCOMMANDS_H
 #define GPLATES_VIEWOPERATIONS_GEOMETRYBUILDERUNDOCOMMANDS_H
 
+#include <utility>
+#include <vector>
+
 #include <QUndoCommand>
 
 #include "GeometryBuilder.h"
@@ -157,6 +160,84 @@ namespace GPlatesViewOperations
 		std::vector<GPlatesViewOperations::SecondaryGeometry> &d_secondary_geometries;
 		bool d_is_intermediate_move;
 		GeometryBuilder::UndoOperation d_undo_operation;
+	};
+
+
+	/**
+	 * Command to move a set of points as one undoable operation.
+	 */
+	class GeometryBuilderMovePointsUndoCommand :
+		public QUndoCommand
+	{
+	public:
+		typedef std::pair<GeometryBuilder::PointIndex, GPlatesMaths::PointOnSphere> indexed_point_type;
+		typedef std::vector<indexed_point_type> indexed_point_seq_type;
+
+		GeometryBuilderMovePointsUndoCommand(
+				GeometryBuilder &geometry_builder,
+				const indexed_point_seq_type &points_to_move,
+				bool is_intermediate_move,
+				QUndoCommand *parent = 0) :
+			QUndoCommand(parent),
+			d_geometry_builder(geometry_builder),
+			d_points_to_move(points_to_move),
+			d_is_intermediate_move(is_intermediate_move)
+		{
+			setText(QObject::tr("move selected vertices"));
+		}
+
+		virtual
+		void
+		redo();
+
+		virtual
+		void
+		undo();
+
+		virtual
+		bool
+		mergeWith(
+				const QUndoCommand *other_command);
+
+	private:
+		GeometryBuilder &d_geometry_builder;
+		indexed_point_seq_type d_points_to_move;
+		bool d_is_intermediate_move;
+		std::vector<GeometryBuilder::UndoOperation> d_undo_operations;
+	};
+
+
+	/**
+	 * Command to remove a set of points as one undoable operation.
+	 * Point indices must be supplied in descending order.
+	 */
+	class GeometryBuilderRemovePointsUndoCommand :
+		public QUndoCommand
+	{
+	public:
+		GeometryBuilderRemovePointsUndoCommand(
+				GeometryBuilder &geometry_builder,
+				const std::vector<GeometryBuilder::PointIndex> &point_indices_to_remove,
+				QUndoCommand *parent = 0) :
+			QUndoCommand(parent),
+			d_geometry_builder(geometry_builder),
+			d_point_indices_to_remove(point_indices_to_remove)
+		{
+			setText(QObject::tr("delete selected vertices"));
+		}
+
+		virtual
+		void
+		redo();
+
+		virtual
+		void
+		undo();
+
+	private:
+		GeometryBuilder &d_geometry_builder;
+		std::vector<GeometryBuilder::PointIndex> d_point_indices_to_remove;
+		std::vector<GeometryBuilder::UndoOperation> d_undo_operations;
 	};
 
 

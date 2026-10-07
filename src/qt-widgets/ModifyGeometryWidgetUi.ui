@@ -20,6 +20,98 @@
     <number>2</number>
    </property>
    <item>
+    <widget class="QGroupBox" name="groupbox_vertex_selection" >
+     <property name="title" >
+      <string>Vertex Selection</string>
+     </property>
+     <property name="flat" >
+      <bool>true</bool>
+     </property>
+     <layout class="QVBoxLayout" >
+      <property name="margin" >
+       <number>4</number>
+      </property>
+      <item>
+       <widget class="QLabel" name="label_vertex_selection_help" >
+        <property name="text" >
+         <string>Move Vertex: Shift-drag to lasso; Shift-click to toggle.</string>
+        </property>
+        <property name="wordWrap" >
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_vertex_selection_count" >
+        <property name="text" >
+         <string>No vertices selected</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" >
+        <item>
+         <widget class="QPushButton" name="button_average_vertex_positions" >
+          <property name="enabled" >
+           <bool>false</bool>
+          </property>
+          <property name="toolTip" >
+           <string>Move every selected vertex to their shared spherical average position</string>
+          </property>
+          <property name="text" >
+           <string>&amp;Average Positions</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="button_delete_selected_vertices" >
+          <property name="enabled" >
+           <bool>false</bool>
+          </property>
+          <property name="toolTip" >
+           <string>Delete all selected vertices as one undoable operation</string>
+          </property>
+          <property name="text" >
+           <string>&amp;Delete Selected</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" >
+        <item>
+         <widget class="QPushButton" name="button_cluster_selected_vertices" >
+          <property name="enabled" >
+           <bool>false</bool>
+          </property>
+          <property name="toolTip" >
+           <string>Move selected vertices within a distance threshold to their cluster average</string>
+          </property>
+          <property name="text" >
+           <string>&amp;Cluster Nearby...</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="button_snap_selected_vertices_to_plate" >
+          <property name="enabled" >
+           <bool>false</bool>
+          </property>
+          <property name="toolTip" >
+           <string>Snap each selected vertex to the nearest visible vertex on a guide Plate ID</string>
+          </property>
+          <property name="text" >
+           <string>&amp;Snap to Plate...</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <widget class="QGroupBox" name="groupbox_coordinates" >
      <property name="title" >
       <string>Coordinates</string>

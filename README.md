@@ -1,3 +1,24 @@
+## About this fork
+
+This unofficial fork combines the worldbuilding and editing tools from SR1 with
+the upstream [`GPlates/GPlates:main`](https://github.com/GPlates/GPlates/tree/main)
+development line. GPlates and pyGPlates share the same sources and use upstream's
+Git-derived development versions.
+
+The desktop additions include circular feature placement, Split Plate and
+oceanic-crust retirement; rotation editing, keyframe copying and drift correction;
+multi-vertex editing and bulk Plate ID operations; rotation hierarchy and Absolute
+Age colouring; and project documents, planetary radius and active feature-type
+presets. `DN.txt` and `WorldbuildingPasta.txt` are bundled beside the Windows
+executable. Naturalize Coastline and automatic reopening of the last project are
+not part of SR1.
+
+The original [SR1 release and UX manual](https://github.com/CaliTarheel/GPlates/releases/tag/2.6.0-dev8-SR1)
+remain available. Use the platform build guides below for this source tree;
+`FRONTIER.md`, `SR_PR_INTEGRATION.md` and `build-sr0a.cmd` describe older snapshots.
+Report issues with this fork to this repository, rather than upstream.
+
+
 <div align="center">
 
   <p>
@@ -49,6 +70,8 @@ The [initial release of GPlates](https://web.archive.org/web/20031221211144/http
 GPlates is developed by [an international team](https://www.gplates.org/contact/) of scientists and software developers.
 
 For more information please visit the [GPlates website](https://www.gplates.org/).
+
+
 
 ## Documentation
 

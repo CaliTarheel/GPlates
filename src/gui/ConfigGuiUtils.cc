@@ -179,7 +179,10 @@ GPlatesGui::ConfigGuiUtils::link_button_group_to_preference(
 				button_group,config,key,map);
 	QObject::connect(adapter,SIGNAL(value_changed(int)),adapter,SLOT(set_checked_button(int)));
 
-	QObject::connect(button_group,SIGNAL(buttonClicked(int)),adapter,SLOT(handle_checked_button_changed(int)));
+	// Note: Qt6 removed QButtonGroup::buttonClicked(int) in favour of idClicked(int). Since this
+	// uses the string-based SIGNAL() macro the mismatch is not a compile error - it fails at
+	// runtime, leaving the button group silently unable to save the user's selection.
+	QObject::connect(button_group,SIGNAL(idClicked(int)),adapter,SLOT(handle_checked_button_changed(int)));
 
 	// Do a one-off fake update so widget has correct value in it.
 	adapter->handle_key_value_updated(key);

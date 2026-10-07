@@ -44,6 +44,7 @@ GPlatesQtWidgets::SearchResultsDockWidget::SearchResultsDockWidget(
 	// Use empty string for dock title so it doesn't display in the title bar...
 	DockWidget("", dock_state, main_window, QString("search_results")),
 	d_view_state(main_window.get_view_state()),
+	d_main_window(main_window),
 	d_clicked_feature_table_model(feature_table_model)
 {
 	setupUi(this);
@@ -71,6 +72,7 @@ GPlatesQtWidgets::SearchResultsDockWidget::set_up_clicked_geometries_table()
 	GPlatesGui::FeatureTableModel::set_default_resize_modes(*tree_view_clicked_geometries->header());
 	tree_view_clicked_geometries->header()->setMinimumSectionSize(60);
 	tree_view_clicked_geometries->header()->setSectionsMovable(true);
+	tree_view_clicked_geometries->setContextMenuPolicy(Qt::CustomContextMenu);
 }
 
 
@@ -97,6 +99,27 @@ GPlatesQtWidgets::SearchResultsDockWidget::make_signal_slot_connections()
 			SIGNAL(selectionChanged(const QItemSelection &, const QItemSelection &)),
 			&d_clicked_feature_table_model,
 			SLOT(handle_selection_change(const QItemSelection &, const QItemSelection &)));
+	QObject::connect(tree_view_clicked_geometries, SIGNAL(customContextMenuRequested(const QPoint &)),
+			this, SLOT(show_clicked_feature_context_menu(const QPoint &)));
+}
+
+
+void
+GPlatesQtWidgets::SearchResultsDockWidget::show_clicked_feature_context_menu(
+		const QPoint &position)
+{
+	const QModelIndex index = tree_view_clicked_geometries->indexAt(position);
+	if (!index.isValid())
+	{
+		return;
+	}
+	tree_view_clicked_geometries->selectionModel()->select(
+			index,
+			QItemSelectionModel::ClearAndSelect |
+					QItemSelectionModel::Current |
+					QItemSelectionModel::Rows);
+	d_main_window.show_focused_feature_context_menu(
+			tree_view_clicked_geometries->viewport()->mapToGlobal(position));
 }
 
 

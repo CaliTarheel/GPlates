@@ -183,6 +183,21 @@ install(
             #       by auditwheel/delocate/delvewheel when building pyGPlates wheels).
             unset(_python_backend_libraries)
             if (GPLATES_BUILD_GPLATES)
+                # Windows keeps the standard library's native extensions in DLLs, beside Lib.
+                # Install.cmake copies that directory, but extensions such as _ctypes still need
+                # their external dependencies (eg, libffi) discovered and bundled as well.
+                if (WIN32)
+                    get_filename_component(_source_python_dlls_dir
+                        "${GPLATES_PYTHON_STDLIB_DIR}" DIRECTORY)
+                    set(_source_python_dlls_dir "${_source_python_dlls_dir}/DLLs")
+                    if (EXISTS "${_source_python_dlls_dir}")
+                        file(GLOB _stdlib_modules "${_source_python_dlls_dir}/*.pyd")
+                        list(APPEND ARGUMENT_MODULES ${_stdlib_modules})
+                        list(APPEND GET_RUNTIME_DEPENDENCIES_DIRECTORIES
+                            "${_source_python_dlls_dir}")
+                    endif()
+                endif()
+
                 # The *source* site-packages directory (the one copied wholesale into the bundle). We scan
                 # the source extension modules (not the installed copies) for the same relative-rpath reason
                 # as the plugins above - eg, numpy's '.so' reaches its BLAS/LAPACK backend via an
@@ -196,6 +211,21 @@ install(
                         "${_source_site_packages}/*.so")
                     if (_site_packages_modules)
                         set(ARGUMENT_MODULES ${ARGUMENT_MODULES} ${_site_packages_modules})
+                    endif()
+
+                    # Windows wheels can keep dependency DLLs in package-private directories
+                    # (eg, scipy.libs) that Python adds to its DLL search path at import time.
+                    # They are copied with site-packages, but are not on the build environment's
+                    # PATH, so the dependency scanner must be told where to find them as well.
+                    if (WIN32)
+                        file(GLOB_RECURSE _site_packages_dlls "${_source_site_packages}/*.dll")
+                        foreach(_site_packages_dll ${_site_packages_dlls})
+                            get_filename_component(_site_packages_dll_directory
+                                "${_site_packages_dll}" DIRECTORY)
+                            list(APPEND GET_RUNTIME_DEPENDENCIES_DIRECTORIES
+                                "${_site_packages_dll_directory}")
+                        endforeach()
+                        list(REMOVE_DUPLICATES GET_RUNTIME_DEPENDENCIES_DIRECTORIES)
                     endif()
                 endif()
 
@@ -364,14 +394,36 @@ elseif (APPLE)
             function(codesign installed_file)
                 # Only sign if a signing identity was provided.
                 if (CODE_SIGN_IDENTITY)
-                    # Run 'codesign' to sign installed file/directory with a Developer ID certificate.
-                    # Note that we need "--timestamp" to provide a secure timestamp, otherwise notarization will fail.
-                    execute_process(
-                        COMMAND ${CODESIGN} --timestamp --force --verify --options runtime --sign ${CODE_SIGN_IDENTITY}
-                                --entitlements ${ENTITLEMENTS_FILE} ${installed_file}
-                        RESULT_VARIABLE _codesign_result
-                        OUTPUT_VARIABLE _codesign_output
-                        ERROR_VARIABLE _codesign_error)
+                    if (CODE_SIGN_IDENTITY STREQUAL "-")
+                        # Ad-hoc signing - the free fallback for builds without a paid Apple Developer ID.
+                        #
+                        # An ad-hoc signature is tied to no identity and cannot be notarized, so a downloaded
+                        # bundle is still quarantined and the user still has to approve it once. What it does
+                        # provide is a *valid* signature that seals the bundle, and that matters for two reasons:
+                        # on Apple Silicon every Mach-O must carry a valid signature to be exec'd at all, and an
+                        # unsigned bundle makes macOS report the misleading "GPlates is damaged and can't be
+                        # opened - you should move it to the Trash", which offers the user no way forward.
+                        # Signed ad-hoc, the same bundle instead gets the ordinary unidentified-developer prompt.
+                        #
+                        # Note that "--timestamp" and "--options runtime" are deliberately omitted here: an ad-hoc
+                        # signature cannot carry a secure timestamp, and the hardened runtime only buys anything
+                        # in combination with notarization (which needs a Developer ID). The entitlements file is
+                        # omitted for the same reason - those entitlements only take effect under hardened runtime.
+                        execute_process(
+                            COMMAND ${CODESIGN} --force --sign - ${installed_file}
+                            RESULT_VARIABLE _codesign_result
+                            OUTPUT_VARIABLE _codesign_output
+                            ERROR_VARIABLE _codesign_error)
+                    else()
+                        # Run 'codesign' to sign installed file/directory with a Developer ID certificate.
+                        # Note that we need "--timestamp" to provide a secure timestamp, otherwise notarization will fail.
+                        execute_process(
+                            COMMAND ${CODESIGN} --timestamp --force --verify --options runtime --sign ${CODE_SIGN_IDENTITY}
+                                    --entitlements ${ENTITLEMENTS_FILE} ${installed_file}
+                            RESULT_VARIABLE _codesign_result
+                            OUTPUT_VARIABLE _codesign_output
+                            ERROR_VARIABLE _codesign_error)
+                    endif()
                     if (_codesign_result)
                         message(FATAL_ERROR "${CODESIGN} failed: ${_codesign_error}")
                     endif()

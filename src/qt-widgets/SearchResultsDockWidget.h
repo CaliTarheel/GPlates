@@ -98,6 +98,12 @@ namespace GPlatesQtWidgets
 		set_topology_sections_table_tab_text(
 				const QString &text);
 
+	private Q_SLOTS:
+
+		void
+		show_clicked_feature_context_menu(
+				const QPoint &position);
+
 	private:
 
 		void
@@ -112,6 +118,8 @@ namespace GPlatesQtWidgets
 
 
 		GPlatesPresentation::ViewState &d_view_state;
+
+		ViewportWindow &d_main_window;
 
 		GPlatesGui::FeatureTableModel &d_clicked_feature_table_model;
 

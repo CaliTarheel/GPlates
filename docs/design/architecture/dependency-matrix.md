@@ -39,13 +39,13 @@ flowchart TD
   end
   subgraph L3 ["Shared core"]
     file_io["file-io<br/>module: 173 of 235 files"]:::module
-    app_logic["app-logic<br/>module: 151 of 285 files"]:::module
+    app_logic["app-logic<br/>module: 151 of 291 files"]:::module
   end
   subgraph L4 ["pyGPlates bindings"]
     api["api<br/>module: 77 of 110 files"]:::module
   end
   subgraph L5 ["GPlates engine"]
-    app_logic_gp["app-logic<br/>GPlates-only: 134 of 285 files"]:::gplates
+    app_logic_gp["app-logic<br/>GPlates-only: 140 of 291 files"]:::gplates
     file_io_gp["file-io<br/>GPlates-only: 62 of 235 files"]:::gplates
     scribe_gp["scribe<br/>GPlates-only: 8 of 64 files"]:::gplates
     data_mining["data-mining<br/>42 files"]:::gplates
@@ -61,10 +61,10 @@ flowchart TD
   subgraph L7 ["GPlates user interface"]
     gui_gp["gui<br/>GPlates-only: 237 of 249 files"]:::gplates
     presentation["presentation<br/>48 files"]:::gplates
-    view_operations["view-operations<br/>82 files"]:::gplates
+    view_operations["view-operations<br/>97 files"]:::gplates
     canvas_tools["canvas-tools<br/>51 files"]:::gplates
     api_gp["api<br/>GPlates-only: 33 of 110 files"]:::gplates
-    qt_widgets["qt-widgets<br/>441 files"]:::gplates
+    qt_widgets["qt-widgets<br/>448 files"]:::gplates
   end
   maths --> global
   maths --> utils
@@ -155,7 +155,7 @@ flowchart TD
   end
   subgraph L3 ["Shared core"]
     file_io["file-io<br/>module: 173 of 235 files"]:::module
-    app_logic["app-logic<br/>module: 151 of 285 files"]:::module
+    app_logic["app-logic<br/>module: 151 of 291 files"]:::module
   end
   subgraph L4 ["pyGPlates bindings"]
     api["api<br/>module: 77 of 110 files"]:::module
@@ -231,25 +231,25 @@ in the *column* directory, over every `.h`/`.cc` in the built `src/` subdirector
 
 | includes -> | (src root) | api | app-logic | canvas-tools | cli | data-mining | file-io | global | gui | maths | model | opengl | presentation | property-values | qt-widgets | scribe | unit-test | utils | view-operations |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| (src root) |  | 2 | 2 |  | 1 | 1 | 1 | 4 | 4 | 3 | 1 | 1 | 2 | 1 | 2 | 6 | 1 | 3 |  |
+| (src root) |  | 2 | 2 |  | 1 | 1 | 1 | 5 | 4 | 3 | 1 | 1 | 2 | 1 | 2 | 6 | 1 | 3 |  |
 | api |  | 275 | 125 |  |  | 8 | 36 | 156 | 15 | 86 | 78 | 2 | 3 | 114 | 5 | 29 |  | 44 |  |
-| app-logic |  |  | 939 |  |  | 7 | 21 | 161 |  | 279 | 293 | 12 |  | 307 |  | 25 |  | 121 |  |
-| canvas-tools |  |  | 12 | 42 |  |  |  | 3 | 36 | 27 | 14 |  | 7 | 2 | 38 |  |  | 8 | 68 |
+| app-logic |  |  | 949 |  |  | 7 | 21 | 161 |  | 280 | 293 | 12 |  | 307 |  | 25 |  | 123 |  |
+| canvas-tools |  |  | 12 | 42 |  |  |  | 3 | 36 | 27 | 14 |  | 7 | 2 | 38 |  |  | 8 | 67 |
 | cli |  |  | 17 |  | 42 |  | 29 | 6 |  | 5 | 24 |  |  |  |  |  |  |  |  |
 | data-mining |  |  | 18 |  |  | 81 | 4 | 6 | 1 | 8 | 9 | 1 |  | 72 |  | 11 |  | 6 |  |
 | file-io |  |  | 82 |  |  |  | 540 | 117 | 19 | 116 | 244 |  |  | 417 |  |  |  | 78 |  |
 | global |  |  |  |  |  |  |  | 25 |  |  |  |  |  |  |  |  |  | 5 |  |
-| gui |  | 18 | 169 | 53 |  | 3 | 53 | 95 | 480 | 117 | 81 | 113 | 79 | 98 | 163 | 14 |  | 89 | 108 |
+| gui |  | 18 | 170 | 53 |  | 3 | 53 | 95 | 480 | 117 | 81 | 113 | 79 | 98 | 164 | 14 |  | 89 | 108 |
 | maths |  |  |  |  |  |  |  | 75 |  | 410 | 1 |  |  |  |  | 24 |  | 41 |  |
 | model |  |  | 7 |  |  |  | 2 | 30 |  | 1 | 218 |  |  | 58 |  | 23 |  | 48 |  |
 | opengl |  |  | 16 |  |  |  | 10 | 189 | 32 | 100 |  | 614 |  | 24 |  |  |  | 125 | 3 |
-| presentation |  | 1 | 100 |  |  | 1 | 24 | 23 | 76 | 12 | 9 | 3 | 93 | 6 | 26 | 25 |  | 11 | 19 |
+| presentation |  | 1 | 101 |  |  | 1 | 24 | 23 | 76 | 12 | 9 | 3 | 93 | 6 | 26 | 25 |  | 11 | 19 |
 | property-values |  |  |  |  |  |  | 11 | 64 | 5 | 26 | 292 |  |  | 176 |  | 103 |  | 35 |  |
-| qt-widgets |  | 17 | 276 | 7 |  | 8 | 79 | 133 | 223 | 116 | 268 | 35 | 116 | 212 | 834 |  |  | 55 | 26 |
+| qt-widgets |  | 17 | 295 | 8 |  | 8 | 80 | 133 | 225 | 127 | 275 | 35 | 119 | 212 | 846 |  |  | 57 | 32 |
 | scribe |  |  |  |  |  |  |  | 31 |  | 8 |  |  |  |  |  | 172 |  | 23 |  |
-| unit-test |  |  | 4 |  |  | 2 | 15 | 2 | 5 | 11 | 18 |  |  | 14 |  | 16 | 2 | 7 |  |
+| unit-test |  |  | 7 |  |  | 2 | 15 | 2 | 5 | 16 | 18 |  |  | 14 |  | 16 | 2 | 8 |  |
 | utils |  | 1 |  |  |  |  | 1 | 34 |  | 13 | 1 |  |  | 54 |  | 3 |  | 50 |  |
-| view-operations |  |  | 44 | 6 |  |  | 5 | 27 | 56 | 92 | 27 |  | 6 | 9 | 1 | 3 |  | 13 | 232 |
+| view-operations |  |  | 91 | 6 |  |  | 7 | 27 | 61 | 115 | 61 |  | 15 | 26 | 4 | 3 |  | 15 | 250 |
 
 # The pyGPlates module subset
 
@@ -265,7 +265,7 @@ Roots: the exporter `.cc` of every `export_*()` call registered in
 | --- | ---: |
 | (src root) | 1 / 7 |
 | api | 77 / 110 |
-| app-logic | 151 / 285 |
+| app-logic | 151 / 291 |
 | canvas-tools | 0 / 51 |
 | cli | 0 / 20 |
 | data-mining | 0 / 42 |
@@ -277,11 +277,11 @@ Roots: the exporter `.cc` of every `export_*()` call registered in
 | opengl | 0 / 158 |
 | presentation | 0 / 48 |
 | property-values | 127 / 128 |
-| qt-widgets | 0 / 441 |
+| qt-widgets | 0 / 448 |
 | scribe | 56 / 64 |
-| unit-test | 0 / 17 |
+| unit-test | 0 / 18 |
 | utils | 45 / 75 |
-| view-operations | 0 / 82 |
+| view-operations | 0 / 97 |
 
 What the module takes from each partially-included directory:
 
@@ -369,7 +369,7 @@ What the module takes from each partially-included directory:
 - `api/PythonVariableFunctionArguments.cc`
 - `api/PythonVariableFunctionArguments.h`
 
-## app-logic (151 of 285)
+## app-logic (151 of 291)
 
 - `app-logic/AppLogicUtils.cc`
 - `app-logic/AppLogicUtils.h`
