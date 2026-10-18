@@ -30,6 +30,8 @@
 
 #include <boost/noncopyable.hpp>
 #include <boost/optional.hpp>
+#include <set>
+#include <vector>
 #include <QObject>
 
 #include "maths/ConstGeometryOnSphereVisitor.h"
@@ -244,6 +246,24 @@ namespace GPlatesViewOperations
 				const GPlatesMaths::PointOnSphere &oriented_pos_on_sphere,
 				const double &closeness_inclusion_threshold);
 
+		//! Toggle the vertex nearest a Shift-click in the persistent selection.
+		void
+		toggle_vertex_selection(
+				const GPlatesMaths::PointOnSphere &oriented_pos_on_sphere,
+				const double &closeness_inclusion_threshold);
+
+		//! Begin, extend and complete a Shift-drag spherical lasso.
+		void
+		begin_lasso(
+				const GPlatesMaths::PointOnSphere &oriented_pos_on_sphere);
+
+		void
+		update_lasso(
+				const GPlatesMaths::PointOnSphere &oriented_pos_on_sphere);
+
+		void
+		end_lasso();
+
 	public Q_SLOTS:
 		// NOTE: all signals/slots should use namespace scope for all arguments
 		//       otherwise differences between signals and slots will cause Qt
@@ -264,6 +284,21 @@ namespace GPlatesViewOperations
 				double threshold,
 				bool should_use_plate_id,
 				GPlatesModel::integer_plate_id_type plate_id);
+
+		void
+		handle_delete_selected_vertices_requested();
+
+		void
+		handle_average_selected_vertex_positions_requested();
+
+		void
+		handle_cluster_selected_vertices_requested(
+				double threshold_degrees);
+
+		void
+		handle_snap_selected_vertices_to_plate_requested(
+				GPlatesModel::integer_plate_id_type plate_id,
+				double threshold_degrees);
 	
 	private:
 		
@@ -271,6 +306,8 @@ namespace GPlatesViewOperations
 		 * This is used to build geometry. We move vertices with it.
 		 */
 		GeometryBuilder &d_geometry_builder;
+
+		GPlatesCanvasTools::ModifyGeometryState &d_modify_geometry_state;
 
 		/**
 		 * We call this when we activate/deactivate.
@@ -303,6 +340,10 @@ namespace GPlatesViewOperations
 		 */
 		RenderedGeometryCollection::child_layer_owner_ptr_type d_highlight_point_layer_ptr;
 
+		/** Selected vertices and the in-progress lasso, drawn above regular points. */
+		RenderedGeometryCollection::child_layer_owner_ptr_type d_selected_points_layer_ptr;
+		RenderedGeometryCollection::child_layer_owner_ptr_type d_lasso_layer_ptr;
+
 		/**
 		 * Used by undo/redo to make sure appropriate tool is active
 		 * when the undo/redo happens.
@@ -333,6 +374,14 @@ namespace GPlatesViewOperations
 		 * Is the user hovering over a vertex                                                                     
 		 */
 		bool d_is_vertex_highlighted;		
+
+		bool d_is_active;
+		bool d_is_lassoing;
+
+		std::set<GeometryBuilder::PointIndex> d_selected_vertex_indices;
+		std::vector<GPlatesMaths::PointOnSphere> d_lasso_points;
+		boost::optional<GPlatesMaths::PointOnSphere> d_drag_anchor_point;
+		std::vector<GPlatesMaths::PointOnSphere> d_drag_original_points;
 		
 		/**
 		 * Does the user want to check nearby vertices of other geometries                                                                     
@@ -369,6 +418,42 @@ namespace GPlatesViewOperations
 		move_vertex(
 				const GPlatesMaths::PointOnSphere &oriented_pos_on_sphere,
 				bool is_intermediate_move);
+
+		void
+		move_selected_vertices(
+				const GPlatesMaths::PointOnSphere &oriented_pos_on_sphere,
+				bool is_intermediate_move);
+
+		void
+		move_selected_vertices_to(
+				const std::vector<GPlatesMaths::PointOnSphere> &positions,
+				bool is_intermediate_move,
+				const QString &undo_text,
+				UndoRedo::CommandId command_id = UndoRedo::CommandId());
+
+		void
+		delete_selected_vertices();
+
+		void
+		average_selected_vertex_positions();
+
+		void
+		cluster_selected_vertices(
+				double threshold_degrees);
+
+		void
+		snap_selected_vertices_to_plate(
+				GPlatesModel::integer_plate_id_type plate_id,
+				double threshold_degrees);
+
+		void
+		clear_vertex_selection();
+
+		void
+		publish_vertex_selection_state();
+
+		bool
+		can_delete_selected_vertices() const;
 
 		/**
 		 * Test proximity to the points (at vertices) to the position on sphere and
@@ -421,6 +506,12 @@ namespace GPlatesViewOperations
 		void
 		update_highlight_rendered_point(
 				const GeometryBuilder::PointIndex highlight_point_index);
+
+		void
+		update_selected_rendered_points();
+
+		void
+		update_lasso_rendered_geometry();
 		
 		/**
 		 * Checks for nearby vertices in other geometries, and sends any results to the geometry builder.

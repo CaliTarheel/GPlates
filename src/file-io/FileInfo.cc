@@ -31,6 +31,11 @@ const QString
 GPlatesFileIO::FileInfo::get_display_name(
 		bool use_absolute_path_name) const
 {
+	if (d_file_info.filePath().isEmpty() && !d_unsaved_display_name.isEmpty())
+	{
+		return d_unsaved_display_name;
+	}
+
 	if (use_absolute_path_name)
 	{
 		return d_file_info.absoluteFilePath();

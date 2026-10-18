@@ -12,6 +12,9 @@ set(srcs
     ChangeLightDirectionOperation.h
     CloneOperation.cc
     CloneOperation.h
+    CircularFeatureOperation.cc
+    CircularFeatureOperation.h
+    WorldbuildingFeatureCollectionUtils.h
     DeleteFeatureOperation.cc
     DeleteFeatureOperation.h
     DeleteVertexGeometryOperation.cc
@@ -34,6 +37,10 @@ set(srcs
     MovePoleOperation.h
     MoveVertexGeometryOperation.cc
     MoveVertexGeometryOperation.h
+    PlateIdReassignmentOperation.cc
+    PlateIdReassignmentOperation.h
+    PlateDirectionArrowsOperation.cc
+    PlateDirectionArrowsOperation.h
     QueryProximityThreshold.h
     RenderedArrowedPolyline.h
     RenderedCircleSymbol.h
@@ -75,6 +82,8 @@ set(srcs
     RenderedSquareSymbol.h
     RenderedStrainMarkerSymbol.h
     RenderedString.h
+    RotationFileEditorOperation.cc
+    RotationFileEditorOperation.h
     RenderedSubductionTeethPolyline.h
     RenderedTangentialArrow.h
     RenderedTriangleSymbol.h
@@ -84,6 +93,12 @@ set(srcs
     SplitFeatureGeometryOperation.h
     SplitFeatureUndoCommand.cc
     SplitFeatureUndoCommand.h
+    SplitPlateOperation.cc
+    SplitPlateOperation.h
+    SubductionCutterGeometry.cc
+    SubductionCutterGeometry.h
+    SubductionCutterOperation.cc
+    SubductionCutterOperation.h
     UndoRedo.cc
     UndoRedo.h
     VisibleReconstructionGeometryExport.cc

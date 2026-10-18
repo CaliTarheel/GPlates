@@ -92,9 +92,12 @@ GPlatesCanvasTools::CreateSmallCircle::handle_left_click(
 	{
 		d_circle_is_being_drawn = false;
 		d_point_on_radius.reset(point_on_sphere);
-		GPlatesMaths::SmallCircle circle = GPlatesMaths::SmallCircle::create(d_centre->position_vector(),*d_point_on_radius);
+		GPlatesMaths::SmallCircle circle = d_small_circle_widget_ptr->constrain_circle(
+				GPlatesMaths::SmallCircle::create(
+					d_centre->position_vector(), *d_point_on_radius));
 		d_small_circle_collection_ref.push_back(circle);
 		d_small_circle_widget_ptr->update_radii();
+		d_small_circle_widget_ptr->notify_circle_completed();
 	}
 	paint();
 }
@@ -112,7 +115,9 @@ GPlatesCanvasTools::CreateSmallCircle::handle_move_without_drag(
 	if (d_circle_is_being_drawn)
 	{
 		d_point_on_radius.reset(point_on_sphere);
-		GPlatesMaths::SmallCircle circle = GPlatesMaths::SmallCircle::create(d_centre->position_vector(),*d_point_on_radius);
+		GPlatesMaths::SmallCircle circle = d_small_circle_widget_ptr->constrain_circle(
+				GPlatesMaths::SmallCircle::create(
+					d_centre->position_vector(), *d_point_on_radius));
 		d_small_circle_widget_ptr->update_radii(circle.colatitude().dval());
 	}
 	paint();
@@ -130,9 +135,12 @@ GPlatesCanvasTools::CreateSmallCircle::handle_shift_left_click(
 	if (d_circle_is_being_drawn)
 	{
 		d_point_on_radius.reset(point_on_sphere);
-		GPlatesMaths::SmallCircle circle = GPlatesMaths::SmallCircle::create(d_centre->position_vector(),*d_point_on_radius);
+		GPlatesMaths::SmallCircle circle = d_small_circle_widget_ptr->constrain_circle(
+				GPlatesMaths::SmallCircle::create(
+					d_centre->position_vector(), *d_point_on_radius));
 		d_small_circle_collection_ref.push_back(circle);
 		d_small_circle_widget_ptr->update_radii();
+		d_small_circle_widget_ptr->notify_circle_completed();
 	}
 	paint();
 }
@@ -160,7 +168,9 @@ GPlatesCanvasTools::CreateSmallCircle::paint()
 	{	
 		GPlatesViewOperations::RenderedGeometry rendered_circle =
 				GPlatesViewOperations::RenderedGeometryFactory::create_rendered_small_circle(
-					GPlatesMaths::SmallCircle::create(d_centre->position_vector(),*d_point_on_radius));
+					d_small_circle_widget_ptr->constrain_circle(
+						GPlatesMaths::SmallCircle::create(
+							d_centre->position_vector(), *d_point_on_radius)));
 
 		d_small_circle_layer_ptr->add_rendered_geometry(rendered_circle);
 	}
