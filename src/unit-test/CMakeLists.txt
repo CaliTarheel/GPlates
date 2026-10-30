@@ -21,10 +21,14 @@ set(srcs
     GsmlXmlQueryTest.cc
     MipmapperTest.cc
     PointInPolygonTest.cc
+    ProjectMetadataTest.cc
+    ProjectTimestampScheduleTest.cc
     RealTest.cc
     ScribeExportUnitTest.h
     SmartNodeLinkedListTest.cc
+    SplitPlateOperationTest.cc
     StringSetTest.cc
+    SubductionCutterGeometryTest.cc
     TranscribeTest.cc
     TranscribeTest.h
 )
@@ -37,3 +41,15 @@ set(srcs
 if (TARGET gplates-unit-test)
     target_sources(gplates-unit-test PRIVATE ${srcs})
 endif()
+
+# The Absolute Age draw style is a bundled Python script, so its focused tests
+# run directly with the same Python interpreter selected for GPlates.
+add_custom_target(absolute-age-draw-style-test
+    COMMAND "${GPLATES_PYTHON_EXECUTABLE}" -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/AbsoluteAgeDrawStyleTest.py"
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    VERBATIM)
+
+add_test(NAME absolute-age-draw-style-test
+    COMMAND "${GPLATES_PYTHON_EXECUTABLE}" -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/AbsoluteAgeDrawStyleTest.py")

@@ -18,7 +18,7 @@ name: gplates build and test
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "gplates" ]
     paths-ignore:
       # Documentation and repository metadata cannot affect the build or the tests.
       # Note '.gitattributes' is deliberately NOT listed: it controls the line endings of
@@ -27,7 +27,7 @@ on:
       - '.claude/**'
       - 'COPYING'
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "gplates" ]
     paths-ignore:
       # Documentation and repository metadata cannot affect the build or the tests.
       # Note '.gitattributes' is deliberately NOT listed: it controls the line endings of

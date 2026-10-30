@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <exception>
 #include <iostream>
 #include <string>
 #include <utility>
@@ -39,6 +40,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QLoggingCategory>
 #include <QStringList>
 #include <QSurfaceFormat>
 #include <QTextStream>
@@ -53,6 +55,7 @@
 
 #include "file-io/StandaloneBundle.h"
 
+#include "global/GPlatesException.h"
 #include "global/NotYetImplementedException.h"
 #include "global/python.h"
 #include "global/Version.h"
@@ -912,6 +915,24 @@ internal_main(int argc, char* argv[])
 	QCoreApplication::setAttribute(Qt::AA_DisableHighDpiScaling);
 #endif
 
+	// Silence one of Qt's own logging categories before Qt reads its logging configuration.
+	//
+	// "qt.text.font.db: OpenType support missing for <family>, script <n>" is emitted while Qt
+	// probes installed fonts for complex-script coverage. It is noise we can neither fix nor act
+	// on - Qt falls back to another font and carries on - but it appears once per font per script,
+	// so opening a dialog can produce twenty lines of it, and it reads like a GPlates fault.
+	//
+	// This is set through the environment rather than QLoggingCategory::setFilterRules() because
+	// Qt applies rules in the order config file, then API, then environment, with each overriding
+	// the last. The environment tier is the one that reliably wins, and setting it before
+	// QApplication is constructed means it is in place before the logging registry initialises.
+	if (!qEnvironmentVariableIsSet("QT_LOGGING_RULES"))
+	{
+		// Only when the user has not set their own rules - if they have, that is a deliberate
+		// debugging choice and we should not quietly override it.
+		qputenv("QT_LOGGING_RULES", "qt.text.font.db=false");
+	}
+
 	// GPlatesQApplication is a QApplication that also handles uncaught exceptions in the Qt event thread.
 	GPlatesGui::GPlatesQApplication qapplication(argc, argv);
 
@@ -925,7 +946,12 @@ internal_main(int argc, char* argv[])
 	// we can control when it gets destroyed (which is just after Application object gets destroyed and
 	// hence we capture any messages output during its destruction phase).
 	GPlatesAppLogic::GPlatesQtMsgHandler qt_message_handler;
-	//
+
+	// Belt and braces for the font-probe noise silenced via QT_LOGGING_RULES above. This tier is
+	// overridden by the environment tier, so it only takes effect if the environment variable was
+	// left alone - which is the intent, since a user who sets their own rules meant to.
+	QLoggingCategory::setFilterRules(QString("qt.text.font.db=false"));
+
 	// Add the default log file to the Qt message handler.
 	//
 	// We do this after QApplication is initialised (via GPlatesQApplication above) since this adds

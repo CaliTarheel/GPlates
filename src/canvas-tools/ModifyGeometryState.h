@@ -59,6 +59,41 @@ namespace GPlatesCanvasTools
 			Q_EMIT snap_vertices_setup_changed(should_check_nearby_vertices, threshold, should_use_plate_id, plate_id);
 		}
 
+		void
+		request_delete_selected_vertices()
+		{
+			Q_EMIT delete_selected_vertices_requested();
+		}
+
+		void
+		request_average_selected_vertex_positions()
+		{
+			Q_EMIT average_selected_vertex_positions_requested();
+		}
+
+		void
+		request_cluster_selected_vertices(
+				double threshold_degrees)
+		{
+			Q_EMIT cluster_selected_vertices_requested(threshold_degrees);
+		}
+
+		void
+		request_snap_selected_vertices_to_plate(
+				GPlatesModel::integer_plate_id_type plate_id,
+				double threshold_degrees)
+		{
+			Q_EMIT snap_selected_vertices_to_plate_requested(plate_id, threshold_degrees);
+		}
+
+		void
+		set_vertex_selection_state(
+				unsigned int selected_vertex_count,
+				bool can_delete_selection)
+		{
+			Q_EMIT vertex_selection_state_changed(selected_vertex_count, can_delete_selection);
+		}
+
 	Q_SIGNALS:
 		// NOTE: all signals/slots should use namespace scope for all arguments
 		//       otherwise differences between signals and slots will cause Qt
@@ -70,6 +105,26 @@ namespace GPlatesCanvasTools
 				double threshold,
 				bool should_use_plate_id,
 				GPlatesModel::integer_plate_id_type plate_id);
+
+		void
+		delete_selected_vertices_requested();
+
+		void
+		average_selected_vertex_positions_requested();
+
+		void
+		cluster_selected_vertices_requested(
+				double threshold_degrees);
+
+		void
+		snap_selected_vertices_to_plate_requested(
+				GPlatesModel::integer_plate_id_type plate_id,
+				double threshold_degrees);
+
+		void
+		vertex_selection_state_changed(
+				unsigned int selected_vertex_count,
+				bool can_delete_selection);
 
 	};
 }

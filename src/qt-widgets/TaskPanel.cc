@@ -152,6 +152,7 @@ GPlatesQtWidgets::TaskPanel::TaskPanel(
 	d_modify_geometry_widget_ptr(
 			new ModifyGeometryWidget(
 				geometry_operation_state,
+				modify_geometry_state,
 				this)),
 	d_move_pole_widget_ptr(
 			new MovePoleWidget(

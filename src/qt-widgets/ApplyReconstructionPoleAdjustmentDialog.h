@@ -130,6 +130,17 @@ namespace GPlatesQtWidgets
 		set_adjustment(
 				const GPlatesMaths::Rotation &adjustment_);
 
+		/**
+		 * Whether the user asked for this adjustment to be applied to the sequence's
+		 * present-day (0 Ma) pole as well as the pole at the current reconstruction time.
+		 */
+		bool
+		apply_drift_rotation() const;
+
+	public Q_SLOTS:
+		void
+		accept() override;
+
 #if 0
 	public slots:
 		void
@@ -155,6 +166,9 @@ namespace GPlatesQtWidgets
 				double new_pole_time);
 
 	Q_SIGNALS:
+		void
+		apply_requested();
+
 		void
 		pole_sequence_choice_changed(
 				int new_choice);

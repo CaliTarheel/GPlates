@@ -138,16 +138,18 @@ namespace
 		}
 
 		/*
-		 * A coordinate in the PLATES4 format is written as decimal number with
-		 * 4 digits precision after the decimal point, and it must take up 9
-		 * characters altogether (i.e. including the decimal point and maybe a sign).
+		 * Keep the numeric columns visually stable when the file contains a mixture
+		 * of short and long geological ages. Whitespace is accepted by both the
+		 * PLATES4 and GROT readers, so this remains format-compatible while producing
+		 * much easier-to-scan files and smaller diffs after editing in GPlates.
 		 */
-		static const unsigned PLATES_COORDINATE_FIELDWIDTH = 9;
+		static const unsigned PLATES_TIME_FIELDWIDTH = 9;
+		static const unsigned PLATES_COORDINATE_FIELDWIDTH = 10;
 		static const unsigned PLATES_COORDINATE_PRECISION = 4;
 
 		os << GPlatesUtils::formatted_int_to_string(moving_plate_id, 3, '0').c_str()
 			<< " "
-			<< GPlatesUtils::formatted_double_to_string(time, 5, 2, true).c_str()
+			<< GPlatesUtils::formatted_double_to_string(time, PLATES_TIME_FIELDWIDTH, 2, true).c_str()
 			<< " "
 			<< GPlatesUtils::formatted_double_to_string(latitude, PLATES_COORDINATE_FIELDWIDTH, PLATES_COORDINATE_PRECISION, true).c_str()
 			<< " "

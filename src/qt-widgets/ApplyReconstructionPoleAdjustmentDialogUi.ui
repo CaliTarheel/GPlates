@@ -600,6 +600,19 @@
     </widget>
    </item>
    <item>
+    <widget class="QCheckBox" name="checkbox_apply_drift_rotation">
+     <property name="text">
+      <string>Apply &amp;drift rotation</string>
+     </property>
+     <property name="toolTip">
+      <string>Also apply this adjustment to the sequence's present-day (0 Ma) pole</string>
+     </property>
+     <property name="statusTip">
+      <string>Apply the same adjustment at 0 Ma as well, moving the plate's present-day position with the rest of its track instead of leaving a kink between 0 Ma and this pole.</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QDialogButtonBox" name="buttonBox">
      <property name="orientation">
       <enum>Qt::Horizontal</enum>

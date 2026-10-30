@@ -1,0 +1,29 @@
+# GPlates active feature type list.
+# One qualified feature type per line. Blank lines and lines beginning with '#'
+# are ignored. Load this file from Preferences > Active Feature Types.
+#
+# Worldbuilding Pasta's feature set.
+#
+# Inventoried from the feature collections of a completed project of his, so this
+# is the set actually used in practice rather than a set chosen in the abstract.
+# Flowline is included even though its collection was empty when that project was
+# saved, matching a documented create-then-delete flowline workflow.
+
+gpml:ClosedPlateBoundary
+gpml:ContinentalCrust
+gpml:ContinentalRift
+gpml:Craton
+gpml:Flowline
+gpml:HotSpot
+gpml:IslandArc
+gpml:LargeIgneousProvince
+gpml:MidOceanRidge
+gpml:MotionPath
+gpml:OceanicCrust
+gpml:OrogenicBelt
+gpml:Raster
+gpml:SubductionZone
+gpml:TerraneBoundary
+gpml:TopologicalClosedPlateBoundary
+gpml:Transform
+gpml:UnclassifiedFeature

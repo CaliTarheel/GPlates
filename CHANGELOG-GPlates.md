@@ -8,6 +8,12 @@ GPlates 2.6 (unreleased)
 
 Changes since 2.5:
 
+* This fork retains the SR1 worldbuilding tools: circular feature placement, Split Plate, oceanic-crust retirement, project documents and configurable planetary radius.
+* This fork adds rotation editing, keyframe copying and drift correction; multi-vertex editing and bulk Plate ID operations; rotation hierarchy, Absolute Age colouring and active feature-type presets.
+* Undo and redo of plate splitting and rotation editing keep their saved states independent of later feature edits.
+* Project documents support exact timestamp schedules, older/younger navigation, an optional view-range lock, and independent validation of metadata fields.
+* Hold Shift while digitising to limit a segment to the project's intended resolution. Double-click a Begin or End time to use the current reconstruction time.
+* Fixed oceanic-crust retirement choosing the wrong side of globe-wrapping polygons or overriding regions that surround the opposite side of the globe.
 * Subduction teeth on individual subduction zone features (static or topological lines), not only on topological plate/network boundaries.
 * Upgraded to Qt 6 (Qt 5.15 is still supported when compiling from source).
 * Python is now required rather than optional.
