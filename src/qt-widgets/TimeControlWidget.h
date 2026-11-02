@@ -106,6 +106,10 @@ namespace GPlatesQtWidgets
 		handle_time_spinbox_editing_finished();
 
 		void
+		handle_time_spinbox_stepped(
+				double new_time);
+
+		void
 		handle_view_time_changed(
 				double new_time);
 

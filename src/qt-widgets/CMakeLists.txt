@@ -489,6 +489,8 @@ set(srcs
     ReconstructionPoleWidget.cc
     ReconstructionPoleWidget.h
     ReconstructionPoleWidgetUi.ui
+    ReconstructionTimeSpinBox.cc
+    ReconstructionTimeSpinBox.h
     ReconstructionViewWidget.cc
     ReconstructionViewWidget.h
     ReconstructionViewWidgetUi.ui

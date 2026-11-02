@@ -113,6 +113,18 @@ namespace GPlatesAppLogic
 			}
 
 			/**
+			 * Return the actual graph sequence selected for this tree edge.
+			 *
+			 * Its enabled samples retain the file's fixed/moving direction even when this
+			 * tree edge is reversed. The owning tree keeps the graph and this reference alive.
+			 */
+			const ReconstructionGraph::Edge &
+			get_graph_edge() const
+			{
+				return d_graph_edge;
+			}
+
+			/**
 			 * Return the parent edge, or NULL if there is no parent edge (if this is a root edge).
 			 */
 			const Edge *

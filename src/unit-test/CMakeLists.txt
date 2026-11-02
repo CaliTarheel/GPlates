@@ -25,11 +25,13 @@ set(srcs
     ProjectMetadataTest.cc
     ProjectTimestampScheduleTest.cc
     RealTest.cc
+    ReconstructionPoleSpeedTest.cc
     ScribeExportUnitTest.h
     SmartNodeLinkedListTest.cc
     SplitPlateOperationTest.cc
     StringSetTest.cc
     SubductionCutterGeometryTest.cc
+    TimeControlWidgetTest.cc
     TranscribeTest.cc
     TranscribeTest.h
     ZeroMaRotationsOperationTest.cc

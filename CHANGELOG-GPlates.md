@@ -8,6 +8,8 @@ GPlates 2.6 (unreleased)
 
 Changes since 2.5:
 
+* Modify Reconstruction Pole shows the maximum speed across the selected plate in cm/year, including live adjustments, since its preceding older rotation keyframe.
+* The top Time control's up/down arrows snap to 10 Ma increments while manually entered fractional ages remain available.
 * Added a WB tab beside the canvas tools for World Building commands.
 * Split now offers a polygon picker and multiple polyline cutters in one undoable operation. Cutting polylines are preserved.
 * Make Ocean Crust (Normal) creates paired flowlines from every selected mid-ocean ridge vertex, using a future duration and step interval in million years.

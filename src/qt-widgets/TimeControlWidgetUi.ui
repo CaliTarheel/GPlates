@@ -86,7 +86,7 @@
     </widget>
    </item>
    <item>
-    <widget class="QDoubleSpinBox" name="spinbox_current_time" >
+    <widget class="GPlatesQtWidgets::ReconstructionTimeSpinBox" name="spinbox_current_time" >
      <property name="sizePolicy" >
       <sizepolicy vsizetype="Preferred" hsizetype="Fixed" >
        <horstretch>0</horstretch>
@@ -107,7 +107,7 @@
       </font>
      </property>
      <property name="toolTip" >
-      <string>Set reconstruction time  Ctrl+T</string>
+      <string>Set reconstruction time  Ctrl+T. Arrows step to the next 10 Ma multiple; type any age.</string>
      </property>
      <property name="alignment" >
       <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -126,6 +126,13 @@
    </item>
   </layout>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>GPlatesQtWidgets::ReconstructionTimeSpinBox</class>
+   <extends>QDoubleSpinBox</extends>
+   <header>qt-widgets/ReconstructionTimeSpinBox.h</header>
+  </customwidget>
+ </customwidgets>
  <resources>
   <include location="../qt-resources/qt_resources.qrc" />
  </resources>

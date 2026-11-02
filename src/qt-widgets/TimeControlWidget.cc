@@ -73,10 +73,13 @@ GPlatesQtWidgets::TimeControlWidget::TimeControlWidget(
 			d_animation_controller_ptr, SLOT(step_forward()));
 	QObject::connect(spinbox_current_time, SIGNAL(editingFinished()),
 			this, SLOT(handle_time_spinbox_editing_finished()));
+	QObject::connect(spinbox_current_time, SIGNAL(user_stepped(double)),
+			this, SLOT(handle_time_spinbox_stepped(double)));
 	
 	// React to time-change events and update our widgets accordingly.
 	QObject::connect(d_animation_controller_ptr, SIGNAL(view_time_changed(double)),
 			this, SLOT(handle_view_time_changed(double)));
+	handle_view_time_changed(d_animation_controller_ptr->view_time());
 
 	// Special: on OS X, the style stubbornly refuses to scale up the font size used
 	// in the TimeControlWidget spinbox, despite it being allocated plenty of space.
@@ -120,7 +123,19 @@ void
 GPlatesQtWidgets::TimeControlWidget::handle_time_spinbox_editing_finished()
 {
 	d_animation_controller_ptr->set_view_time(spinbox_current_time->value());
+	handle_view_time_changed(d_animation_controller_ptr->view_time());
 	Q_EMIT editing_finished();
+}
+
+
+void
+GPlatesQtWidgets::TimeControlWidget::handle_time_spinbox_stepped(
+		double new_time)
+{
+	d_animation_controller_ptr->set_view_time(new_time);
+	// A locked View range can reject a proposal. Always display the accepted age, and keep
+	// focus here so held arrows and successive keyboard/wheel steps continue to work.
+	handle_view_time_changed(d_animation_controller_ptr->view_time());
 }
 
 

@@ -43,6 +43,7 @@
 #include "model/FeatureHandle.h"
 
 #include "view-operations/RenderedGeometryCollection.h"
+#include "view-operations/ReconstructionPoleSpeed.h"
 
 
 namespace GPlatesAppLogic
@@ -234,6 +235,9 @@ namespace GPlatesQtWidgets
 		void
 		handle_layer_modified();
 
+		void
+		update_speedometer();
+
 	private:
 
 		//! Manages reconstructions.
@@ -291,6 +295,11 @@ namespace GPlatesQtWidgets
 		 * This data member is used @em only by latitude-constraining drags.
 		 */
 		boost::optional<GPlatesMaths::PointOnSphere> d_drag_start;
+
+		boost::optional<GPlatesViewOperations::ReconstructionPoleSpeed::Reference>
+			d_speed_reference;
+		std::vector<GPlatesMaths::GeometryOnSphere::non_null_ptr_to_const_type>
+			d_speed_geometries;
 
 		/**
 		 * Whether or not this dialog is currently active.
@@ -353,6 +362,9 @@ namespace GPlatesQtWidgets
 
 		void
 		create_child_rendered_layers();
+
+		void
+		prepare_speedometer();
 	};
 }
 

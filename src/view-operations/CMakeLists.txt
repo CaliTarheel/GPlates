@@ -44,6 +44,8 @@ set(srcs
     PlateDirectionArrowsOperation.cc
     PlateDirectionArrowsOperation.h
     QueryProximityThreshold.h
+    ReconstructionPoleSpeed.cc
+    ReconstructionPoleSpeed.h
     RenderedArrowedPolyline.h
     RenderedCircleSymbol.h
     RenderedColouredEdgeSurfaceMesh.h

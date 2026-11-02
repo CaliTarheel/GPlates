@@ -186,6 +186,47 @@
     </widget>
    </item>
    <item>
+    <widget class="QGroupBox" name="groupbox_speedometer">
+     <property name="title">
+      <string>Maximum plate speed</string>
+     </property>
+     <property name="flat">
+      <bool>true</bool>
+     </property>
+     <layout class="QVBoxLayout" name="speedometer_layout">
+      <property name="margin">
+       <number>4</number>
+      </property>
+      <item>
+       <widget class="QLabel" name="label_speedometer_value">
+        <property name="font">
+         <font>
+          <pointsize>18</pointsize>
+          <bold>true</bold>
+         </font>
+        </property>
+        <property name="text">
+         <string>— cm/year</string>
+        </property>
+        <property name="toolTip">
+         <string>Maximum stage speed across the selected plate's loaded geometry, including the preview adjustment, since the preceding older rotation keyframe. Measured relative to the current anchor plate using the project's planetary radius. Child plates are excluded.</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_speedometer_interval">
+        <property name="text">
+         <string>Select a plate to measure its maximum speed.</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <widget class="QGroupBox" name="groupBox">
      <property name="title">
       <string>Apply rotation</string>

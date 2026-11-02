@@ -25,10 +25,12 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#include <cmath>
 #include <iostream>
 #include <vector>
 #include <boost/optional.hpp>
 #include <QDebug>
+#include <QTimer>
 #include <QtGlobal>
 
 #include "ActionButtonBox.h"
@@ -40,6 +42,7 @@
 
 #include "app-logic/ApplicationState.h"
 #include "app-logic/LayerProxyUtils.h"
+#include "app-logic/PlanetaryParameters.h"
 #include "app-logic/Reconstruction.h"
 #include "app-logic/ReconstructionGeometryUtils.h"
 #include "app-logic/ReconstructionLayerProxy.h"
@@ -437,6 +440,7 @@ GPlatesQtWidgets::ModifyReconstructionPoleWidget::deactivate()
 	setEnabled(false);
 
 	d_is_active = false;
+	update_speedometer();
 
 	// Deactivate rendered layers.
 	d_initial_geom_layer_ptr->set_active(false);
@@ -679,6 +683,7 @@ GPlatesQtWidgets::ModifyReconstructionPoleWidget::reset_adjustment()
 	field_adjustment_lat->clear();
 	field_adjustment_lon->clear();
 	spinbox_adjustment_angle->setValue(0.0);
+	update_speedometer();
 }
 
 void
@@ -712,6 +717,8 @@ GPlatesQtWidgets::ModifyReconstructionPoleWidget::set_focus(
 		// Clear the plate ID and the plate ID field.
 		d_reconstruction_tree = boost::none;
 		d_plate_id = boost::none;
+		d_speed_reference = boost::none;
+		d_speed_geometries.clear();
 		reset_adjustment();
 		field_moving_plate->clear();
 		// This is to clear the rendered geometries if the feature geometry
@@ -753,19 +760,22 @@ GPlatesQtWidgets::ModifyReconstructionPoleWidget::set_focus(
 		draw_initial_geometries();
 		draw_dragged_geometries();
 	}
+	prepare_speedometer();
 }
 
 
 void
 GPlatesQtWidgets::ModifyReconstructionPoleWidget::handle_reconstruction()
 {
-	// NOTE: We no longer do anything here because the order in which Qt slots are called
-	// causes a problem - specifically here we rely on the focused RFG getting updated
-	// (for the new reconstruction time) in order to re-populate our geometries but that update
-	// doesn't happen until after this slot is called.
-	// However when the focused RFG changes (associated with same focused feature), due to the
-	// new reconstruction time, then our 'set_focus()' slot is called and that happens after the
-	// focused RFG has been updated. So we moved our code into 'set_focus()'.
+	// The focused RFG is refreshed later by set_focus(). Do not show stale speeds meanwhile.
+	d_speed_reference = boost::none;
+	d_speed_geometries.clear();
+	update_speedometer();
+	// The focused RFG still belongs to the previous reconstruction here. set_focus()
+	// normally refreshes it later because of signal delivery order.
+	// A same-time reconstruction can reuse that RFG and emit no focus_changed signal.
+	// Refresh after focus/render notifications in either case; Qt cancels this if destroyed.
+	QTimer::singleShot(0, this, &ModifyReconstructionPoleWidget::prepare_speedometer);
 }
 
 
@@ -775,6 +785,7 @@ GPlatesQtWidgets::ModifyReconstructionPoleWidget::handle_layer_modified()
 	// Re-populate the visible RFGs when a layer is made visible/invisible.
 	draw_initial_geometries();
 	draw_dragged_geometries();
+	prepare_speedometer();
 }
 
 
@@ -1045,6 +1056,81 @@ GPlatesQtWidgets::ModifyReconstructionPoleWidget::update_adjustment_fields()
 	ApplyReconstructionPoleAdjustmentDialog::fill_in_fields_for_rotation(
 			field_adjustment_lat, field_adjustment_lon, spinbox_adjustment_angle,
 			d_accum_orientation->rotation());
+	update_speedometer();
+}
+
+
+void
+GPlatesQtWidgets::ModifyReconstructionPoleWidget::prepare_speedometer()
+{
+	d_speed_reference = boost::none;
+	d_speed_geometries.clear();
+	if (d_is_active && d_plate_id && d_reconstruction_tree)
+	{
+		d_speed_reference = GPlatesViewOperations::ReconstructionPoleSpeed::prepare_reference(
+				**d_reconstruction_tree, *d_plate_id);
+		if (d_speed_reference)
+		{
+			// Include hidden geometry in active layers: hiding a plate outline must not
+			// change its reported maximum. Child plates and other rotation models are excluded.
+			std::vector<GPlatesAppLogic::ReconstructedFeatureGeometry::non_null_ptr_type> geometries;
+			std::vector<GPlatesAppLogic::ReconstructHandle::type> handles;
+			GPlatesAppLogic::LayerProxyUtils::get_reconstructed_feature_geometries(
+					geometries, handles,
+					d_application_state_ptr->get_current_reconstruction(), false);
+			for (const auto &rfg : geometries)
+			{
+				if (rfg->reconstruction_plate_id() == d_plate_id &&
+						rfg->get_reconstruct_method_type() ==
+								GPlatesAppLogic::ReconstructMethod::BY_PLATE_ID &&
+						rfg->get_reconstruction_tree()->created_from_same_graph_with_same_parameters(
+								**d_reconstruction_tree))
+				{
+					d_speed_geometries.push_back(rfg->reconstructed_geometry());
+				}
+			}
+		}
+	}
+	update_speedometer();
+}
+
+
+void
+GPlatesQtWidgets::ModifyReconstructionPoleWidget::update_speedometer()
+{
+	label_speedometer_value->setText(tr("— cm/year"));
+	if (!d_is_active)
+	{
+		label_speedometer_interval->setText(tr("Activate Modify Reconstruction Pole to measure speed."));
+		return;
+	}
+	if (!d_plate_id || !d_reconstruction_tree)
+	{
+		label_speedometer_interval->setText(tr("Select a plate to measure its maximum speed."));
+		return;
+	}
+	if (!d_speed_reference)
+	{
+		label_speedometer_interval->setText(tr("No usable preceding older rotation keyframe."));
+		return;
+	}
+	const auto &reference = *d_speed_reference;
+	const auto speed = GPlatesViewOperations::ReconstructionPoleSpeed::calculate_maximum_speed(
+			reference, d_speed_geometries,
+			d_accum_orientation ? d_accum_orientation->rotation() :
+					GPlatesMaths::Rotation::create_identity_rotation(),
+			d_application_state_ptr->get_planetary_parameters().effective_radius_kilometres());
+	if (!speed || !std::isfinite(*speed))
+	{
+		label_speedometer_interval->setText(tr("No rigid plate geometry available at this time."));
+		return;
+	}
+	const QLocale locale;
+	label_speedometer_value->setText(tr("%1 cm/year").arg(locale.toString(*speed, 'f', 2)));
+	label_speedometer_interval->setText(tr("%1 → %2 Ma\nRelative to anchor %3")
+			.arg(locale.toString(reference.d_previous_time, 'g', 10))
+			.arg(locale.toString(reference.d_current_time, 'g', 10))
+			.arg(static_cast<qulonglong>(reference.d_anchor_plate_id)));
 }
 
 
@@ -1117,6 +1203,9 @@ GPlatesQtWidgets::ModifyReconstructionPoleWidget::make_signal_slot_connections(
 	QObject::connect(
 			&view_state.get_visual_layers(), SIGNAL(layer_modified(size_t)),
 			this, SLOT(handle_layer_modified()));
+	QObject::connect(
+			&d_application_state_ptr->get_planetary_parameters(),
+			SIGNAL(effective_radius_changed(double)), this, SLOT(update_speedometer()));
 }
 
 

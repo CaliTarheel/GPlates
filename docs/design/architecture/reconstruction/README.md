@@ -57,6 +57,15 @@ creator) and `ReconstructLayerProxy` (owns a `ReconstructContext`). The value ty
 with, `GPlatesMaths::FiniteRotation`, `interpolate` (SLERP) and `calculate_stage_rotation`, live
 in `src/maths/`.
 
+The desktop's `view-operations/ReconstructionPoleSpeed` prepares an immutable interval from
+the focused reconstruction tree's graph and anchor. `ReconstructionTree::Edge::get_graph_edge`
+exposes the actual selected sequence so the preceding keyframe follows crossover and overlap
+resolution rather than guessing from all loaded files. The Modify Reconstruction Pole panel
+caches that interval and its plate geometry until focus, layer or reconstruction changes;
+drag updates combine the preview rotation with the current total. Maximum speed uses the
+distance of solid plate geometry to the stage rotation's equator, including arc and polygon
+interiors. The helper remains desktop-only and does not alter rotation features.
+
 ## Components
 
 Two diagrams: rotations to trees, then features to reconstructed geometries. Grey nodes are

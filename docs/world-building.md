@@ -60,3 +60,28 @@ The tool also preserves the source reference plate. It replaces existing enabled
 samples or adds one when missing, leaving older and disabled samples alone. It reports
 plates it cannot update unambiguously. The change is undoable and takes effect in the
 loaded model; **save the rotation file** to keep it on disk.
+
+## Reconstruction Pole speedometer
+
+With **Modify Reconstruction Pole** active, the **Reconstruction Pole** panel shows the
+maximum stage speed across the selected plate in **cm/year**. It updates while you drag,
+including the existing model motion and your preview adjustment before you click Apply.
+
+The interval starts at the preceding enabled older rotation keyframe: editing 990 Ma after
+a 1000 Ma keyframe measures the 1000-to-990 Ma stage. An existing keyframe at the current
+age is not used as the start, so the interval is never zero. The interval and current anchor
+plate are shown beside the readout; speeds include motion inherited from parent plates and
+use the project's planetary radius.
+
+The maximum covers rigid geometry with the selected Plate ID in active reconstruction
+layers using the same rotation model. Hidden geometry is included; child plates and
+deforming geometry are excluded. Polygon interiors and line segments are included, so the
+maximum is not limited to stored vertices. A dash indicates that no usable older keyframe
+or plate geometry is available. This is a stage speed over the displayed interval, not an
+instantaneous velocity or the distance travelled by your mouse.
+
+## Time arrows
+
+The small up/down arrows on the top **Time** field snap to multiples of **10 Ma**. From
+997.25 Ma, down goes to 990 Ma and up goes to 1000 Ma. You can still type fractional ages.
+The adjacent animation controls and Alt timestamp navigation keep their existing behavior.
