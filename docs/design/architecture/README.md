@@ -140,6 +140,19 @@ documents refer to the area.
 | Auxiliary analysis tools | `auxiliary-tools` | co-registration, Hellinger fitting, kinematic graphs, age models, velocity domains | GPlates |
 | Foundation | `foundation` | `maths/` (geometry on the sphere, rotations), `utils/`, `global/` | both |
 
+## World Building commands
+
+The desktop's `CanvasToolBarDockWidget` also contains a WB command tab after the canvas
+workflow tabs. Its actions are shared with `ViewportWindow`'s World Building menu. Opening
+WB selects the existing feature-picking tool; WB itself does not add a canvas workflow or
+change the workflow enumeration. Selecting a canvas tool normally restores its own tab.
+
+The dialogs and undo commands live in `view-operations`: `SplitPlateOperation` chooses
+reconstructed polygons and cutters, `MakeOceanCrustOperation` creates native flowlines from
+ridge vertices, and `ZeroMaRotationsOperation` edits loaded rotation samples. Their geometry
+or model preparation functions can run independently of the dialogs in headless tests. They
+use the shared reconstruction and model APIs without adding GUI dependencies to pyGPlates.
+
 ## The layer groups
 
 The layering of `src/` is a statement of intent, not a description of the code. Measured as it

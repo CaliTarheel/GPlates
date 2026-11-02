@@ -101,11 +101,13 @@ namespace GPlatesViewOperations
 {
 	class CloneOperation;
 	class DeleteFeatureOperation;
+	class MakeOceanCrustOperation;
 	class PlateDirectionArrowsOperation;
 	class PlateIdReassignmentOperation;
 	class RotationFileEditorOperation;
 	class SplitPlateOperation;
 	class SubductionCutterOperation;
+	class ZeroMaRotationsOperation;
 }
 
 namespace GPlatesQtWidgets
@@ -521,6 +523,12 @@ namespace GPlatesQtWidgets
 		handle_split_plate();
 
 		void
+		handle_make_ocean_crust();
+
+		void
+		handle_zero_ma_rotations();
+
+		void
 		handle_subduction_cutter();
 
 		void
@@ -569,6 +577,10 @@ namespace GPlatesQtWidgets
 
 		//! For splitting a polygon feature with a selected polyline.
 		boost::scoped_ptr<GPlatesViewOperations::SplitPlateOperation> d_split_plate_operation_ptr;
+
+		boost::scoped_ptr<GPlatesViewOperations::MakeOceanCrustOperation> d_make_ocean_crust_operation_ptr;
+
+		boost::scoped_ptr<GPlatesViewOperations::ZeroMaRotationsOperation> d_zero_ma_rotations_operation_ptr;
 
 		//! For roughening long coastline sections while preserving shared geometry.
 

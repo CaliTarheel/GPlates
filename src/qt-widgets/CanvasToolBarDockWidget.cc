@@ -31,10 +31,15 @@
 #include <QIcon>
 #include <QKeySequence>
 #include <QList>
+#include <QMenu>
 #include <QPixmap>
+#include <QScopedValueRollback>
+#include <QStringList>
 #include <QTransform>
+#include <QToolButton>
 #include <QVariant>
 #include <QVector>
+#include <QVBoxLayout>
 
 #include "CanvasToolBarDockWidget.h"
 
@@ -213,7 +218,8 @@ GPlatesQtWidgets::CanvasToolBarDockWidget::CanvasToolBarDockWidget(
 	// Use empty string for dock title so it doesn't display in the title bar...
 	DockWidget("", dock_state, main_window, QString("canvas_toolbar")),
 	d_canvas_tool_workflows(canvas_tool_workflows),
-	d_tool_icon_regular_size(tool_icon_size)
+	d_tool_icon_regular_size(tool_icon_size),
+	d_selecting_world_building_tab(false)
 {
 	setupUi(this);
 
@@ -268,6 +274,46 @@ GPlatesQtWidgets::CanvasToolBarDockWidget::CanvasToolBarDockWidget(
 
 	// When the workflow tab is directly changed by the user we need to select that workflow's current tool.
 	connect_to_workflow_tab_changed();
+}
+
+
+void
+GPlatesQtWidgets::CanvasToolBarDockWidget::set_up_world_building_tab(
+		QAction *split_action,
+		QAction *ocean_crust_action,
+		QAction *zero_ma_action)
+{
+	if (d_world_building_tab)
+	{
+		return;
+	}
+
+	d_world_building_tab = new QWidget(tab_widget_canvas_tools);
+	d_world_building_tab->setObjectName("tab_world_building");
+	QVBoxLayout *layout = new QVBoxLayout(d_world_building_tab);
+	layout->setContentsMargins(2, 2, 2, 2);
+	layout->setSpacing(4);
+	const QList<QAction *> actions = {split_action, ocean_crust_action, zero_ma_action};
+	const QStringList labels = {tr("Split"), tr("Make Ocean\nCrust"), tr("0MY")};
+	for (int index = 0; index < actions.size(); ++index)
+	{
+		QToolButton *button = new QToolButton(d_world_building_tab);
+		button->setDefaultAction(actions[index]);
+		button->setObjectName(actions[index]->objectName() + "_WB_button");
+		button->setText(labels[index]);
+		button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+		button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+		button->setMinimumHeight(40);
+		if (actions[index]->menu())
+		{
+			button->setMenu(actions[index]->menu());
+			button->setPopupMode(QToolButton::InstantPopup);
+		}
+		layout->addWidget(button);
+	}
+	layout->addStretch();
+	const int tab_index = tab_widget_canvas_tools->addTab(d_world_building_tab, tr("WB"));
+	tab_widget_canvas_tools->setTabToolTip(tab_index, tr("World Building"));
 }
 
 
@@ -931,6 +977,18 @@ void
 GPlatesQtWidgets::CanvasToolBarDockWidget::handle_workflow_tab_changed(
 		int workflow_tab_index)
 {
+	if (d_world_building_tab &&
+			tab_widget_canvas_tools->widget(workflow_tab_index) == d_world_building_tab)
+	{
+		// WB contains commands, not a separate set of canvas tools. Keep feature picking
+		// available and suspend digitising while the command palette is selected.
+		QScopedValueRollback<bool> selecting_world_building(d_selecting_world_building_tab, true);
+		choose_canvas_tool_selected_by_user(
+				GPlatesGui::CanvasToolWorkflows::WORKFLOW_FEATURE_INSPECTION,
+				GPlatesGui::CanvasToolWorkflows::TOOL_CLICK_GEOMETRY);
+		return;
+	}
+
 	// Find the workflow given the workflow tab index in the QTabWidget.
 	Workflow *workflow = NULL;
 	// Search all workflows.
@@ -992,6 +1050,11 @@ GPlatesQtWidgets::CanvasToolBarDockWidget::handle_canvas_tool_activated(
 	//
 	// NOTE: This does not cause the triggered signal to be emitted.
 	tool_action->setChecked(true);
+
+	if (d_selecting_world_building_tab)
+	{
+		return;
+	}
 
 	// Change the workflow tab to reflect the chosen workflow.
 	GPlatesGlobal::Assert<GPlatesGlobal::AssertionFailureException>(

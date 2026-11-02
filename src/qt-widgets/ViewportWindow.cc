@@ -150,6 +150,7 @@
 
 #include "view-operations/CloneOperation.h"
 #include "view-operations/DeleteFeatureOperation.h"
+#include "view-operations/MakeOceanCrustOperation.h"
 #include "view-operations/PlateDirectionArrowsOperation.h"
 #include "view-operations/PlateIdReassignmentOperation.h"
 #include "view-operations/CircularFeatureOperation.h"
@@ -159,6 +160,7 @@
 #include "view-operations/SplitPlateOperation.h"
 #include "view-operations/SubductionCutterOperation.h"
 #include "view-operations/UndoRedo.h"
+#include "view-operations/ZeroMaRotationsOperation.h"
 
 namespace GPlatesQtWidgets
 {
@@ -223,6 +225,12 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 	d_split_plate_operation_ptr(
 			new GPlatesViewOperations::SplitPlateOperation(
 				get_view_state().get_feature_focus(),
+				get_application_state())),
+	d_make_ocean_crust_operation_ptr(
+			new GPlatesViewOperations::MakeOceanCrustOperation(
+				get_application_state(), get_view_state())),
+	d_zero_ma_rotations_operation_ptr(
+			new GPlatesViewOperations::ZeroMaRotationsOperation(
 				get_application_state())),
 	d_subduction_cutter_operation_ptr(
 			new GPlatesViewOperations::SubductionCutterOperation(
@@ -1213,6 +1221,8 @@ GPlatesQtWidgets::ViewportWindow::connect_window_menu_actions()
 void
 GPlatesQtWidgets::ViewportWindow::connect_world_building_menu_actions()
 {
+	action_Split_Plate->setText(tr("Split..."));
+	action_Split_Plate->setToolTip(tr("Split a polygon using one or more existing polylines"));
 	QObject::connect(
 			action_Split_Plate,
 			SIGNAL(triggered()),
@@ -1223,6 +1233,27 @@ GPlatesQtWidgets::ViewportWindow::connect_world_building_menu_actions()
 			SIGNAL(triggered()),
 			this,
 			SLOT(handle_subduction_cutter()));
+
+	QMenu *ocean_crust_menu = new QMenu(tr("Make Ocean Crust"), menu_World_Building);
+	ocean_crust_menu->setObjectName("menu_Make_Ocean_Crust");
+	ocean_crust_menu->menuAction()->setObjectName("action_Make_Ocean_Crust");
+	ocean_crust_menu->menuAction()->setToolTip(tr("Create flowlines from mid-ocean ridge vertices"));
+	QAction *normal_action = ocean_crust_menu->addAction(tr("Normal..."));
+	normal_action->setObjectName("action_Make_Ocean_Crust_Normal");
+	QObject::connect(normal_action, SIGNAL(triggered()), this, SLOT(handle_make_ocean_crust()));
+	QAction *pacific_action = ocean_crust_menu->addAction(tr("Pacific (coming later)"));
+	pacific_action->setEnabled(false);
+	QAction *triple_junction_action = ocean_crust_menu->addAction(tr("Triple Junction (coming later)"));
+	triple_junction_action->setEnabled(false);
+	menu_World_Building->insertMenu(action_Subduction_Cutter, ocean_crust_menu);
+
+	QAction *zero_ma_action = new QAction(tr("0MY..."), this);
+	zero_ma_action->setObjectName("action_Zero_Ma_Rotations");
+	zero_ma_action->setToolTip(tr("Copy each plate's youngest positive-age pole to 0 Ma"));
+	QObject::connect(zero_ma_action, SIGNAL(triggered()), this, SLOT(handle_zero_ma_rotations()));
+	menu_World_Building->insertAction(action_Subduction_Cutter, zero_ma_action);
+	d_canvas_tools_dock_ptr->set_up_world_building_tab(
+			action_Split_Plate, ocean_crust_menu->menuAction(), zero_ma_action);
 }
 
 
@@ -2373,12 +2404,15 @@ void
 GPlatesQtWidgets::ViewportWindow::handle_split_plate()
 {
 	const GPlatesViewOperations::SplitPlateOperation::Result result =
-			d_split_plate_operation_ptr->trigger();
+			d_split_plate_operation_ptr->trigger(this, get_view_state());
 
 	status_message(result.message);
 
 	switch (result.outcome)
 	{
+	case GPlatesViewOperations::SplitPlateOperation::OPERATION_CANCELLED:
+		break;
+
 	case GPlatesViewOperations::SplitPlateOperation::POLYGON_CAPTURED:
 		QMessageBox::information(
 				this,
@@ -2399,6 +2433,48 @@ GPlatesQtWidgets::ViewportWindow::handle_split_plate()
 				tr("Split Plate"),
 				result.message);
 		break;
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_make_ocean_crust()
+{
+	const GPlatesViewOperations::MakeOceanCrustOperation::Result result =
+			d_make_ocean_crust_operation_ptr->trigger(this);
+	status_message(result.message);
+	if (result.outcome == GPlatesViewOperations::MakeOceanCrustOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Make Ocean Crust"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::MakeOceanCrustOperation::FLOWLINES_CREATED)
+	{
+		QMessageBox::information(this, tr("Make Ocean Crust"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_zero_ma_rotations()
+{
+	const GPlatesViewOperations::ZeroMaRotationsOperation::Result result =
+			d_zero_ma_rotations_operation_ptr->trigger(this);
+	status_message(result.message);
+	if (result.outcome == GPlatesViewOperations::ZeroMaRotationsOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("0MY"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::ZeroMaRotationsOperation::OPERATION_COMPLETED)
+	{
+		const int details_start = result.message.indexOf("\n\n");
+		QMessageBox report(QMessageBox::Information, tr("0MY"),
+				details_start < 0 ? result.message : result.message.left(details_start),
+				QMessageBox::Ok, this);
+		if (details_start >= 0)
+		{
+			report.setDetailedText(result.message.mid(details_start + 2));
+		}
+		report.exec();
 	}
 }
 

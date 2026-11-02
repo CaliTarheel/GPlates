@@ -21,37 +21,171 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <set>
 #include <vector>
 
+#include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QLabel>
+#include <QListWidget>
 #include <QObject>
+#include <QPushButton>
 #include <QUndoCommand>
+#include <QVBoxLayout>
 
 #include "SplitPlateOperation.h"
 
 #include "UndoRedo.h"
 
 #include "app-logic/ApplicationState.h"
+#include "app-logic/FeatureCollectionFileState.h"
+#include "app-logic/Layer.h"
+#include "app-logic/LayerTaskType.h"
+#include "app-logic/ReconstructLayerProxy.h"
 #include "app-logic/ReconstructUtils.h"
 #include "app-logic/Reconstruction.h"
 #include "app-logic/ReconstructionGeometryUtils.h"
 
 #include "app-logic/GeometrySetter.h"
 
+#include "file-io/File.h"
+#include "file-io/FileInfo.h"
+
 #include "gui/FeatureFocus.h"
 
 #include "maths/GeometryIntersect.h"
+#include "maths/FiniteRotation.h"
 #include "maths/MathsUtils.h"
 #include "maths/PolylineOnSphere.h"
 
 #include "model/FeatureCollectionHandle.h"
 #include "model/NotificationGuard.h"
+#include "model/PropertyName.h"
+#include "model/PropertyValueFinder.h"
 #include "model/TopLevelProperty.h"
+#include "model/TopLevelPropertyInline.h"
+
+#include "presentation/ViewState.h"
+#include "presentation/VisualLayer.h"
+#include "presentation/VisualLayers.h"
+
+#include "property-values/GmlPolygon.h"
+#include "property-values/GpmlConstantValue.h"
+#include "property-values/XsString.h"
+
+#include "utils/UnicodeStringUtils.h"
 
 
 namespace
 {
 	typedef std::vector<GPlatesMaths::PointOnSphere> point_seq_type;
 	typedef std::vector<point_seq_type> ring_seq_type;
+	typedef GPlatesViewOperations::SplitPlateOperation::polygon_seq_type polygon_seq_type;
+	typedef GPlatesAppLogic::ReconstructedFeatureGeometry::non_null_ptr_to_const_type rfg_ptr_type;
+
+
+	bool
+	is_editable_polygon_property(
+			const GPlatesModel::TopLevelProperty &property)
+	{
+		const auto *inline_property = dynamic_cast<const GPlatesModel::TopLevelPropertyInline *>(&property);
+		if (!inline_property || inline_property->size() != 1)
+		{
+			return false;
+		}
+		const GPlatesModel::PropertyValue::non_null_ptr_to_const_type first_value =
+				*inline_property->begin();
+		const GPlatesModel::PropertyValue *value = first_value.get();
+		while (const auto *constant = dynamic_cast<const GPlatesPropertyValues::GpmlConstantValue *>(value))
+		{
+			value = constant->value().get();
+		}
+		// GeometrySetter traverses constant wrappers, but cannot replace a time-window sample.
+		return dynamic_cast<const GPlatesPropertyValues::GmlPolygon *>(value) != nullptr;
+	}
+
+
+	QString
+	geometry_label(
+			const GPlatesAppLogic::ReconstructedFeatureGeometry &rfg,
+			GPlatesAppLogic::ApplicationState &application_state)
+	{
+		const auto feature = rfg.get_feature_ref();
+		const auto name = GPlatesModel::get_property_value<GPlatesPropertyValues::XsString>(
+				feature, GPlatesModel::PropertyName::create_gml("name"));
+		QString collection_name = QObject::tr("Unsaved collection");
+		for (const auto &file : application_state.get_feature_collection_file_state().get_loaded_files())
+		{
+			if (file.get_file().get_feature_collection().handle_ptr() == feature->parent_ptr())
+			{
+				collection_name = file.get_file().get_file_info().get_display_name(true);
+				break;
+			}
+		}
+		unsigned int property_index = 0;
+		for (auto property = feature->begin(); property != feature->end() && property != rfg.property();
+				++property, ++property_index)
+		{  }
+		return QObject::tr("%1 | Plate %2 | %3 | %4 | geometry %5")
+				.arg(name ? GPlatesUtils::make_qstring((*name)->get_value()) : QObject::tr("Unnamed"))
+				.arg(rfg.reconstruction_plate_id()
+						? QString::number(*rfg.reconstruction_plate_id()) : QObject::tr("none"))
+				.arg(collection_name)
+				.arg(feature->feature_id().get().qstring())
+				.arg(property_index + 1);
+	}
+
+
+	void
+	get_split_choices(
+			std::vector<rfg_ptr_type> &polygons,
+			std::vector<rfg_ptr_type> &polylines,
+			const GPlatesPresentation::ViewState &view_state)
+	{
+		std::set<const GPlatesModel::TopLevelProperty *> seen_properties;
+		const auto &layers = view_state.get_visual_layers();
+		for (size_t index = 0; index < layers.size(); ++index)
+		{
+			const auto layer = layers.visual_layer_at(index).lock();
+			if (!layer || !layer->is_visible() ||
+					!layer->get_reconstruct_graph_layer().is_active() ||
+					layer->get_layer_type() !=
+							static_cast<unsigned int>(GPlatesAppLogic::LayerTaskType::RECONSTRUCT))
+			{
+				continue;
+			}
+			const auto output = layer->get_reconstruct_graph_layer().get_layer_output<
+					GPlatesAppLogic::ReconstructLayerProxy>();
+			if (!output)
+			{
+				continue;
+			}
+			std::vector<GPlatesAppLogic::ReconstructedFeatureGeometry::non_null_ptr_type> geometries;
+			(*output)->get_reconstructed_feature_geometries(geometries);
+			for (const auto &rfg : geometries)
+			{
+				if (!rfg->is_valid() || !rfg->property().is_still_valid() ||
+						!rfg->feature_handle_ptr()->parent_ptr())
+				{
+					continue;
+				}
+				const auto geometry = rfg->reconstructed_geometry();
+				const bool is_polygon = dynamic_cast<const GPlatesMaths::PolygonOnSphere *>(geometry.get());
+				const bool is_polyline = dynamic_cast<const GPlatesMaths::PolylineOnSphere *>(geometry.get());
+				// Polygon outputs need an invertible reconstruction, including half-stage rotations.
+				// A deformed polygon cannot be restored by a rigid plate rotation.
+				if ((!is_polygon && !is_polyline) ||
+						(is_polygon && (!rfg->finite_rotation_reconstruction() ||
+								!is_editable_polygon_property(**rfg->property()))) ||
+						!seen_properties.insert((*rfg->property()).get()).second)
+				{
+					continue;
+				}
+				(is_polygon ? polygons : polylines).push_back(rfg);
+			}
+		}
+	}
 
 
 	bool
@@ -200,6 +334,13 @@ namespace
 			const GPlatesMaths::PointOnSphere &point,
 			const GPlatesAppLogic::ReconstructedFeatureGeometry &reconstructed_feature_geometry)
 	{
+		if (reconstructed_feature_geometry.finite_rotation_reconstruction())
+		{
+			return GPlatesMaths::get_reverse(
+					reconstructed_feature_geometry.finite_rotation_reconstruction()->
+							get_reconstruct_method_finite_rotation()->get_finite_rotation()) * point;
+		}
+
 		const boost::optional<GPlatesModel::integer_plate_id_type> &plate_id =
 				reconstructed_feature_geometry.reconstruction_plate_id();
 		if (!plate_id)
@@ -390,32 +531,42 @@ namespace
 				GPlatesModel::ModelInterface model_interface,
 				const GPlatesModel::FeatureHandle::weak_ref &polygon_feature,
 				const GPlatesModel::FeatureHandle::iterator &polygon_property,
-				const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type &polygon1,
-				const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type &polygon2) :
+				const polygon_seq_type &polygons) :
 			d_feature_focus(feature_focus),
 			d_model_interface(model_interface),
 			d_polygon_feature(polygon_feature),
 			d_polygon_property(polygon_property),
 			d_original_geometry_property((*polygon_property)->clone()),
-			d_polygon1_property(create_geometry_property(polygon_property, polygon1)),
-			d_polygon2_property(create_geometry_property(polygon_property, polygon2)),
-			d_first_redo(true)
+			d_feature_collection(polygon_feature->parent_ptr()->reference())
 		{
 			setText(QObject::tr("split plate"));
+			// Prepare every allocation and snapshot before the command can alter the model.
+			for (size_t piece = 0; piece < polygons.size(); ++piece)
+			{
+				d_piece_properties.push_back(create_geometry_property(polygon_property, polygons[piece]));
+				if (piece == 0)
+				{
+					continue;
+				}
+				const auto new_feature = GPlatesModel::FeatureHandle::create(polygon_feature->feature_type());
+				for (auto property = polygon_feature->begin(); property != polygon_feature->end(); ++property)
+				{
+					const auto new_property = new_feature->add((*property)->clone());
+					if (property == polygon_property)
+					{
+						d_new_polygon_properties.push_back(new_property);
+					}
+				}
+				d_new_features.push_back(new_feature);
+			}
 		}
 
 		virtual
 		void
 		redo()
 		{
-			if (!d_polygon_feature.is_valid() || !d_polygon_property.is_still_valid())
-			{
-				return;
-			}
-
-			GPlatesModel::FeatureCollectionHandle *feature_collection =
-					d_polygon_feature->parent_ptr();
-			if (!feature_collection)
+			if (!d_polygon_feature.is_valid() || !d_polygon_property.is_still_valid() ||
+					!d_feature_collection.is_valid())
 			{
 				return;
 			}
@@ -423,32 +574,14 @@ namespace
 			d_feature_focus.unset_focus();
 			GPlatesModel::NotificationGuard notification_guard(*d_model_interface.access_model());
 
-			if (d_first_redo)
-			{
-				GPlatesModel::FeatureHandle::non_null_ptr_type new_feature =
-						GPlatesModel::FeatureHandle::create(d_polygon_feature->feature_type());
-
-				for (GPlatesModel::FeatureHandle::iterator property_iter = d_polygon_feature->begin();
-						property_iter != d_polygon_feature->end();
-						++property_iter)
-				{
-					GPlatesModel::FeatureHandle::iterator new_property_iter =
-							new_feature->add((*property_iter)->clone());
-					if (property_iter == d_polygon_property)
-					{
-						d_new_polygon_property = new_property_iter;
-					}
-				}
-
-				new_feature->set(d_new_polygon_property, d_polygon2_property->clone());
-				d_new_feature = new_feature;
-				d_feature_collection = feature_collection->reference();
-				d_first_redo = false;
-			}
-
 			// Keep the command's snapshots separate from later in-place property edits.
-			d_polygon_feature->set(d_polygon_property, d_polygon1_property->clone());
-			d_feature_collection->add(*d_new_feature);
+			d_polygon_feature->set(d_polygon_property, d_piece_properties.front()->clone());
+			for (size_t index = 0; index < d_new_features.size(); ++index)
+			{
+				d_new_features[index]->set(
+						d_new_polygon_properties[index], d_piece_properties[index + 1]->clone());
+				d_feature_collection->add(d_new_features[index]);
+			}
 
 			notification_guard.release_guard();
 		}
@@ -457,7 +590,7 @@ namespace
 		void
 		undo()
 		{
-			if (!d_polygon_feature.is_valid() || !d_polygon_property.is_still_valid() || !d_new_feature)
+			if (!d_polygon_feature.is_valid() || !d_polygon_property.is_still_valid())
 			{
 				return;
 			}
@@ -466,7 +599,10 @@ namespace
 			GPlatesModel::NotificationGuard notification_guard(*d_model_interface.access_model());
 
 			d_polygon_feature->set(d_polygon_property, d_original_geometry_property->clone());
-			(*d_new_feature)->remove_from_parent();
+			for (const auto &feature : d_new_features)
+			{
+				feature->remove_from_parent();
+			}
 
 			notification_guard.release_guard();
 		}
@@ -489,12 +625,10 @@ namespace
 		GPlatesModel::FeatureHandle::weak_ref d_polygon_feature;
 		GPlatesModel::FeatureHandle::iterator d_polygon_property;
 		GPlatesModel::TopLevelProperty::non_null_ptr_type d_original_geometry_property;
-		GPlatesModel::TopLevelProperty::non_null_ptr_type d_polygon1_property;
-		GPlatesModel::TopLevelProperty::non_null_ptr_type d_polygon2_property;
-		boost::optional<GPlatesModel::FeatureHandle::non_null_ptr_type> d_new_feature;
-		GPlatesModel::FeatureHandle::iterator d_new_polygon_property;
+		std::vector<GPlatesModel::TopLevelProperty::non_null_ptr_type> d_piece_properties;
+		std::vector<GPlatesModel::FeatureHandle::non_null_ptr_type> d_new_features;
+		std::vector<GPlatesModel::FeatureHandle::iterator> d_new_polygon_properties;
 		GPlatesModel::FeatureCollectionHandle::weak_ref d_feature_collection;
-		bool d_first_redo;
 	};
 }
 
@@ -509,6 +643,73 @@ GPlatesViewOperations::SplitPlateOperation::split_polygon(
 }
 
 
+boost::optional<GPlatesViewOperations::SplitPlateOperation::polygon_seq_type>
+GPlatesViewOperations::SplitPlateOperation::split_polygon_with_polylines(
+		QString &error_message,
+		const GPlatesMaths::PolygonOnSphere &polygon,
+		const polyline_seq_type &polylines)
+{
+	if (polylines.empty())
+	{
+		error_message = QObject::tr("Select at least one cutting polyline.");
+		return boost::none;
+	}
+	polygon_seq_type pieces(1, polygon.get_non_null_pointer());
+	for (size_t cutter_index = 0; cutter_index < polylines.size(); ++cutter_index)
+	{
+		polygon_seq_type next_pieces;
+		bool cut_any_piece = false;
+		for (const auto &piece : pieces)
+		{
+			GPlatesMaths::GeometryIntersect::Graph intersections;
+			if (!GPlatesMaths::GeometryIntersect::intersect(
+					intersections, *piece, *polylines[cutter_index], true))
+			{
+				next_pieces.push_back(piece);
+				continue;
+			}
+			const auto split = split_polygon(error_message, *piece, *polylines[cutter_index]);
+			if (!split)
+			{
+				error_message = QObject::tr("Polyline %1: %2").arg(cutter_index + 1).arg(error_message);
+				return boost::none;
+			}
+			next_pieces.push_back(split->polygon1);
+			next_pieces.push_back(split->polygon2);
+			cut_any_piece = true;
+		}
+		if (!cut_any_piece)
+		{
+			error_message = QObject::tr("Polyline %1 does not split any polygon piece.")
+					.arg(cutter_index + 1);
+			return boost::none;
+		}
+		pieces.swap(next_pieces);
+	}
+	return pieces;
+}
+
+
+std::unique_ptr<QUndoCommand>
+GPlatesViewOperations::SplitPlateOperation::create_split_command(
+		GPlatesGui::FeatureFocus &feature_focus,
+		GPlatesModel::ModelInterface model_interface,
+		const GPlatesModel::FeatureHandle::weak_ref &polygon_feature,
+		const GPlatesModel::FeatureHandle::iterator &polygon_property,
+		const polygon_seq_type &polygons)
+{
+	if (polygons.size() < 2 || !polygon_feature.is_valid() ||
+			!polygon_property.is_still_valid() ||
+			polygon_property.handle_weak_ref() != polygon_feature || !polygon_feature->parent_ptr() ||
+			!is_editable_polygon_property(**polygon_property))
+	{
+		return std::unique_ptr<QUndoCommand>();
+	}
+	return std::unique_ptr<QUndoCommand>(new SplitPlateUndoCommand(
+			feature_focus, model_interface, polygon_feature, polygon_property, polygons));
+}
+
+
 GPlatesViewOperations::SplitPlateOperation::SplitPlateOperation(
 		GPlatesGui::FeatureFocus &feature_focus,
 		GPlatesAppLogic::ApplicationState &application_state) :
@@ -516,6 +717,137 @@ GPlatesViewOperations::SplitPlateOperation::SplitPlateOperation(
 	d_application_state(application_state),
 	d_model_interface(application_state.get_model_interface())
 {  }
+
+
+GPlatesViewOperations::SplitPlateOperation::Result
+GPlatesViewOperations::SplitPlateOperation::trigger(
+		QWidget *parent,
+		const GPlatesPresentation::ViewState &view_state)
+{
+	reset();
+	std::vector<rfg_ptr_type> polygons;
+	std::vector<rfg_ptr_type> polylines;
+	get_split_choices(polygons, polylines, view_state);
+	if (polygons.empty() || polylines.empty())
+	{
+		return Result(OPERATION_ERROR, QObject::tr(
+				"Split Plate needs a rigid reconstructed polygon and at least one polyline "
+				"in active, visible reconstruct layers at the current time."));
+	}
+	const double reconstruction_time = d_application_state.get_current_reconstruction_time();
+	QDialog dialog(parent);
+	dialog.setObjectName("SplitPlateDialog");
+	dialog.setWindowTitle(QObject::tr("Split Plate"));
+	dialog.resize(850, 480);
+	auto *layout = new QVBoxLayout(&dialog);
+	layout->addWidget(new QLabel(QObject::tr("Polygon to split:"), &dialog));
+	auto *polygon_choice = new QComboBox(&dialog);
+	polygon_choice->setObjectName("splitPolygonComboBox");
+	for (size_t index = 0; index < polygons.size(); ++index)
+	{
+		polygon_choice->addItem(geometry_label(*polygons[index], d_application_state));
+		if (polygons[index].get() == d_feature_focus.associated_reconstruction_geometry().get())
+		{
+			polygon_choice->setCurrentIndex(static_cast<int>(index));
+		}
+	}
+	layout->addWidget(polygon_choice);
+	auto *instructions = new QLabel(QObject::tr(
+			"Select one or more existing cutting polylines (Ctrl-click for multiple). "
+			"They are applied in list order. Each must cross the pieces cleanly, "
+			"without touching a vertex, overlapping a boundary or crossing a hole. "
+			"The cutting polylines are kept unchanged."), &dialog);
+	instructions->setWordWrap(true);
+	layout->addWidget(instructions);
+	auto *cutter_choices = new QListWidget(&dialog);
+	cutter_choices->setObjectName("splitPolylinesListWidget");
+	cutter_choices->setSelectionMode(QAbstractItemView::ExtendedSelection);
+	for (const auto &polyline : polylines)
+	{
+		cutter_choices->addItem(geometry_label(*polyline, d_application_state));
+	}
+	layout->addWidget(cutter_choices);
+	auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+	buttons->setObjectName("splitDialogButtonBox");
+	buttons->button(QDialogButtonBox::Ok)->setObjectName("splitApplyButton");
+	buttons->button(QDialogButtonBox::Ok)->setText(QObject::tr("Split"));
+	buttons->button(QDialogButtonBox::Ok)->setEnabled(false);
+	QObject::connect(cutter_choices, &QListWidget::itemSelectionChanged, &dialog, [=]()
+	{
+		buttons->button(QDialogButtonBox::Ok)->setEnabled(!cutter_choices->selectedItems().isEmpty());
+	});
+	QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+	QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+	layout->addWidget(buttons);
+	if (dialog.exec() != QDialog::Accepted)
+	{
+		return Result(OPERATION_CANCELLED, QString());
+	}
+	if (std::fabs(d_application_state.get_current_reconstruction_time() - reconstruction_time) > 1e-9)
+	{
+		return Result(OPERATION_ERROR, QObject::tr(
+				"The reconstruction time changed. Reopen Split Plate to select current geometries."));
+	}
+	const auto polygon_rfg = polygons[polygon_choice->currentIndex()];
+	if (!polygon_rfg->is_valid() || !polygon_rfg->property().is_still_valid() ||
+			!polygon_rfg->feature_handle_ptr()->parent_ptr())
+	{
+		return Result(OPERATION_ERROR, QObject::tr("The selected polygon is no longer available."));
+	}
+	polyline_seq_type cutters;
+	for (int row = 0; row < cutter_choices->count(); ++row)
+	{
+		if (!cutter_choices->item(row)->isSelected())
+		{
+			continue;
+		}
+		const auto &rfg = polylines[row];
+		if (!rfg->is_valid() || !rfg->property().is_still_valid())
+		{
+			return Result(OPERATION_ERROR,
+					QObject::tr("A selected cutting polyline is no longer available."));
+		}
+		const auto *polyline = dynamic_cast<const GPlatesMaths::PolylineOnSphere *>(
+				rfg->reconstructed_geometry().get());
+		cutters.push_back(polyline->get_non_null_pointer());
+	}
+	try
+	{
+		const auto *polygon = dynamic_cast<const GPlatesMaths::PolygonOnSphere *>(
+				polygon_rfg->reconstructed_geometry().get());
+		QString error_message;
+		const auto pieces = split_polygon_with_polylines(error_message, *polygon, cutters);
+		if (!pieces)
+		{
+			return Result(OPERATION_ERROR, error_message);
+		}
+		polygon_seq_type source_pieces;
+		for (const auto &piece : *pieces)
+		{
+			source_pieces.push_back(reverse_reconstruct_polygon(*piece, *polygon_rfg));
+		}
+		auto command = create_split_command(d_feature_focus, d_model_interface,
+				polygon_rfg->get_feature_ref(), polygon_rfg->property(), source_pieces);
+		if (!command)
+		{
+			return Result(OPERATION_ERROR, QObject::tr("The selected polygon is no longer editable."));
+		}
+		UndoRedo::instance().get_active_undo_stack().push(command.release());
+		return Result(SPLIT_COMPLETED, QObject::tr(
+				"Created %1 polygon pieces. The cutting polylines were kept unchanged. "
+				"Use Edit > Undo to restore the original polygon.").arg(source_pieces.size()));
+	}
+	catch (const std::exception &exception)
+	{
+		return Result(OPERATION_ERROR,
+				QObject::tr("Could not split the polygon: %1").arg(exception.what()));
+	}
+	catch (...)
+	{
+		return Result(OPERATION_ERROR,
+				QObject::tr("Could not split the polygon because the geometry is invalid."));
+	}
+}
 
 
 GPlatesViewOperations::SplitPlateOperation::Result
@@ -663,14 +995,16 @@ GPlatesViewOperations::SplitPlateOperation::trigger()
 		return Result(OPERATION_ERROR, error_message);
 	}
 
-	std::unique_ptr<QUndoCommand> undo_command(
-			new SplitPlateUndoCommand(
+	std::unique_ptr<QUndoCommand> undo_command = create_split_command(
 					d_feature_focus,
 					d_model_interface,
 					d_captured_polygon->feature,
 					d_captured_polygon->geometry_property,
-					split_result->polygon1,
-					split_result->polygon2));
+					{ split_result->polygon1, split_result->polygon2 });
+	if (!undo_command)
+	{
+		return Result(OPERATION_ERROR, QObject::tr("The captured polygon is no longer editable."));
+	}
 
 	reset();
 	UndoRedo::instance().get_active_undo_stack().push(undo_command.release());

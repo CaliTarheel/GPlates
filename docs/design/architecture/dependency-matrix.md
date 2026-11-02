@@ -61,7 +61,7 @@ flowchart TD
   subgraph L7 ["GPlates user interface"]
     gui_gp["gui<br/>GPlates-only: 237 of 249 files"]:::gplates
     presentation["presentation<br/>48 files"]:::gplates
-    view_operations["view-operations<br/>97 files"]:::gplates
+    view_operations["view-operations<br/>101 files"]:::gplates
     canvas_tools["canvas-tools<br/>51 files"]:::gplates
     api_gp["api<br/>GPlates-only: 33 of 110 files"]:::gplates
     qt_widgets["qt-widgets<br/>448 files"]:::gplates
@@ -245,11 +245,11 @@ in the *column* directory, over every `.h`/`.cc` in the built `src/` subdirector
 | opengl |  |  | 16 |  |  |  | 10 | 189 | 32 | 100 |  | 614 |  | 24 |  |  |  | 125 | 3 |
 | presentation |  | 1 | 101 |  |  | 1 | 24 | 23 | 76 | 12 | 9 | 3 | 93 | 6 | 26 | 25 |  | 11 | 19 |
 | property-values |  |  |  |  |  |  | 11 | 64 | 5 | 26 | 292 |  |  | 176 |  | 103 |  | 35 |  |
-| qt-widgets |  | 17 | 296 | 8 |  | 8 | 80 | 133 | 225 | 127 | 275 | 35 | 120 | 212 | 846 |  |  | 57 | 32 |
+| qt-widgets |  | 17 | 296 | 8 |  | 8 | 80 | 133 | 225 | 127 | 275 | 35 | 120 | 212 | 846 |  |  | 57 | 34 |
 | scribe |  |  |  |  |  |  |  | 31 |  | 8 |  |  |  |  |  | 172 |  | 23 |  |
-| unit-test |  |  | 14 |  |  | 2 | 19 | 2 | 5 | 56 | 21 |  |  | 18 |  | 16 | 2 | 8 | 2 |
+| unit-test |  |  | 22 |  |  | 2 | 27 | 2 | 6 | 59 | 36 |  |  | 32 |  | 16 | 2 | 9 | 5 |
 | utils |  | 1 |  |  |  |  | 1 | 34 |  | 13 | 1 |  |  | 54 |  | 3 |  | 50 |  |
-| view-operations |  |  | 91 | 6 |  |  | 7 | 27 | 61 | 114 | 61 |  | 15 | 26 | 4 | 3 |  | 15 | 250 |
+| view-operations |  |  | 108 | 6 |  |  | 10 | 27 | 62 | 118 | 74 |  | 21 | 40 | 4 | 3 |  | 17 | 255 |
 
 # The pyGPlates module subset
 
@@ -279,9 +279,9 @@ Roots: the exporter `.cc` of every `export_*()` call registered in
 | property-values | 127 / 128 |
 | qt-widgets | 0 / 448 |
 | scribe | 56 / 64 |
-| unit-test | 0 / 25 |
+| unit-test | 0 / 27 |
 | utils | 45 / 75 |
-| view-operations | 0 / 97 |
+| view-operations | 0 / 101 |
 
 What the module takes from each partially-included directory:
 

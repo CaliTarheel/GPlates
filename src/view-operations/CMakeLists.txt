@@ -33,6 +33,8 @@ set(srcs
     InsertVertexGeometryOperation.h
     InternalGeometryBuilder.cc
     InternalGeometryBuilder.h
+    MakeOceanCrustOperation.cc
+    MakeOceanCrustOperation.h
     MovePoleOperation.cc
     MovePoleOperation.h
     MoveVertexGeometryOperation.cc
@@ -103,6 +105,8 @@ set(srcs
     UndoRedo.h
     VisibleReconstructionGeometryExport.cc
     VisibleReconstructionGeometryExport.h
+    ZeroMaRotationsOperation.cc
+    ZeroMaRotationsOperation.h
 )
 
 if (TARGET gplates-lib)

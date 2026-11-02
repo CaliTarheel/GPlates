@@ -23,11 +23,14 @@
 
 #include <boost/noncopyable.hpp>
 #include <boost/optional.hpp>
+#include <memory>
+#include <vector>
 #include <QString>
 
 #include "app-logic/ReconstructedFeatureGeometry.h"
 
 #include "maths/PolygonOnSphere.h"
+#include "maths/PolylineOnSphere.h"
 
 #include "model/FeatureHandle.h"
 #include "model/ModelInterface.h"
@@ -43,10 +46,13 @@ namespace GPlatesGui
 	class FeatureFocus;
 }
 
-namespace GPlatesMaths
+namespace GPlatesPresentation
 {
-	class PolylineOnSphere;
+	class ViewState;
 }
+
+class QWidget;
+class QUndoCommand;
 
 namespace GPlatesViewOperations
 {
@@ -62,7 +68,8 @@ namespace GPlatesViewOperations
 		{
 			POLYGON_CAPTURED,
 			SPLIT_COMPLETED,
-			OPERATION_ERROR
+			OPERATION_ERROR,
+			OPERATION_CANCELLED
 		};
 
 		struct Result
@@ -107,6 +114,38 @@ namespace GPlatesViewOperations
 				const GPlatesMaths::PolygonOnSphere &polygon,
 				const GPlatesMaths::PolylineOnSphere &polyline);
 
+		typedef std::vector<GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type>
+				polygon_seq_type;
+		typedef std::vector<GPlatesMaths::PolylineOnSphere::non_null_ptr_to_const_type>
+				polyline_seq_type;
+
+		/**
+		 * Apply cutters in order to every intersected piece, retaining disjoint pieces.
+		 * Every cutter must split at least one piece. The same clean-crossing rules as
+		 * split_polygon apply. Failure returns none without modifying any input.
+		 */
+		static
+		boost::optional<polygon_seq_type>
+		split_polygon_with_polylines(
+				QString &error_message,
+				const GPlatesMaths::PolygonOnSphere &polygon,
+				const polyline_seq_type &polylines);
+
+		/**
+		 * Prepare one undo command for already validated pieces in the source coordinate frame.
+		 * Keeps the original feature for the first piece and clones its properties for the rest.
+		 * Cutter features are never passed to or modified by this command.
+		 * Returns an empty pointer for an unavailable source or fewer than two pieces.
+		 */
+		static
+		std::unique_ptr<QUndoCommand>
+		create_split_command(
+				GPlatesGui::FeatureFocus &feature_focus,
+				GPlatesModel::ModelInterface model_interface,
+				const GPlatesModel::FeatureHandle::weak_ref &polygon_feature,
+				const GPlatesModel::FeatureHandle::iterator &polygon_property,
+				const polygon_seq_type &polygons);
+
 		SplitPlateOperation(
 				GPlatesGui::FeatureFocus &feature_focus,
 				GPlatesAppLogic::ApplicationState &application_state);
@@ -117,6 +156,12 @@ namespace GPlatesViewOperations
 		 */
 		Result
 		trigger();
+
+		//! Select a polygon and existing polyline cutters in a modal dialog.
+		Result
+		trigger(
+				QWidget *parent,
+				const GPlatesPresentation::ViewState &view_state);
 
 		void
 		reset();

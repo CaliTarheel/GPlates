@@ -86,6 +86,15 @@ namespace GPlatesQtWidgets
 		get_workflow_tool_menu_actions(
 				GPlatesGui::CanvasToolWorkflows::WorkflowType workflow) const;
 
+		/**
+		 * Add the World Building command palette after the canvas workflow tabs.
+		 */
+		void
+		set_up_world_building_tab(
+				QAction *split_action,
+				QAction *ocean_crust_action,
+				QAction *zero_ma_action);
+
 	Q_SIGNALS:
 
 		/**
@@ -195,6 +204,10 @@ namespace GPlatesQtWidgets
 
 		//! The tool icon size to use when not using the small size;
 		const QSize d_tool_icon_regular_size;
+
+		QPointer<QWidget> d_world_building_tab;
+
+		bool d_selecting_world_building_tab;
 
 
 		void

@@ -19,6 +19,7 @@ set(srcs
     GeoscimlReaderTest.cc
     GrotFileTest.cc
     GsmlXmlQueryTest.cc
+    MakeOceanCrustOperationTest.cc
     MipmapperTest.cc
     PointInPolygonTest.cc
     ProjectMetadataTest.cc
@@ -31,6 +32,7 @@ set(srcs
     SubductionCutterGeometryTest.cc
     TranscribeTest.cc
     TranscribeTest.h
+    ZeroMaRotationsOperationTest.cc
 )
 
 # Add the source files to the gplates "unit test" executable
