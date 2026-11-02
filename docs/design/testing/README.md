@@ -90,6 +90,24 @@ A note on scope: the historical unit-test suite went stale largely because no
 gone (see `src/gplates_unit_test_main.cc`), so there is no longer a structural excuse for the
 thinnest areas of coverage — file-io above all, then app-logic.
 
+## Optional local Split reproduction
+
+`SplitPlateDialogTest` always runs a synthetic GPML case with an existing boundary, a
+through-vertex cutter and a duplicate cutter, plus cancellation. Its `OptionalPrivateDataset`
+case can also exercise a local copy of equivalent project data without adding it to the
+repository. Set `GPLATES_SPLIT_REPRO_DIR` to a directory containing `polygons.gpml`,
+`cutters.gpml` and `rotations.rot`, then run CTest with `-R SplitPlateDialogTest`.
+`GPLATES_SPLIT_REPRO_ROTATION` optionally selects another rotation filename in that directory.
+
+This diagnostic expects the same fixture shape: at 1000 Ma and anchor 0, one active plate-100
+polygon to split, one active plate-300 polygon to preserve, one older inactive polygon, and
+three cutter records (an existing boundary and a duplicated new cut). It is not a general
+project-editing command. Inputs are copied into a temporary directory and must remain byte
+identical. The test checks area, unaffected features, Undo/Redo and GPML reload/reconstruction.
+It skips when no input directory is supplied. `GPLATES_SPLIT_REPRO_OUTPUT`, when explicitly
+set, exports the verified result to a new file only after every check passes; existing files
+are never overwritten. Ordinary test runs write only to temporary directories.
+
 ## Roadmap
 
 In order of value per effort. Each tier should get CTest **labels** (`unit`, `python`, `app`,

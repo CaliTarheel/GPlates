@@ -12,6 +12,9 @@ Changes since 2.5:
 * The top Time control's up/down arrows snap to 10 Ma increments while manually entered fractional ages remain available.
 * Added a WB tab beside the canvas tools for World Building commands.
 * Split now offers a polygon picker and multiple polyline cutters in one undoable operation. Cutting polylines are preserved.
+* Split accepts clear cuts through boundary vertices and skips duplicate cutters or lines already following a boundary when another line makes a new cut.
+* Fixed Split Undo and Redo clearing their own history and terminating the application.
+* Split Redo restores active, visible polygon pieces, including pieces whose geometry property was removed before Undo.
 * Flow lines opens its dialog directly and creates paired flowlines from selected mid-ocean ridges, with a choice of new or existing output collection.
 * Make Ocean Crust creates oceanic-crust polygon slivers on both sides of selected mid-ocean ridges over a chosen future duration and step interval.
 * Redo restores generated flowlines and ocean-crust polygons after Undo, including their visibility and saved properties.

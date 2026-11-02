@@ -14,15 +14,23 @@ At the reconstruction age you are editing:
 
 The polygon and polylines must be available in active, visible reconstruct layers. Split
 supports rigid polygon geometry; deformed polygons and time-window geometry properties
-are not offered. Each cutting line must cross each affected piece's boundary exactly twice.
-Contacts at vertices, overlapping edges, cuts
-through holes, and lines that do not split a piece are reported without changing the model.
+are not offered. Each new cut must enter and leave an affected piece exactly once. A clear
+crossing through an exact boundary vertex is allowed, including a junction with an earlier cut.
+Tangencies, lines ending inside or on the boundary, partial boundary overlaps, cuts through
+holes, self-crossing cuts and ambiguous near-vertex paths are rejected without changing the model.
+Very detailed cut paths can exceed the validation limit and need simplifying.
+
 Several cutters are applied in list order, including to pieces produced by earlier cutters.
+Exact duplicate lines and lines already following an existing boundary are skipped; at least
+one selected line must make a new cut. A nearby parallel line is not treated as the boundary.
+The tool does not extend short lines or change their coordinates to force a cut.
 
 The cutting polylines remain unchanged. The resulting polygons stay in the original
 collection and retain its feature properties, including plate IDs and valid times. One
 **Edit > Undo** restores the original polygon and removes the generated pieces. Save the
 modified collection when you want to keep the result.
+**Redo** restores active polygon pieces. Assign new plate IDs separately if the pieces should
+move on different plates; Split preserves the original polygon's plate ID.
 
 ## Flow lines
 

@@ -28,6 +28,8 @@
 #include <gtest/gtest.h>
 #include <QUndoStack>
 
+#include "app-logic/ReconstructUtils.h"
+
 #include "gui/FeatureFocus.h"
 
 #include "maths/LatLonPoint.h"
@@ -350,14 +352,16 @@ TEST(SplitPlateOperationTest, empty_or_non_intersecting_cutter_selection_is_reje
 }
 
 
-TEST(SplitPlateOperationTest, one_undo_restores_polygon_metadata_and_preserves_cutters)
+TEST(SplitPlateOperationTest, repeated_undo_redo_restores_active_pieces_metadata_and_cutters)
 {
 	GPlatesModel::ModelInterface model;
 	const auto collection = GPlatesModel::FeatureCollectionHandle::create(model->root());
 	const auto source = GPlatesModel::FeatureHandle::create(
-			collection, GPlatesModel::FeatureType::create_gpml("UnclassifiedFeature"));
+			collection, GPlatesModel::FeatureType::create_gpml("ContinentalCrust"));
 	const auto cutter_feature = GPlatesModel::FeatureHandle::create(
-			collection, GPlatesModel::FeatureType::create_gpml("UnclassifiedFeature"));
+			collection, GPlatesModel::FeatureType::create_gpml("MidOceanRidge"));
+	const auto second_cutter_feature = GPlatesModel::FeatureHandle::create(
+			collection, GPlatesModel::FeatureType::create_gpml("MidOceanRidge"));
 	const auto polygon_name = GPlatesModel::PropertyName::create_gpml("outlineOf");
 	const auto metadata_name = GPlatesModel::PropertyName::create_gml("description");
 	const auto plate_name = GPlatesModel::PropertyName::create_gpml("reconstructionPlateId");
@@ -377,11 +381,18 @@ TEST(SplitPlateOperationTest, one_undo_restores_polygon_metadata_and_preserves_c
 			GPlatesPropertyValues::GmlLineString::create(cutter)));
 	const auto original_cutter_property = *cutter_property;
 	const auto original_cutter_revision = cutter_feature->revision_id();
+	const auto second_cutter = GPlatesMaths::PolylineOnSphere::create(
+			point_seq_type{ point(0, -20), point(0, 20) });
+	const auto second_cutter_property = second_cutter_feature->add(
+			GPlatesModel::TopLevelPropertyInline::create(
+					GPlatesModel::PropertyName::create_gpml("centerLineOf"),
+					GPlatesPropertyValues::GmlLineString::create(second_cutter)));
+	const auto original_second_cutter_property = *second_cutter_property;
+	const auto original_second_cutter_revision = second_cutter_feature->revision_id();
 	const auto source_id = source->feature_id();
 	QString error;
 	const auto pieces = SplitPlate::split_polygon_with_polylines(error, *polygon,
-			{ cutter, GPlatesMaths::PolylineOnSphere::create(
-					point_seq_type{ point(0, -20), point(0, 20) }) });
+			{ cutter, second_cutter });
 	ASSERT_TRUE(pieces) << error.toStdString();
 	ASSERT_EQ(pieces->size(), 4u);
 	GPlatesViewOperations::RenderedGeometryCollection rendered_geometries;
@@ -389,39 +400,104 @@ TEST(SplitPlateOperationTest, one_undo_restores_polygon_metadata_and_preserves_c
 	QUndoStack undo;
 	auto command = SplitPlate::create_split_command(focus, model, source, source_property, *pieces);
 	ASSERT_TRUE(command);
-	EXPECT_EQ(collection->size(), 2u);
+	EXPECT_EQ(collection->size(), 3u);
 	undo.push(command.release());
 	EXPECT_EQ(undo.count(), 1);
-	EXPECT_EQ(collection->size(), 5u);
-	EXPECT_EQ(source->feature_id(), source_id);
+	ASSERT_EQ(collection->size(), 6u);
+	std::vector<GPlatesModel::FeatureHandle::weak_ref> split_features;
 	for (auto feature = collection->begin(); feature != collection->end(); ++feature)
 	{
-		if ((*feature)->reference() == cutter_feature)
+		if ((*feature)->reference() != cutter_feature &&
+				(*feature)->reference() != second_cutter_feature)
 		{
-			continue;
+			split_features.push_back((*feature)->reference());
 		}
-		const auto metadata = GPlatesModel::get_property_value<GPlatesPropertyValues::XsString>(
-				(*feature)->reference(), metadata_name);
-		const auto plate_id = GPlatesModel::get_property_value<GPlatesPropertyValues::GpmlPlateId>(
-				(*feature)->reference(), plate_name);
-		ASSERT_TRUE(metadata);
-		ASSERT_TRUE(plate_id);
-		EXPECT_EQ((*metadata)->get_value().get().qstring(), "custom worldbuilding metadata");
-		EXPECT_EQ((*plate_id)->get_value(), 123);
 	}
-	undo.undo();
-	EXPECT_EQ(collection->size(), 2u);
-	const auto restored = GPlatesModel::get_property_value<GPlatesPropertyValues::GmlPolygon>(
-			source, polygon_name);
-	ASSERT_TRUE(restored);
-	EXPECT_EQ((*restored)->get_polygon(), polygon);
-	EXPECT_EQ(cutter_feature->revision_id(), original_cutter_revision);
-	EXPECT_EQ(*cutter_property, original_cutter_property);
-	EXPECT_EQ(cutter_feature->parent_ptr(), collection.handle_ptr());
-	undo.redo();
-	EXPECT_EQ(collection->size(), 5u);
-	EXPECT_EQ(cutter_feature->revision_id(), original_cutter_revision);
-	EXPECT_EQ(*cutter_property, original_cutter_property);
+	ASSERT_EQ(split_features.size(), pieces->size());
+	const auto expect_cutters_unchanged = [&]()
+	{
+		ASSERT_TRUE(cutter_feature.is_valid());
+		ASSERT_TRUE(second_cutter_feature.is_valid());
+		EXPECT_EQ(cutter_feature->revision_id(), original_cutter_revision);
+		EXPECT_EQ(second_cutter_feature->revision_id(), original_second_cutter_revision);
+		EXPECT_EQ(*cutter_property, original_cutter_property);
+		EXPECT_EQ(*second_cutter_property, original_second_cutter_property);
+		EXPECT_EQ(cutter_feature->parent_ptr(), collection.handle_ptr());
+		EXPECT_EQ(second_cutter_feature->parent_ptr(), collection.handle_ptr());
+		const auto first_line = GPlatesModel::get_property_value<GPlatesPropertyValues::GmlLineString>(
+				cutter_feature, GPlatesModel::PropertyName::create_gpml("centerLineOf"));
+		const auto second_line = GPlatesModel::get_property_value<GPlatesPropertyValues::GmlLineString>(
+				second_cutter_feature, GPlatesModel::PropertyName::create_gpml("centerLineOf"));
+		ASSERT_TRUE(first_line);
+		ASSERT_TRUE(second_line);
+		EXPECT_EQ((*first_line)->get_polyline(), cutter);
+		EXPECT_EQ((*second_line)->get_polyline(), second_cutter);
+	};
+	const auto expect_reconstructed_pieces = [&]()
+	{
+		ASSERT_EQ(collection->size(), 6u);
+		EXPECT_EQ(source->feature_id(), source_id);
+		std::vector<GPlatesAppLogic::ReconstructedFeatureGeometry::non_null_ptr_type> geometries;
+		// The source plate is the anchor, so the reconstructed pieces must retain their geometry.
+		GPlatesAppLogic::ReconstructUtils::reconstruct(geometries, 0, 123, { collection }, {});
+		ASSERT_EQ(geometries.size(), 6u);
+		for (std::size_t index = 0; index < split_features.size(); ++index)
+		{
+			SCOPED_TRACE(index);
+			const auto feature = split_features[index];
+			ASSERT_TRUE(feature.is_valid());
+			EXPECT_TRUE(feature->is_active());
+			EXPECT_EQ(feature->parent_ptr(), collection.handle_ptr());
+			EXPECT_EQ(feature->feature_type(), source->feature_type());
+			EXPECT_EQ(feature->size(), 3u);
+			const auto metadata = GPlatesModel::get_property_value<GPlatesPropertyValues::XsString>(
+					feature, metadata_name);
+			const auto plate_id = GPlatesModel::get_property_value<GPlatesPropertyValues::GpmlPlateId>(
+					feature, plate_name);
+			ASSERT_TRUE(metadata);
+			ASSERT_TRUE(plate_id);
+			EXPECT_EQ((*metadata)->get_value().get().qstring(), "custom worldbuilding metadata");
+			EXPECT_EQ((*plate_id)->get_value(), 123);
+			const auto geometry = std::find_if(geometries.begin(), geometries.end(),
+					[&](const auto &candidate) { return candidate->get_feature_ref() == feature; });
+			ASSERT_NE(geometry, geometries.end());
+			EXPECT_TRUE((*geometry)->is_valid());
+			const auto *reconstructed = dynamic_cast<const GPlatesMaths::PolygonOnSphere *>(
+					(*geometry)->reconstructed_geometry().get());
+			ASSERT_NE(reconstructed, nullptr);
+			EXPECT_NEAR(reconstructed->get_area().dval(), (*pieces)[index]->get_area().dval(), 1e-10);
+			EXPECT_EQ(reconstructed->number_of_vertices_in_exterior_ring(),
+					(*pieces)[index]->number_of_vertices_in_exterior_ring());
+		}
+		ASSERT_NO_FATAL_FAILURE(expect_cutters_unchanged());
+	};
+	ASSERT_NO_FATAL_FAILURE(expect_reconstructed_pieces());
+	for (unsigned int cycle = 0; cycle < 3; ++cycle)
+	{
+		SCOPED_TRACE(cycle);
+		// The property editor can delete geometry without putting a command on this undo stack.
+		// Redo must restore the complete piece, not just an active handle without an outline.
+		const auto edited_piece = split_features[1];
+		ASSERT_TRUE(edited_piece.is_valid());
+		const auto deleted_property = std::find_if(edited_piece->begin(), edited_piece->end(),
+				[&](const auto &property) { return property->get_property_name() == polygon_name; });
+		ASSERT_NE(deleted_property, edited_piece->end());
+		edited_piece->remove(deleted_property);
+		EXPECT_FALSE(deleted_property.is_still_valid());
+		undo.undo();
+		ASSERT_EQ(collection->size(), 3u);
+		for (std::size_t index = 1; index < split_features.size(); ++index)
+		{
+			EXPECT_FALSE(split_features[index].is_valid());
+		}
+		const auto restored = GPlatesModel::get_property_value<GPlatesPropertyValues::GmlPolygon>(
+				source, polygon_name);
+		ASSERT_TRUE(restored);
+		EXPECT_EQ((*restored)->get_polygon(), polygon);
+		ASSERT_NO_FATAL_FAILURE(expect_cutters_unchanged());
+		undo.redo();
+		ASSERT_NO_FATAL_FAILURE(expect_reconstructed_pieces());
+	}
 }
 
 

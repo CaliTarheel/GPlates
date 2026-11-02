@@ -55,7 +55,9 @@
 #include "gui/FeatureFocus.h"
 
 #include "maths/GeometryIntersect.h"
+#include "maths/GeometryDistance.h"
 #include "maths/FiniteRotation.h"
+#include "maths/GreatCircleArc.h"
 #include "maths/MathsUtils.h"
 #include "maths/PolylineOnSphere.h"
 
@@ -291,6 +293,223 @@ namespace
 	}
 
 
+	enum CutterStretch
+	{
+		EMPTY_STRETCH,
+		BOUNDARY_STRETCH,
+		INSIDE_STRETCH,
+		OUTSIDE_STRETCH,
+		AMBIGUOUS_STRETCH
+	};
+
+
+	bool
+	within_contact_roundoff(
+			const GPlatesMaths::UnitVector3D &first,
+			const GPlatesMaths::UnitVector3D &second)
+	{
+		const double dx = first.x().dval() - second.x().dval();
+		const double dy = first.y().dval() - second.y().dval();
+		const double dz = first.z().dval() - second.z().dval();
+		return dx * dx + dy * dy + dz * dz <= 1e-20;
+	}
+
+
+	CutterStretch
+	classify_cutter_stretch(
+			const GPlatesMaths::PolygonOnSphere &polygon,
+			const point_seq_type &path)
+	{
+		CutterStretch result = EMPTY_STRETCH;
+		for (size_t index = 1; index < path.size(); ++index)
+		{
+			const auto arc = GPlatesMaths::GreatCircleArc::create(path[index - 1], path[index]);
+			if (arc.is_zero_length())
+			{
+				continue;
+			}
+			const auto sample = arc.point_on_arc(0.5);
+			auto closest = sample.position_vector();
+			const auto distance = GPlatesMaths::minimum_distance(
+					sample, polygon, false, boost::none, closest);
+			const bool on_boundary = distance->get_cosine().dval() >=
+					GPlatesMaths::GeometryIntersect::Intersection::get_on_segment_start_threshold_cosine();
+			if (on_boundary && !within_contact_roundoff(sample.position_vector(), closest))
+			{
+				// A narrow inside/outside strip is not an existing boundary. Distances near
+				// zero lose precision as cosines, so compare the actual closest positions.
+				return AMBIGUOUS_STRETCH;
+			}
+			const CutterStretch location = on_boundary ? BOUNDARY_STRETCH :
+					(polygon.is_point_in_polygon(sample, GPlatesMaths::PolygonOnSphere::ADAPTIVE,
+							false) ? INSIDE_STRETCH : OUTSIDE_STRETCH);
+			if (result != EMPTY_STRETCH && result != location)
+			{
+				return AMBIGUOUS_STRETCH;
+			}
+			result = location;
+		}
+		return result;
+	}
+
+
+	std::vector<CutterStretch>
+	classify_cutter_stretches(
+			const GPlatesMaths::PolygonOnSphere &polygon,
+			const GPlatesMaths::PolylineOnSphere &polyline,
+			const GPlatesMaths::GeometryIntersect::Graph &graph)
+	{
+		// Native intersection events divide the cutter into open stretches with no boundary
+		// crossings. Classify their segment midpoints, not arbitrary offsets from a contact.
+		// Boundary/empty/mixed stretches remain ambiguous: do not snap away a narrow sliver
+		// or assume that a contact at an endpoint is a through-crossing.
+		typedef GPlatesMaths::GeometryIntersect::Intersection Intersection;
+		Intersection previous(Intersection::SEGMENT_START_ON_SEGMENT_START,
+				polyline.get_vertex(0), 0, 0);
+		std::vector<CutterStretch> stretches;
+		for (unsigned int index : graph.geometry2_ordered_intersections)
+		{
+			const auto &next = graph.unordered_intersections[index];
+			stretches.push_back(classify_cutter_stretch(
+					polygon, create_cut_path(polyline, previous, next)));
+			previous = next;
+		}
+		const unsigned int last_vertex = polyline.number_of_vertices() - 1;
+		const Intersection end(Intersection::SEGMENT_START_ON_SEGMENT_START,
+				polyline.get_vertex(last_vertex), 0, last_vertex);
+		stretches.push_back(classify_cutter_stretch(
+				polygon, create_cut_path(polyline, previous, end)));
+		return stretches;
+	}
+
+
+	bool
+	contact_is_geometrically_exact(
+			const GPlatesMaths::PolygonOnSphere &polygon,
+			const GPlatesMaths::PolylineOnSphere &polyline,
+			const GPlatesMaths::GeometryIntersect::Intersection &intersection);
+
+
+	bool
+	cutter_only_follows_boundary(
+			const GPlatesMaths::PolygonOnSphere &polygon,
+			const GPlatesMaths::PolylineOnSphere &polyline)
+	{
+		GPlatesMaths::GeometryIntersect::Graph graph;
+		if (!GPlatesMaths::GeometryIntersect::intersect(graph, polygon, polyline, true))
+		{
+			return false;
+		}
+		for (const auto &intersection : graph.unordered_intersections)
+		{
+			if (intersection.segment_index1 >= polygon.number_of_segments_in_exterior_ring() ||
+					!contact_is_geometrically_exact(polygon, polyline, intersection))
+			{
+				return false;
+			}
+		}
+		bool has_boundary_stretch = false;
+		for (const auto location : classify_cutter_stretches(polygon, polyline, graph))
+		{
+			if (location == INSIDE_STRETCH || location == AMBIGUOUS_STRETCH)
+			{
+				return false;
+			}
+			has_boundary_stretch = has_boundary_stretch || location == BOUNDARY_STRETCH;
+		}
+		// A tangent point or an unrelated outside line is not an already-used boundary.
+		return has_boundary_stretch;
+	}
+
+
+	bool
+	exactly_same_cutter(
+			const GPlatesMaths::PolylineOnSphere &first,
+			const GPlatesMaths::PolylineOnSphere &second)
+	{
+		if (first.number_of_vertices() != second.number_of_vertices())
+		{
+			return false;
+		}
+		bool forward = true;
+		bool reverse = true;
+		const auto identical = [](const GPlatesMaths::PointOnSphere &a,
+				const GPlatesMaths::PointOnSphere &b)
+		{
+			return a.position_vector().x().dval() == b.position_vector().x().dval() &&
+					a.position_vector().y().dval() == b.position_vector().y().dval() &&
+					a.position_vector().z().dval() == b.position_vector().z().dval();
+		};
+		for (unsigned int index = 0; index < first.number_of_vertices(); ++index)
+		{
+			forward = forward && identical(first.get_vertex(index), second.get_vertex(index));
+			reverse = reverse && identical(first.get_vertex(index),
+					second.get_vertex(second.number_of_vertices() - 1 - index));
+		}
+		return forward || reverse;
+	}
+
+
+	bool
+	cut_path_is_simple(
+			QString &error_message,
+			const point_seq_type &path)
+	{
+		std::size_t comparisons = 0;
+		for (size_t first = 1; first < path.size(); ++first)
+		{
+			const auto a = GPlatesMaths::PolylineOnSphere::create(
+					point_seq_type{path[first - 1], path[first]});
+			for (size_t second = first + 2; second < path.size(); ++second)
+			{
+				if (++comparisons > 250000)
+				{
+					error_message = QObject::tr(
+							"The cutter is too detailed to validate safely. Simplify it and try again.");
+					return false;
+				}
+				const auto b = GPlatesMaths::PolylineOnSphere::create(
+						point_seq_type{path[second - 1], path[second]});
+				GPlatesMaths::GeometryIntersect::Graph graph;
+				if (GPlatesMaths::GeometryIntersect::intersect(graph, *a, *b))
+				{
+					error_message = QObject::tr("The cutter crosses or overlaps itself inside the polygon.");
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
+
+	bool
+	contact_is_geometrically_exact(
+			const GPlatesMaths::PolygonOnSphere &polygon,
+			const GPlatesMaths::PolylineOnSphere &polyline,
+			const GPlatesMaths::GeometryIntersect::Intersection &intersection)
+	{
+		using GPlatesMaths::GeometryIntersect::Intersection;
+		// Native contact thickness is about nine metres on Earth. A through-vertex cut
+		// must not turn a merely nearby line into a snapped cut. Allow only numerical
+		// coincidence (1e-10 radians), then separately prove the inside/outside transition.
+		if (intersection.type == Intersection::SEGMENTS_CROSS)
+		{
+			return true;
+		}
+		if (intersection.type == Intersection::SEGMENT_START_ON_SEGMENT_START)
+		{
+			return within_contact_roundoff(
+					polygon.get_exterior_ring_vertex(intersection.segment_index1).position_vector(),
+					polyline.get_vertex(intersection.segment_index2).position_vector());
+		}
+		const auto &segment = intersection.type == Intersection::SEGMENT1_START_ON_SEGMENT2
+				? polyline.get_segment(intersection.segment_index2)
+				: polygon.get_segment(intersection.segment_index1);
+		return !segment.is_zero_length() && std::fabs(GPlatesMaths::dot(
+				intersection.position.position_vector(), segment.rotation_axis()).dval()) <= 1e-10;
+	}
+
+
 	point_seq_type
 	join_boundary_and_cut(
 			const point_seq_type &boundary_path,
@@ -427,17 +646,26 @@ namespace
 			}
 		}
 
-		// GeometryIntersect reports contacts as well as crossings. The former
-		// GeometryCrossing helper only retained SEGMENTS_CROSS, and we rejected
-		// cuts if it had discarded any contacts. Keep that restriction directly:
-		// vertex contacts, tangencies and overlaps cannot form unambiguous child rings.
-		for (const auto &intersection : intersection_graph.unordered_intersections)
+		// A vertex contact can be an unambiguous crossing, including a ridge meeting a
+		// previous split at its shared vertex. Accept it only when the open stretches on
+		// either side switch strictly between inside and outside. A tangent, endpoint,
+		// boundary overlap or unresolved near-vertex event must not be turned into a cut.
+		const auto stretches = classify_cutter_stretches(polygon, polyline, intersection_graph);
+		for (size_t index = 0; index < intersection_graph.geometry2_ordered_intersections.size();
+				++index)
 		{
-			if (intersection.type != GPlatesMaths::GeometryIntersect::Intersection::SEGMENTS_CROSS)
+			const auto &intersection = intersection_graph.unordered_intersections[
+					intersection_graph.geometry2_ordered_intersections[index]];
+			if (!contact_is_geometrically_exact(polygon, polyline, intersection) ||
+					!((stretches[index] == INSIDE_STRETCH &&
+						stretches[index + 1] == OUTSIDE_STRETCH) ||
+					(stretches[index] == OUTSIDE_STRETCH &&
+						stretches[index + 1] == INSIDE_STRETCH)))
 			{
 				error_message = QObject::tr(
-						"The cutter touches or overlaps the polygon boundary. "
-						"Move it so it crosses the boundary cleanly at two points.");
+						"The cutter only touches, ends on, or overlaps the polygon boundary, "
+						"or its near-vertex path is ambiguous. It must pass through the boundary "
+						"at two distinct points.");
 				return boost::none;
 			}
 		}
@@ -451,6 +679,15 @@ namespace
 					.arg(intersection_graph.unordered_intersections.size());
 			return boost::none;
 		}
+		if (stretches[0] != OUTSIDE_STRETCH || stretches[1] != INSIDE_STRETCH ||
+				stretches[2] != OUTSIDE_STRETCH)
+		{
+			// Two transitions can also describe an excursion out of the polygon. Only
+			// an interior cut path partitions the selected polygon into its two children.
+			error_message = QObject::tr(
+					"The cutter must start outside, pass through the polygon, and end outside.");
+			return boost::none;
+		}
 
 		const GPlatesMaths::GeometryIntersect::Intersection &intersection1 =
 				intersection_graph.unordered_intersections[
@@ -460,6 +697,10 @@ namespace
 						intersection_graph.geometry2_ordered_intersections[1]];
 
 		const point_seq_type cut_path = create_cut_path(polyline, intersection1, intersection2);
+		if (!cut_path_is_simple(error_message, cut_path))
+		{
+			return boost::none;
+		}
 		const point_seq_type boundary_path1 =
 				create_polygon_boundary_path(polygon, intersection1, intersection2);
 		const point_seq_type boundary_path2 =
@@ -517,6 +758,14 @@ namespace
 				GPlatesMaths::PolygonOnSphere::create(exterior_ring1, interior_rings1, true);
 		const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type reconstructed_polygon2 =
 				GPlatesMaths::PolygonOnSphere::create(exterior_ring2, interior_rings2, true);
+		const double first_area = reconstructed_polygon1->get_area().dval();
+		const double second_area = reconstructed_polygon2->get_area().dval();
+		if (first_area <= 1e-12 || second_area <= 1e-12 ||
+				std::fabs(first_area + second_area - polygon.get_area().dval()) > 1e-8)
+		{
+			error_message = QObject::tr("The cut would create degenerate or overlapping polygon pieces.");
+			return boost::none;
+		}
 
 		return SplitPolygonResult(reconstructed_polygon1, reconstructed_polygon2);
 	}
@@ -527,12 +776,10 @@ namespace
 	{
 	public:
 		SplitPlateUndoCommand(
-				GPlatesGui::FeatureFocus &feature_focus,
 				GPlatesModel::ModelInterface model_interface,
 				const GPlatesModel::FeatureHandle::weak_ref &polygon_feature,
 				const GPlatesModel::FeatureHandle::iterator &polygon_property,
 				const polygon_seq_type &polygons) :
-			d_feature_focus(feature_focus),
 			d_model_interface(model_interface),
 			d_polygon_feature(polygon_feature),
 			d_polygon_property(polygon_property),
@@ -566,21 +813,36 @@ namespace
 		redo()
 		{
 			if (!d_polygon_feature.is_valid() || !d_polygon_property.is_still_valid() ||
-					!d_feature_collection.is_valid())
+					!d_feature_collection.is_valid() ||
+					d_polygon_feature->parent_ptr() != d_feature_collection.handle_ptr())
 			{
 				return;
 			}
 
-			d_feature_focus.unset_focus();
 			GPlatesModel::NotificationGuard notification_guard(*d_model_interface.access_model());
 
 			// Keep the command's snapshots separate from later in-place property edits.
 			d_polygon_feature->set(d_polygon_property, d_piece_properties.front()->clone());
 			for (size_t index = 0; index < d_new_features.size(); ++index)
 			{
-				d_new_features[index]->set(
-						d_new_polygon_properties[index], d_piece_properties[index + 1]->clone());
-				d_feature_collection->add(d_new_features[index]);
+				const auto &feature = d_new_features[index];
+				if (!feature->is_active() || !feature->parent_ptr())
+				{
+					// Removal retains the old parent, and add does not reactivate the feature.
+					// Reattach first, then reactivate its property iterators before restoring geometry.
+					d_feature_collection->add(feature);
+					feature->set_active(true);
+					if (d_new_polygon_properties[index].is_still_valid())
+					{
+						feature->set(
+								d_new_polygon_properties[index], d_piece_properties[index + 1]->clone());
+					}
+					else
+					{
+						// The feature editor can delete a generated piece's geometry property.
+						d_new_polygon_properties[index] = feature->add(d_piece_properties[index + 1]->clone());
+					}
+				}
 			}
 
 			notification_guard.release_guard();
@@ -590,18 +852,22 @@ namespace
 		void
 		undo()
 		{
-			if (!d_polygon_feature.is_valid() || !d_polygon_property.is_still_valid())
+			if (!d_polygon_feature.is_valid() || !d_polygon_property.is_still_valid() ||
+					!d_feature_collection.is_valid() ||
+					d_polygon_feature->parent_ptr() != d_feature_collection.handle_ptr())
 			{
 				return;
 			}
 
-			d_feature_focus.unset_focus();
 			GPlatesModel::NotificationGuard notification_guard(*d_model_interface.access_model());
 
 			d_polygon_feature->set(d_polygon_property, d_original_geometry_property->clone());
 			for (const auto &feature : d_new_features)
 			{
-				feature->remove_from_parent();
+				if (feature->is_active() && feature->parent_ptr() == d_feature_collection.handle_ptr())
+				{
+					feature->remove_from_parent();
+				}
 			}
 
 			notification_guard.release_guard();
@@ -620,7 +886,6 @@ namespace
 			return property_clone;
 		}
 
-		GPlatesGui::FeatureFocus &d_feature_focus;
 		GPlatesModel::ModelInterface d_model_interface;
 		GPlatesModel::FeatureHandle::weak_ref d_polygon_feature;
 		GPlatesModel::FeatureHandle::iterator d_polygon_property;
@@ -655,10 +920,23 @@ GPlatesViewOperations::SplitPlateOperation::split_polygon_with_polylines(
 		return boost::none;
 	}
 	polygon_seq_type pieces(1, polygon.get_non_null_pointer());
+	bool split_any_polygon = false;
 	for (size_t cutter_index = 0; cutter_index < polylines.size(); ++cutter_index)
 	{
+		bool duplicate = false;
+		for (size_t previous = 0; previous < cutter_index; ++previous)
+		{
+			duplicate = duplicate || exactly_same_cutter(*polylines[previous], *polylines[cutter_index]);
+		}
+		// Check the original boundary first, so a previously used ridge remains harmless
+		// even after another cutter subdivides that boundary into several child pieces.
+		if (duplicate || cutter_only_follows_boundary(polygon, *polylines[cutter_index]))
+		{
+			continue;
+		}
 		polygon_seq_type next_pieces;
 		bool cut_any_piece = false;
+		bool followed_existing_boundary = false;
 		for (const auto &piece : pieces)
 		{
 			GPlatesMaths::GeometryIntersect::Graph intersections;
@@ -666,6 +944,12 @@ GPlatesViewOperations::SplitPlateOperation::split_polygon_with_polylines(
 					intersections, *piece, *polylines[cutter_index], true))
 			{
 				next_pieces.push_back(piece);
+				continue;
+			}
+			if (cutter_only_follows_boundary(*piece, *polylines[cutter_index]))
+			{
+				next_pieces.push_back(piece);
+				followed_existing_boundary = true;
 				continue;
 			}
 			const auto split = split_polygon(error_message, *piece, *polylines[cutter_index]);
@@ -678,13 +962,20 @@ GPlatesViewOperations::SplitPlateOperation::split_polygon_with_polylines(
 			next_pieces.push_back(split->polygon2);
 			cut_any_piece = true;
 		}
-		if (!cut_any_piece)
+		if (!cut_any_piece && !followed_existing_boundary)
 		{
 			error_message = QObject::tr("Polyline %1 does not split any polygon piece.")
 					.arg(cutter_index + 1);
 			return boost::none;
 		}
+		split_any_polygon = split_any_polygon || cut_any_piece;
 		pieces.swap(next_pieces);
+	}
+	if (!split_any_polygon)
+	{
+		error_message = QObject::tr(
+				"The selected polylines only follow existing boundaries; no polygon was split.");
+		return boost::none;
 	}
 	return pieces;
 }
@@ -692,7 +983,7 @@ GPlatesViewOperations::SplitPlateOperation::split_polygon_with_polylines(
 
 std::unique_ptr<QUndoCommand>
 GPlatesViewOperations::SplitPlateOperation::create_split_command(
-		GPlatesGui::FeatureFocus &feature_focus,
+		GPlatesGui::FeatureFocus &,
 		GPlatesModel::ModelInterface model_interface,
 		const GPlatesModel::FeatureHandle::weak_ref &polygon_feature,
 		const GPlatesModel::FeatureHandle::iterator &polygon_property,
@@ -706,7 +997,7 @@ GPlatesViewOperations::SplitPlateOperation::create_split_command(
 		return std::unique_ptr<QUndoCommand>();
 	}
 	return std::unique_ptr<QUndoCommand>(new SplitPlateUndoCommand(
-			feature_focus, model_interface, polygon_feature, polygon_property, polygons));
+			model_interface, polygon_feature, polygon_property, polygons));
 }
 
 
@@ -754,8 +1045,10 @@ GPlatesViewOperations::SplitPlateOperation::trigger(
 	layout->addWidget(polygon_choice);
 	auto *instructions = new QLabel(QObject::tr(
 			"Select one or more existing cutting polylines (Ctrl-click for multiple). "
-			"They are applied in list order. Each must cross the pieces cleanly, "
-			"without touching a vertex, overlapping a boundary or crossing a hole. "
+			"They are applied in list order. Each new cut must enter and leave a piece; "
+			"a clear crossing through a boundary vertex is allowed. Duplicate lines and "
+			"lines already following a boundary are skipped. At least one new cut is required. "
+			"Tangencies, partial overlaps and cuts through holes are not supported. "
 			"The cutting polylines are kept unchanged."), &dialog);
 	instructions->setWordWrap(true);
 	layout->addWidget(instructions);
@@ -831,6 +1124,14 @@ GPlatesViewOperations::SplitPlateOperation::trigger(
 		if (!command)
 		{
 			return Result(OPERATION_ERROR, QObject::tr("The selected polygon is no longer editable."));
+		}
+		// Changing focus clears the geometry editor's undo stack. Do it before push, never
+		// inside redo/undo, where it would delete the command currently being executed.
+		// Preserve earlier WB commands when the dialog was opened with no focused feature.
+		if (d_feature_focus.focused_feature().is_valid() ||
+				d_feature_focus.associated_reconstruction_geometry())
+		{
+			d_feature_focus.unset_focus();
 		}
 		UndoRedo::instance().get_active_undo_stack().push(command.release());
 		return Result(SPLIT_COMPLETED, QObject::tr(
@@ -1007,6 +1308,12 @@ GPlatesViewOperations::SplitPlateOperation::trigger()
 	}
 
 	reset();
+	// Clear a real focus before push; an unnecessary focus signal would erase undo history.
+	if (d_feature_focus.focused_feature().is_valid() ||
+			d_feature_focus.associated_reconstruction_geometry())
+	{
+		d_feature_focus.unset_focus();
+	}
 	UndoRedo::instance().get_active_undo_stack().push(undo_command.release());
 
 	return Result(

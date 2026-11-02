@@ -494,6 +494,32 @@ layer's input files change, and the whole cache is reset when the rotation layer
 `reconstruct_using_topologies` flips; `create_reconstruction_info` asserts `NotYetImplemented` if a
 caller passes params whose `reconstruct_using_topologies` differs from the layer's current value.
 
+### World Building polygon splits
+
+The desktop's `SplitPlateOperation` splits current reconstructed rigid polygons, then reverses
+each child with the source RFG's finite rotation before updating its geometry property. The
+source feature retains one child; new children clone its remaining properties. Cutting
+features are never edited or removed.
+
+Native intersection events divide a cutter into open stretches. Segment midpoints classify
+each stretch as inside, outside or on the outline. A vertex contact is a crossing only when
+the adjacent stretches switch strictly between inside and outside and the contact is exact
+within numerical roundoff. The native near-contact tolerance alone is insufficient: treating
+a nearby parallel line as coincident would silently discard a narrow strip. Tangencies,
+endpoint contacts, mixed boundary/interior paths and hole intersections remain errors. The
+interior cut path must be simple, with bounded self-intersection validation; output areas
+must remain positive and sum to the source area within tolerance.
+
+Batch splitting skips exact duplicate cutters and cutters that only follow an existing
+boundary, but requires at least one real split. It rejects unrelated outside cutters and
+never extends or perturbs a line. Geometry validation finishes before the undo command can
+change the model. Redo reattaches and reactivates retained child handles before restoring
+their cloned geometry properties; a deleted child geometry slot is recreated. This ordering
+is necessary because model removal invalidates property iterators but retains parent pointers.
+Both entry points clear feature focus before pushing the command. The geometry manipulator
+clears undo history on focus changes, so clearing focus from inside Undo/Redo would delete the
+command while it is executing. The command itself does not change feature focus.
+
 ### World Building ridge outputs
 
 The desktop's `MakeOceanCrustOperation` provides separate Flow lines and Make Ocean Crust

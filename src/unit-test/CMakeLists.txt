@@ -30,7 +30,9 @@ set(srcs
     ReconstructionPoleSpeedTest.cc
     ScribeExportUnitTest.h
     SmartNodeLinkedListTest.cc
+    SplitPlateDialogTest.cc
     SplitPlateOperationTest.cc
+    SplitPlateVertexContactTest.cc
     StringSetTest.cc
     SubductionCutterGeometryTest.cc
     TimeControlWidgetTest.cc

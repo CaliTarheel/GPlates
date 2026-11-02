@@ -247,9 +247,9 @@ in the *column* directory, over every `.h`/`.cc` in the built `src/` subdirector
 | property-values |  |  |  |  |  |  | 11 | 64 | 5 | 26 | 292 |  |  | 176 |  | 103 |  | 35 |  |
 | qt-widgets |  | 17 | 297 | 8 |  | 8 | 80 | 133 | 225 | 127 | 275 | 35 | 120 | 212 | 847 |  |  | 57 | 35 |
 | scribe |  |  |  |  |  |  |  | 31 |  | 8 |  |  |  |  |  | 172 |  | 23 |  |
-| unit-test |  |  | 44 |  |  | 2 | 38 | 2 | 7 | 72 | 42 |  | 1 | 41 | 2 | 16 | 2 | 10 | 10 |
+| unit-test |  |  | 57 |  |  | 2 | 42 | 2 | 8 | 81 | 45 |  | 2 | 47 | 2 | 16 | 2 | 11 | 13 |
 | utils |  | 1 |  |  |  |  | 1 | 34 |  | 13 | 1 |  |  | 54 |  | 3 |  | 50 |  |
-| view-operations |  |  | 114 | 6 |  |  | 12 | 27 | 62 | 128 | 78 |  | 21 | 44 | 4 | 3 |  | 18 | 259 |
+| view-operations |  |  | 114 | 6 |  |  | 12 | 27 | 62 | 130 | 78 |  | 21 | 44 | 4 | 3 |  | 18 | 259 |
 
 # The pyGPlates module subset
 
@@ -279,7 +279,7 @@ Roots: the exporter `.cc` of every `export_*()` call registered in
 | property-values | 127 / 128 |
 | qt-widgets | 0 / 450 |
 | scribe | 56 / 64 |
-| unit-test | 0 / 31 |
+| unit-test | 0 / 33 |
 | utils | 45 / 75 |
 | view-operations | 0 / 105 |
 

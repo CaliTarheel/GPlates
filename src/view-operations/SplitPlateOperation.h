@@ -135,6 +135,7 @@ namespace GPlatesViewOperations
 		 * Prepare one undo command for already validated pieces in the source coordinate frame.
 		 * Keeps the original feature for the first piece and clones its properties for the rest.
 		 * Cutter features are never passed to or modified by this command.
+		 * The caller must clear feature focus before pushing the command onto the undo stack.
 		 * Returns an empty pointer for an unavailable source or fewer than two pieces.
 		 */
 		static
