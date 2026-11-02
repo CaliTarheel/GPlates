@@ -32,6 +32,7 @@
 #include <set>
 #include <stdexcept>
 
+#include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
@@ -39,6 +40,7 @@
 #include <QLabel>
 #include <QListWidget>
 #include <QPushButton>
+#include <QStandardItemModel>
 #include <QVBoxLayout>
 
 #include "app-logic/ApplicationState.h"
@@ -51,6 +53,9 @@
 #include "app-logic/ReconstructLayerProxy.h"
 #include "app-logic/Reconstruction.h"
 #include "app-logic/ReconstructionTreeCreator.h"
+
+#include "file-io/FeatureCollectionFileFormatRegistry.h"
+#include "file-io/FileInfo.h"
 
 #include "gui/FeatureFocus.h"
 
@@ -72,6 +77,7 @@
 
 #include "utils/UnicodeStringUtils.h"
 
+#include "view-operations/OceanCrustSliverBuilder.h"
 #include "view-operations/UndoRedo.h"
 #include "view-operations/WorldbuildingFeatureCollectionUtils.h"
 
@@ -80,6 +86,7 @@ namespace
 {
 	const std::size_t MAX_INTERVALS = 10000;
 	const std::size_t MAX_FLOWLINE_VERTICES = 2000000;
+	const std::size_t MAX_CRUST_POLYGONS = 100000;
 
 	bool
 	has_resolvable_spreading(
@@ -138,7 +145,113 @@ namespace
 		GPlatesModel::FeatureCollectionHandle::weak_ref collection;
 		std::vector<GPlatesModel::FeatureHandle::non_null_ptr_type> features;
 		GPlatesAppLogic::Layer rotation_layer;
+		bool pin_new_collection_model = false;
 	};
+
+
+	GPlatesAppLogic::Layer
+	rotation_model_for_layer(
+			const GPlatesAppLogic::Layer &layer,
+			const GPlatesAppLogic::ReconstructGraph &graph)
+	{
+		for (const auto &input : layer.get_channel_inputs(
+				GPlatesAppLogic::LayerInputChannelName::RECONSTRUCTION_TREE))
+		{
+			if (input.get_input_layer())
+			{
+				return *input.get_input_layer();
+			}
+		}
+		return graph.get_default_reconstruction_tree_layer();
+	}
+
+
+	QString
+	destination_file_error(
+			const GPlatesAppLogic::FeatureCollectionFileState::file_reference &file,
+			const GPlatesFileIO::FeatureCollectionFileFormat::Registry &registry)
+	{
+		const auto &info = file.get_file().get_file_info().get_qfileinfo();
+		if (info.filePath().isEmpty())
+		{
+			return QString();
+		}
+		const auto format = registry.get_file_format(info);
+		if (!format || (*format != GPlatesFileIO::FeatureCollectionFileFormat::GPML &&
+				*format != GPlatesFileIO::FeatureCollectionFileFormat::GPMLZ) ||
+				!registry.does_file_format_support_writing(*format))
+		{
+			return QObject::tr("Use an unsaved collection or a GPML/GPMLZ file to retain all properties.");
+		}
+		// This is an advisory permission check only. FileInfo::is_writable opens the file,
+		// so it must not be used while presenting choices. Saving remains an explicit action.
+		if (!info.isFile() || !info.isWritable())
+		{
+			return QObject::tr("The destination file is missing or read-only; choose another collection.");
+		}
+		return QString();
+	}
+
+
+	QString
+	destination_error(
+			const GPlatesModel::FeatureCollectionHandle::weak_ref &collection,
+			const GPlatesAppLogic::Layer &source_model,
+			GPlatesAppLogic::ApplicationState &application_state)
+	{
+		// A file_reference can outlive an unload. Re-resolve its weak collection before
+		// accessing file information, rather than keeping a reference from the dialog list.
+		bool found_file = false;
+		for (const auto &file : application_state.get_feature_collection_file_state().get_loaded_files())
+		{
+			if (collection.is_valid() && file.get_file().get_feature_collection() == collection)
+			{
+				const QString error = destination_file_error(
+						file, application_state.get_feature_collection_file_format_registry());
+				if (!error.isEmpty())
+				{
+					return error;
+				}
+				found_file = true;
+				break;
+			}
+		}
+		if (!found_file)
+		{
+			return QObject::tr("The selected output collection is no longer loaded.");
+		}
+
+		const auto &graph = application_state.get_reconstruct_graph();
+		bool found_layer = false;
+		for (auto layer_iter = graph.begin(); layer_iter != graph.end(); ++layer_iter)
+		{
+			const GPlatesAppLogic::Layer layer = *layer_iter;
+			if (layer.get_type() != GPlatesAppLogic::LayerTaskType::RECONSTRUCT)
+			{
+				continue;
+			}
+			for (const auto &input : layer.get_channel_inputs(
+					GPlatesAppLogic::LayerInputChannelName::RECONSTRUCTABLE_FEATURES))
+			{
+				const auto file = input.get_input_file();
+				if (file && file->get_feature_collection() == collection)
+				{
+					found_layer = true;
+					if (rotation_model_for_layer(layer, graph) != source_model)
+					{
+						return QObject::tr("The output collection uses a different rotation model. "
+								"Choose a new collection or one using the selected ridges' model.");
+					}
+				}
+			}
+		}
+		if (!found_layer && graph.get_default_reconstruction_tree_layer() != source_model)
+		{
+			return QObject::tr("This collection would use the default rotation model, which differs "
+					"from the selected ridges' model. Choose a new collection.");
+		}
+		return QString();
+	}
 
 
 	struct FeatureSnapshot
@@ -191,7 +304,7 @@ namespace
 			GPlatesAppLogic::ReconstructGraph &graph,
 			const Output &output)
 	{
-		if (!output.rotation_layer.is_valid())
+		if (!output.pin_new_collection_model || !output.rotation_layer.is_valid())
 		{
 			return;
 		}
@@ -220,17 +333,18 @@ namespace
 	}
 
 
-	class AddFlowlinesUndoCommand :
+	class AddRidgeOutputUndoCommand :
 			public QUndoCommand
 	{
 	public:
-		AddFlowlinesUndoCommand(
+		AddRidgeOutputUndoCommand(
 				GPlatesAppLogic::ApplicationState &application_state,
-				const std::vector<Output> &outputs) :
+				const std::vector<Output> &outputs,
+				const QString &description) :
 			d_application_state(application_state),
 			d_outputs(outputs)
 		{
-			setText(QObject::tr("make ocean crust flowlines"));
+			setText(description);
 			for (const Output &output : d_outputs)
 			{
 				for (const auto &feature : output.features)
@@ -247,24 +361,21 @@ namespace
 					d_application_state, true);
 			GPlatesModel::NotificationGuard guard(
 					*d_application_state.get_model_interface().access_model());
-			// The model permits in-place property edits, so never install the saved objects directly.
-			for (FeatureSnapshot &snapshot : d_snapshots)
-			{
-				if (!snapshot.feature->parent_ptr())
-				{
-					snapshot.restore();
-				}
-			}
+			std::size_t snapshot_index = 0;
 			for (const Output &output : d_outputs)
 			{
-				if (output.collection.is_valid())
+				for (const auto &feature : output.features)
 				{
-					for (const auto &feature : output.features)
+					FeatureSnapshot &snapshot = d_snapshots[snapshot_index++];
+					if (output.collection.is_valid() &&
+							(!feature->is_active() || !feature->parent_ptr()))
 					{
-						if (!feature->parent_ptr())
-						{
-							output.collection->add(feature);
-						}
+						// Removal leaves the former parent pointer, and add does not reactivate.
+						// Attach first so property edits cannot follow a stale parent after unload.
+						output.collection->add(feature);
+						feature->set_active(true);
+						// In-place edits are allowed, so restore fresh clones of the saved properties.
+						snapshot.restore();
 					}
 				}
 			}
@@ -290,7 +401,8 @@ namespace
 			{
 				for (const auto &feature : output.features)
 				{
-					if (feature->parent_ptr())
+					if (output.collection.is_valid() && feature->is_active() &&
+							feature->parent_ptr() == output.collection.handle_ptr())
 					{
 						feature->remove_from_parent();
 					}
@@ -476,14 +588,18 @@ GPlatesViewOperations::MakeOceanCrustOperation::create_flowline(
 
 GPlatesViewOperations::MakeOceanCrustOperation::Result
 GPlatesViewOperations::MakeOceanCrustOperation::trigger(
-		QWidget *parent_widget)
+		QWidget *parent_widget,
+		Mode mode)
 {
+	const bool create_crust = mode == OCEAN_CRUST;
+	const QString operation_name = create_crust
+			? QObject::tr("Make Ocean Crust") : QObject::tr("Flow lines");
 	const double start_time =
 			d_application_state.get_current_reconstruction().get_reconstruction_time();
 	if (!std::isfinite(start_time) || start_time <= 0)
 	{
 		return Result(OPERATION_ERROR,
-				QObject::tr("Choose a reconstruction time older than 0 Ma before making ocean crust."));
+				QObject::tr("Choose a reconstruction time older than 0 Ma before creating ridge output."));
 	}
 
 	std::vector<Ridge> ridges;
@@ -528,12 +644,15 @@ GPlatesViewOperations::MakeOceanCrustOperation::trigger(
 
 	QDialog dialog(parent_widget);
 	dialog.setObjectName("makeOceanCrustDialog");
-	dialog.setWindowTitle(QObject::tr("Make Ocean Crust - Normal"));
+	dialog.setWindowTitle(operation_name);
 	auto *layout = new QVBoxLayout(&dialog);
-	auto *note = new QLabel(QObject::tr(
-			"Select the mid-ocean ridges to seed. Normal uses symmetric spreading (50/50) and "
-			"creates two flowlines at every vertex. Each ridge needs distinct left/right plate IDs "
-			"and rotations covering the requested range."), &dialog);
+	auto *note = new QLabel(create_crust
+			? QObject::tr("Select mid-ocean ridges to create ocean-crust polygon slivers on both sides "
+					"as the ridges advance. Each ridge needs distinct left/right plate IDs and rotations "
+					"covering the requested range.")
+			: QObject::tr("Select mid-ocean ridges to seed. Symmetric spreading (50/50) creates two "
+					"flowlines at every vertex. Each ridge needs distinct left/right plate IDs and "
+					"rotations covering the requested range."), &dialog);
 	note->setWordWrap(true);
 	layout->addWidget(note);
 	auto *list = new QListWidget(&dialog);
@@ -582,6 +701,51 @@ GPlatesViewOperations::MakeOceanCrustOperation::trigger(
 	}
 	auto *form = new QFormLayout;
 	layout->addLayout(form);
+	std::vector<GPlatesModel::FeatureCollectionHandle::weak_ref> destination_collections;
+	auto *destination = new QComboBox(&dialog);
+	destination->setObjectName("outputCollectionCombo");
+	destination->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+	destination->setMinimumContentsLength(36);
+	destination->addItem(QObject::tr("Create new collection(s) — save afterwards"), -1);
+	for (const auto &file :
+			d_application_state.get_feature_collection_file_state().get_loaded_files())
+	{
+		const auto collection = file.get_file().get_feature_collection();
+		if (!collection.is_valid())
+		{
+			continue;
+		}
+		const int collection_index = static_cast<int>(destination_collections.size());
+		destination_collections.push_back(collection);
+		QString label = file.get_file().get_file_info().get_display_name(true);
+		if (label.isEmpty())
+		{
+			label = QObject::tr("Unsaved collection %1").arg(collection_index + 1);
+		}
+		if (file.get_file().get_file_info().get_qfileinfo().filePath().isEmpty())
+		{
+			label += QObject::tr(" (unsaved)");
+		}
+		destination->addItem(label, collection_index);
+		destination->setItemData(destination->count() - 1, label, Qt::ToolTipRole);
+		const QString reason = destination_file_error(
+				file, d_application_state.get_feature_collection_file_format_registry());
+		if (!reason.isEmpty())
+		{
+			destination->setItemData(destination->count() - 1, reason, Qt::ToolTipRole);
+			auto *model = qobject_cast<QStandardItemModel *>(destination->model());
+			if (model)
+			{
+				model->item(destination->count() - 1)->setEnabled(false);
+			}
+		}
+	}
+	form->addRow(QObject::tr("Output collection / file:"), destination);
+	auto *save_note = new QLabel(QObject::tr(
+			"Adds unsaved features to the selected collection. Save the collection afterwards "
+			"to choose a new file or update its GPML/GPMLZ file."), &dialog);
+	save_note->setWordWrap(true);
+	form->addRow(save_note);
 	auto *duration = new QDoubleSpinBox(&dialog);
 	duration->setObjectName("futureDurationMyr");
 	duration->setDecimals(6);
@@ -610,7 +774,8 @@ GPlatesViewOperations::MakeOceanCrustOperation::trigger(
 	auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
 	auto *create_button = buttons->button(QDialogButtonBox::Ok);
 	create_button->setObjectName("createFlowlinesButton");
-	create_button->setText(QObject::tr("Create Flowlines"));
+	create_button->setText(create_crust
+			? QObject::tr("Create Ocean Crust") : QObject::tr("Create Flowlines"));
 	layout->addWidget(buttons);
 	const auto update_range = [=]()
 	{
@@ -620,6 +785,44 @@ GPlatesViewOperations::MakeOceanCrustOperation::trigger(
 	QObject::connect(duration, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
 			&dialog, [=](double) { update_range(); });
 	update_range();
+	const auto selected_destination = [&]()
+	{
+		const int index = destination->currentData().toInt();
+		return index >= 0 && index < static_cast<int>(destination_collections.size())
+				? destination_collections[index] : GPlatesModel::FeatureCollectionHandle::weak_ref();
+	};
+	const auto validate_destination = [&]()
+	{
+		if (destination->currentData().toInt() < 0)
+		{
+			return;
+		}
+		std::set<GPlatesAppLogic::Layer> source_models;
+		for (int index = 0; index < list->count(); ++index)
+		{
+			if (list->item(index)->checkState() == Qt::Checked)
+			{
+				if (!ridges[index].layer.is_valid())
+				{
+					throw std::runtime_error("A source layer is no longer loaded. Reopen this dialog.");
+				}
+				source_models.insert(rotation_model_for_layer(
+						ridges[index].layer, d_application_state.get_reconstruct_graph()));
+			}
+		}
+		if (source_models.size() != 1)
+		{
+			throw std::invalid_argument(
+					"An existing output collection requires ridges using one rotation model. "
+					"Choose new collections to keep different models separate.");
+		}
+		const QString reason = destination_error(
+				selected_destination(), *source_models.begin(), d_application_state);
+		if (!reason.isEmpty())
+		{
+			throw std::invalid_argument(reason.toStdString());
+		}
+	};
 	QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 	QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, [&]()
 	{
@@ -627,24 +830,34 @@ GPlatesViewOperations::MakeOceanCrustOperation::trigger(
 		{
 			const auto times = sample_times(start_time, duration->value(), interval->value());
 			std::size_t seed_count = 0;
+			std::size_t segment_count = 0;
 			for (int index = 0; index < list->count(); ++index)
 			{
 				if (list->item(index)->checkState() == Qt::Checked)
 				{
-					seed_count += dynamic_cast<const GPlatesMaths::PolylineOnSphere *>(
+					const auto count = dynamic_cast<const GPlatesMaths::PolylineOnSphere *>(
 							ridges[index].geometry->reconstructed_geometry().get())->number_of_vertices();
+					seed_count += count;
+					segment_count += count - 1;
 				}
 			}
 			if (!seed_count)
 			{
 				throw std::invalid_argument("Select at least one ridge with distinct left/right plate IDs.");
 			}
-			if (seed_count > MAX_FLOWLINE_VERTICES / (2 * times.size()))
+			if (!create_crust && seed_count > MAX_FLOWLINE_VERTICES / (2 * times.size()))
 			{
 				throw std::invalid_argument(
 						"More than 2 million flowline vertices requested; "
 						"select fewer ridges or a larger step interval.");
 			}
+			if (create_crust && segment_count > MAX_CRUST_POLYGONS / (2 * (times.size() - 1)))
+			{
+				throw std::invalid_argument(
+						"More than 100,000 crust polygons requested; "
+						"select fewer ridges or a larger step interval.");
+			}
+			validate_destination();
 			dialog.accept();
 		}
 		catch (const std::exception &exception)
@@ -652,7 +865,7 @@ GPlatesViewOperations::MakeOceanCrustOperation::trigger(
 			error->setText(QString::fromUtf8(exception.what()));
 		}
 	});
-	dialog.resize(650, 440);
+	dialog.resize(700, 510);
 	if (dialog.exec() != QDialog::Accepted)
 	{
 		return Result(OPERATION_CANCELLED, QString());
@@ -663,11 +876,13 @@ GPlatesViewOperations::MakeOceanCrustOperation::trigger(
 		if (d_application_state.get_current_reconstruction().get_reconstruction_time() != start_time)
 		{
 			throw std::runtime_error(
-					"The reconstruction time changed. Reopen Make Ocean Crust and try again.");
+					"The reconstruction time changed. Reopen the dialog and try again.");
 		}
+		validate_destination();
 		std::map<GPlatesAppLogic::Layer, Output> grouped;
 		std::size_t seed_count = 0;
-		std::size_t feature_count = 0;
+		std::size_t ridge_count = 0;
+		std::size_t created_feature_count = 0;
 		for (int index = 0; index < list->count(); ++index)
 		{
 			if (list->item(index)->checkState() != Qt::Checked)
@@ -680,7 +895,7 @@ GPlatesViewOperations::MakeOceanCrustOperation::trigger(
 					!ridge.geometry->get_feature_ref().is_valid() ||
 					ridge.geometry->get_feature_ref()->revision_id() != ridge.revision)
 			{
-				throw std::runtime_error("A source ridge changed. Reopen Make Ocean Crust and try again.");
+				throw std::runtime_error("A source ridge changed. Reopen the dialog and try again.");
 			}
 			GPlatesAppLogic::FlowlineUtils::FlowlinePropertyFinder properties;
 			properties.visit_feature(ridge.geometry->get_feature_ref());
@@ -688,7 +903,7 @@ GPlatesViewOperations::MakeOceanCrustOperation::trigger(
 					*properties.get_left_plate() == *properties.get_right_plate())
 			{
 				throw std::runtime_error(
-						"A ridge needs distinct left and right plate IDs. Reopen Make Ocean Crust.");
+						"A ridge needs distinct left and right plate IDs. Reopen the dialog.");
 			}
 			const auto *polyline = dynamic_cast<const GPlatesMaths::PolylineOnSphere *>(
 					ridge.geometry->reconstructed_geometry().get());
@@ -696,58 +911,91 @@ GPlatesViewOperations::MakeOceanCrustOperation::trigger(
 					QObject::tr("Unnamed ridge") : properties.get_name();
 			try
 			{
-				grouped[ridge.layer].features.push_back(create_flowline(*polyline,
-						*properties.get_left_plate(), *properties.get_right_plate(),
-						ridge.geometry->get_reconstruction_tree_creator(), start_time,
-						duration->value(), interval->value(), QObject::tr("%1 - Normal flowlines").arg(name)));
+				const auto rotation_model = rotation_model_for_layer(
+						ridge.layer, d_application_state.get_reconstruct_graph());
+				Output &output = grouped[rotation_model];
+				output.rotation_layer = rotation_model;
+				if (create_crust)
+				{
+					const auto features = OceanCrustSliverBuilder::create_slivers(*polyline,
+							*properties.get_left_plate(), *properties.get_right_plate(),
+							ridge.geometry->get_reconstruction_tree_creator(), start_time,
+							duration->value(), interval->value(), name);
+					created_feature_count += features.size();
+					if (created_feature_count > MAX_CRUST_POLYGONS)
+					{
+						throw std::invalid_argument("More than 100,000 crust polygons requested.");
+					}
+					output.features.insert(output.features.end(), features.begin(), features.end());
+				}
+				else
+				{
+					output.features.push_back(create_flowline(*polyline,
+							*properties.get_left_plate(), *properties.get_right_plate(),
+							ridge.geometry->get_reconstruction_tree_creator(), start_time,
+							duration->value(), interval->value(), QObject::tr("%1 - Flow lines").arg(name)));
+					++created_feature_count;
+				}
 			}
 			catch (const std::exception &exception)
 			{
 				throw std::runtime_error(QString("%1: %2").arg(name, exception.what()).toStdString());
 			}
 			seed_count += polyline->number_of_vertices();
-			++feature_count;
+			++ridge_count;
 		}
+		if (!created_feature_count)
+		{
+			throw std::runtime_error("No output features were generated for the selected ridges.");
+		}
+		// All geometry generation and destination validation precedes creating any model file.
+		validate_destination();
 
 		GPlatesAppLogic::ApplicationState::ScopedReconstructGuard guard(d_application_state, true);
 		std::vector<Output> outputs;
+		const bool create_new_collection = destination->currentData().toInt() < 0;
 		for (auto &group : grouped)
 		{
 			Output &output = group.second;
-			output.rotation_layer =
-					d_application_state.get_reconstruct_graph().get_default_reconstruction_tree_layer();
-			for (const auto &input : group.first.get_channel_inputs(
-					GPlatesAppLogic::LayerInputChannelName::RECONSTRUCTION_TREE))
+			if (create_new_collection)
 			{
-				if (input.get_input_layer())
-				{
-					output.rotation_layer = *input.get_input_layer();
-					break;
-				}
+				const auto file = create_named_empty_feature_collection(
+						d_application_state.get_feature_collection_file_io(),
+						QObject::tr("%1 (%2 to %3 Ma) %4")
+								.arg(create_crust ? QObject::tr("Ocean crust") : QObject::tr("Flow lines"))
+								.arg(start_time).arg(start_time - duration->value()).arg(outputs.size() + 1));
+				output.collection = file.get_file().get_feature_collection();
+				output.pin_new_collection_model = true;
 			}
-			const auto file = create_named_empty_feature_collection(
-					d_application_state.get_feature_collection_file_io(),
-					QObject::tr("Ocean crust flowlines (%1 to %2 Ma) %3")
-							.arg(start_time).arg(start_time - duration->value()).arg(outputs.size() + 1));
-			output.collection = file.get_file().get_feature_collection();
+			else
+			{
+				// A compatible existing destination already has the correct model. Do not change
+				// any of its layer connections, including when this insertion is undone or redone.
+				output.collection = selected_destination();
+			}
 			outputs.push_back(output);
 		}
-		std::unique_ptr<QUndoCommand> command(new AddFlowlinesUndoCommand(d_application_state, outputs));
+		std::unique_ptr<QUndoCommand> command(new AddRidgeOutputUndoCommand(
+				d_application_state, outputs,
+				create_crust ? QObject::tr("make ocean crust") : QObject::tr("create flow lines")));
 		UndoRedo::instance().get_active_undo_stack().push(command.release());
 		d_application_state.set_reconstruction_time(start_time - duration->value());
-		return Result(FLOWLINES_CREATED,
-				QObject::tr("Created %1 paired flowlines from %2 ridge geometries, %3 to %4 Ma. "
-						"Save the new Ocean crust flowlines collection(s) to keep them.")
-						.arg(seed_count).arg(feature_count).arg(start_time).arg(start_time - duration->value()));
+		const QString description = create_crust
+				? QObject::tr("%1 ocean-crust polygons").arg(created_feature_count)
+				: QObject::tr("%1 paired flowlines").arg(seed_count);
+		return Result(create_crust ? CRUST_CREATED : FLOWLINES_CREATED,
+				QObject::tr("Created %1 from %2 ridge geometries, %3 to %4 Ma. "
+						"Save the output collection(s) to keep these changes.")
+						.arg(description).arg(ridge_count).arg(start_time).arg(start_time - duration->value()));
 	}
 	catch (const std::exception &exception)
 	{
 		return Result(OPERATION_ERROR,
-				QObject::tr("Unable to make ocean crust flowlines: %1").arg(exception.what()));
+				QObject::tr("%1: %2").arg(operation_name, exception.what()));
 	}
 	catch (...)
 	{
 		return Result(OPERATION_ERROR,
-				QObject::tr("Unable to make ocean crust flowlines because of a geometry or model error."));
+				QObject::tr("%1 stopped because of a geometry or model error.").arg(operation_name));
 	}
 }

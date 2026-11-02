@@ -39,6 +39,8 @@ set(srcs
     MovePoleOperation.h
     MoveVertexGeometryOperation.cc
     MoveVertexGeometryOperation.h
+    OceanCrustSliverBuilder.cc
+    OceanCrustSliverBuilder.h
     PlateIdReassignmentOperation.cc
     PlateIdReassignmentOperation.h
     PlateDirectionArrowsOperation.cc

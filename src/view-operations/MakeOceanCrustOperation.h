@@ -53,14 +53,21 @@ namespace GPlatesPresentation
 
 namespace GPlatesViewOperations
 {
-	/** Create symmetric native flowlines from the vertices of visible mid-ocean ridges. */
+	/** Create native flowlines or ocean-crust polygons from visible mid-ocean ridges. */
 	class MakeOceanCrustOperation :
 			private boost::noncopyable
 	{
 	public:
+		enum Mode
+		{
+			FLOW_LINES,
+			OCEAN_CRUST
+		};
+
 		enum Outcome
 		{
 			FLOWLINES_CREATED,
+			CRUST_CREATED,
 			OPERATION_CANCELLED,
 			OPERATION_ERROR
 		};
@@ -84,7 +91,8 @@ namespace GPlatesViewOperations
 
 		Result
 		trigger(
-				QWidget *parent_widget);
+				QWidget *parent_widget,
+				Mode mode = FLOW_LINES);
 
 		/** Youngest-first times, including both endpoints and a shorter final interval if needed.
 		 * Throws std::invalid_argument for invalid/unrepresentable ranges or excessive sample counts.

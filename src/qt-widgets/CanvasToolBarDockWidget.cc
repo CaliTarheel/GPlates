@@ -280,6 +280,7 @@ GPlatesQtWidgets::CanvasToolBarDockWidget::CanvasToolBarDockWidget(
 void
 GPlatesQtWidgets::CanvasToolBarDockWidget::set_up_world_building_tab(
 		QAction *split_action,
+		QAction *flowlines_action,
 		QAction *ocean_crust_action,
 		QAction *zero_ma_action)
 {
@@ -293,8 +294,9 @@ GPlatesQtWidgets::CanvasToolBarDockWidget::set_up_world_building_tab(
 	QVBoxLayout *layout = new QVBoxLayout(d_world_building_tab);
 	layout->setContentsMargins(2, 2, 2, 2);
 	layout->setSpacing(4);
-	const QList<QAction *> actions = {split_action, ocean_crust_action, zero_ma_action};
-	const QStringList labels = {tr("Split"), tr("Make Ocean\nCrust"), tr("0MY")};
+	const QList<QAction *> actions =
+			{split_action, flowlines_action, ocean_crust_action, zero_ma_action};
+	const QStringList labels = {tr("Split"), tr("Flow lines"), tr("Make Ocean\nCrust"), tr("0MY")};
 	for (int index = 0; index < actions.size(); ++index)
 	{
 		QToolButton *button = new QToolButton(d_world_building_tab);

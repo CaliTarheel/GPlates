@@ -20,7 +20,9 @@ set(srcs
     GrotFileTest.cc
     GsmlXmlQueryTest.cc
     MakeOceanCrustOperationTest.cc
+    MakeOceanCrustOutputTest.cc
     MipmapperTest.cc
+    OceanCrustSliverBuilderTest.cc
     PointInPolygonTest.cc
     ProjectMetadataTest.cc
     ProjectTimestampScheduleTest.cc

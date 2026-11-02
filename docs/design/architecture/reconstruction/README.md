@@ -494,6 +494,36 @@ layer's input files change, and the whole cache is reset when the rotation layer
 `reconstruct_using_topologies` flips; `create_reconstruction_info` asserts `NotYetImplemented` if a
 caller passes params whose `reconstruct_using_topologies` differs from the layer's current value.
 
+### World Building ridge outputs
+
+The desktop's `MakeOceanCrustOperation` provides separate Flow lines and Make Ocean Crust
+commands with a shared ridge/time/destination dialog. Flow lines creates native `Flowline`
+features. `OceanCrustSliverBuilder` instead evaluates the native left and right spreading
+lattices at the final requested age and joins adjacent ridge vertices and time samples into
+polygon cells. It reverse-reconstructs each cell with its own plate's total rotation, yielding
+ordinary `OceanicCrust` features with `outlineOf` geometry and a reconstruction plate ID.
+Their valid time begins at the interval's younger completion age; the description preserves
+both formation bounds. They are rigid, completed strips, not continuously growing geometry.
+The two native youngest rows must agree within numerical tolerance, then share one set of
+ridge-edge points so independent half-stage roundoff cannot produce a false overlap.
+
+Convex spherical half-plane checks reject degenerate, folded or reversing cells, and a bounded
+sweep rejects overlaps within one generated ridge lattice while permitting shared seams.
+Coincident adjacent corners can produce valid triangles at stationary pole endpoints. These
+checks do not establish divergence from a directed-ridge convention, compare different input
+ridges, or clip against existing crust. The caller supplies a spreading model. The native
+flowline step-boundary limitations described in [flowlines.md](flowlines.md) still apply.
+
+All generated features remain detached until geometry and destination checks succeed. New
+collections are grouped and connected by source rotation model. Existing GPML/GPMLZ or unsaved
+destinations must already use that same model; their layer connections are not changed.
+An empty destination without a reconstruct layer is eligible only when the default rotation
+model matches. Undo removes only generated features, and redo restores their saved properties;
+neither command writes a file to disk. Save and project persistence remain explicit user actions.
+Removed model handles retain their old parent pointer and become inactive. Redo therefore
+re-adds them to a still-valid destination, explicitly reactivates them, then restores property
+snapshots before releasing notifications. A retained parent pointer alone is not membership.
+
 ## Constraints and traps
 
 - **Two `Reconstruction`s.** `src/app-logic/Reconstruction.h` (GPlates-only) is the *aggregate of

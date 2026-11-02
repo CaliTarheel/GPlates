@@ -12,7 +12,9 @@ Changes since 2.5:
 * The top Time control's up/down arrows snap to 10 Ma increments while manually entered fractional ages remain available.
 * Added a WB tab beside the canvas tools for World Building commands.
 * Split now offers a polygon picker and multiple polyline cutters in one undoable operation. Cutting polylines are preserved.
-* Make Ocean Crust (Normal) creates paired flowlines from every selected mid-ocean ridge vertex, using a future duration and step interval in million years.
+* Flow lines opens its dialog directly and creates paired flowlines from selected mid-ocean ridges, with a choice of new or existing output collection.
+* Make Ocean Crust creates oceanic-crust polygon slivers on both sides of selected mid-ocean ridges over a chosen future duration and step interval.
+* Redo restores generated flowlines and ocean-crust polygons after Undo, including their visibility and saved properties.
 * 0MY copies each plate's youngest positive-age rotation sample to 0 Ma in a loaded rotation file, with undo and a report of any plates skipped.
 * This fork retains the SR1 worldbuilding tools: circular feature placement, Split Plate, oceanic-crust retirement, project documents and configurable planetary radius.
 * This fork adds rotation editing, keyframe copying and drift correction; multi-vertex editing and bulk Plate ID operations; rotation hierarchy, Absolute Age colouring and active feature-type presets.

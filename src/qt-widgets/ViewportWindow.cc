@@ -1234,18 +1234,30 @@ GPlatesQtWidgets::ViewportWindow::connect_world_building_menu_actions()
 			this,
 			SLOT(handle_subduction_cutter()));
 
-	QMenu *ocean_crust_menu = new QMenu(tr("Make Ocean Crust"), menu_World_Building);
-	ocean_crust_menu->setObjectName("menu_Make_Ocean_Crust");
-	ocean_crust_menu->menuAction()->setObjectName("action_Make_Ocean_Crust");
-	ocean_crust_menu->menuAction()->setToolTip(tr("Create flowlines from mid-ocean ridge vertices"));
-	QAction *normal_action = ocean_crust_menu->addAction(tr("Normal..."));
-	normal_action->setObjectName("action_Make_Ocean_Crust_Normal");
-	QObject::connect(normal_action, SIGNAL(triggered()), this, SLOT(handle_make_ocean_crust()));
-	QAction *pacific_action = ocean_crust_menu->addAction(tr("Pacific (coming later)"));
-	pacific_action->setEnabled(false);
-	QAction *triple_junction_action = ocean_crust_menu->addAction(tr("Triple Junction (coming later)"));
-	triple_junction_action->setEnabled(false);
-	menu_World_Building->insertMenu(action_Subduction_Cutter, ocean_crust_menu);
+	QAction *flowlines_action = new QAction(tr("Flow lines..."), this);
+	flowlines_action->setObjectName("action_Flow_Lines");
+	flowlines_action->setToolTip(tr("Create paired flowlines from mid-ocean ridge vertices"));
+	QObject::connect(flowlines_action, &QAction::triggered, this, [this]()
+	{
+		const auto result = d_make_ocean_crust_operation_ptr->trigger(
+				this, GPlatesViewOperations::MakeOceanCrustOperation::FLOW_LINES);
+		status_message(result.message);
+		if (result.outcome == GPlatesViewOperations::MakeOceanCrustOperation::OPERATION_ERROR)
+		{
+			QMessageBox::warning(this, tr("Flow lines"), result.message);
+		}
+		else if (result.outcome == GPlatesViewOperations::MakeOceanCrustOperation::FLOWLINES_CREATED)
+		{
+			QMessageBox::information(this, tr("Flow lines"), result.message);
+		}
+	});
+	menu_World_Building->insertAction(action_Subduction_Cutter, flowlines_action);
+
+	QAction *ocean_crust_action = new QAction(tr("Make Ocean Crust..."), this);
+	ocean_crust_action->setObjectName("action_Make_Ocean_Crust");
+	ocean_crust_action->setToolTip(tr("Create ocean-crust polygon slivers as ridges spread"));
+	QObject::connect(ocean_crust_action, SIGNAL(triggered()), this, SLOT(handle_make_ocean_crust()));
+	menu_World_Building->insertAction(action_Subduction_Cutter, ocean_crust_action);
 
 	QAction *zero_ma_action = new QAction(tr("0MY..."), this);
 	zero_ma_action->setObjectName("action_Zero_Ma_Rotations");
@@ -1253,7 +1265,7 @@ GPlatesQtWidgets::ViewportWindow::connect_world_building_menu_actions()
 	QObject::connect(zero_ma_action, SIGNAL(triggered()), this, SLOT(handle_zero_ma_rotations()));
 	menu_World_Building->insertAction(action_Subduction_Cutter, zero_ma_action);
 	d_canvas_tools_dock_ptr->set_up_world_building_tab(
-			action_Split_Plate, ocean_crust_menu->menuAction(), zero_ma_action);
+			action_Split_Plate, flowlines_action, ocean_crust_action, zero_ma_action);
 }
 
 
@@ -2441,13 +2453,14 @@ void
 GPlatesQtWidgets::ViewportWindow::handle_make_ocean_crust()
 {
 	const GPlatesViewOperations::MakeOceanCrustOperation::Result result =
-			d_make_ocean_crust_operation_ptr->trigger(this);
+			d_make_ocean_crust_operation_ptr->trigger(
+					this, GPlatesViewOperations::MakeOceanCrustOperation::OCEAN_CRUST);
 	status_message(result.message);
 	if (result.outcome == GPlatesViewOperations::MakeOceanCrustOperation::OPERATION_ERROR)
 	{
 		QMessageBox::warning(this, tr("Make Ocean Crust"), result.message);
 	}
-	else if (result.outcome == GPlatesViewOperations::MakeOceanCrustOperation::FLOWLINES_CREATED)
+	else if (result.outcome == GPlatesViewOperations::MakeOceanCrustOperation::CRUST_CREATED)
 	{
 		QMessageBox::information(this, tr("Make Ocean Crust"), result.message);
 	}
