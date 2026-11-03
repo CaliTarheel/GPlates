@@ -104,6 +104,8 @@ namespace GPlatesViewOperations
 	class MakeOceanCrustOperation;
 	class PlateDirectionArrowsOperation;
 	class PlateIdReassignmentOperation;
+	class ReleasePlateOperation;
+	class RiftMakerOperation;
 	class RotationFileEditorOperation;
 	class SplitPlateOperation;
 	class SubductionCutterOperation;
@@ -526,6 +528,12 @@ namespace GPlatesQtWidgets
 		handle_make_ocean_crust();
 
 		void
+		handle_free_plate();
+
+		void
+		handle_rift_maker();
+
+		void
 		handle_zero_ma_rotations();
 
 		void
@@ -579,6 +587,10 @@ namespace GPlatesQtWidgets
 		boost::scoped_ptr<GPlatesViewOperations::SplitPlateOperation> d_split_plate_operation_ptr;
 
 		boost::scoped_ptr<GPlatesViewOperations::MakeOceanCrustOperation> d_make_ocean_crust_operation_ptr;
+
+		boost::scoped_ptr<GPlatesViewOperations::ReleasePlateOperation> d_release_plate_operation_ptr;
+
+		boost::scoped_ptr<GPlatesViewOperations::RiftMakerOperation> d_rift_maker_operation_ptr;
 
 		boost::scoped_ptr<GPlatesViewOperations::ZeroMaRotationsOperation> d_zero_ma_rotations_operation_ptr;
 

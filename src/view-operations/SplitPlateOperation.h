@@ -24,6 +24,7 @@
 #include <boost/noncopyable.hpp>
 #include <boost/optional.hpp>
 #include <memory>
+#include <utility>
 #include <vector>
 #include <QString>
 
@@ -118,6 +119,27 @@ namespace GPlatesViewOperations
 				polygon_seq_type;
 		typedef std::vector<GPlatesMaths::PolylineOnSphere::non_null_ptr_to_const_type>
 				polyline_seq_type;
+
+		struct SketchSplitResult
+		{
+			polygon_seq_type polygons;
+			polyline_seq_type cut_spans;
+			// Indices of the polygons to the left and right of each directed cut span.
+			std::vector<std::pair<std::size_t, std::size_t>> adjacent_polygons;
+		};
+
+		/**
+		 * Split every interior stretch of a simple sketch, retaining its vertex order.
+		 * Each stretch must enter and leave the exterior; untouched holes are preserved.
+		 * Hole contacts, tangencies, overlaps and dangling interior ends fail atomically.
+		 * The returned spans contain no outside overhangs and share the output boundaries.
+		 */
+		static
+		boost::optional<SketchSplitResult>
+		split_polygon_along_sketch(
+				QString &error_message,
+				const GPlatesMaths::PolygonOnSphere &polygon,
+				const GPlatesMaths::PolylineOnSphere &sketch);
 
 		/**
 		 * Apply cutters in order to every intersected piece, retaining disjoint pieces.

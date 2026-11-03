@@ -328,6 +328,70 @@ namespace
 }
 
 
+GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type
+GPlatesViewOperations::OceanCrustSliverBuilder::validate_patch(
+		const std::vector<GPlatesMaths::PointOnSphere> &corners)
+{
+	return GPlatesMaths::PolygonOnSphere::create(validate_cell(corners, 0, 0, 0).points);
+}
+
+
+void
+GPlatesViewOperations::OceanCrustSliverBuilder::validate_patch_overlaps(
+		const std::vector<GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type> &polygons)
+{
+	std::vector<Cell> cells;
+	cells.reserve(polygons.size());
+	for (std::size_t index = 0; index < polygons.size(); ++index)
+	{
+		const auto &polygon = polygons[index];
+		cells.push_back(validate_cell(Points(polygon->exterior_ring_vertex_begin(),
+				polygon->exterior_ring_vertex_end()), index, 0, 0));
+	}
+	if (!cells.empty())
+	{
+		validate_overlaps(cells);
+	}
+}
+
+
+GPlatesModel::FeatureHandle::non_null_ptr_type
+GPlatesViewOperations::OceanCrustSliverBuilder::create_patch_feature(
+		const GPlatesMaths::PolygonOnSphere &polygon_at_birth,
+		GPlatesModel::integer_plate_id_type plate_id,
+		const GPlatesAppLogic::ReconstructionTreeCreator &tree_creator,
+		double older_age,
+		double younger_age,
+		const QString &name)
+{
+	const auto feature = GPlatesModel::FeatureHandle::create(
+			GPlatesModel::FeatureType::create_gpml("OceanicCrust"));
+	const auto ref = feature->reference();
+	add_property(ref, GPlatesModel::PropertyName::create_gml("name"),
+			GPlatesPropertyValues::XsString::create(GPlatesUtils::make_icu_string_from_qstring(name)));
+	add_property(ref, GPlatesModel::PropertyName::create_gml("description"),
+			GPlatesPropertyValues::XsString::create(GPlatesUtils::make_icu_string_from_qstring(
+					QString("Triple-junction ocean crust; formation interval %1 to %2 Ma. "
+							"Completed rigid patch on plate %3, valid from %2 Ma to 0 Ma. "
+							"Sampled symmetric spreading with a shared finite-step junction; "
+							"no existing-crust collision or subduction clipping.")
+							.arg(older_age, 0, 'g', 15).arg(younger_age, 0, 'g', 15)
+							.arg(static_cast<qulonglong>(plate_id)))));
+	add_property(ref, GPlatesModel::PropertyName::create_gml("validTime"),
+			GPlatesModel::ModelUtils::create_gml_time_period(
+					GPlatesPropertyValues::GeoTimeInstant(younger_age),
+					GPlatesPropertyValues::GeoTimeInstant(0)));
+	add_property(ref, GPlatesModel::PropertyName::create_gpml("reconstructionPlateId"),
+			GPlatesPropertyValues::GpmlPlateId::create(plate_id));
+	const auto tree = tree_creator.get_reconstruction_tree(younger_age);
+	const auto stored = GPlatesMaths::get_reverse(tree->get_composed_absolute_rotation(plate_id)) *
+			polygon_at_birth.get_non_null_pointer();
+	add_property(ref, GPlatesModel::PropertyName::create_gpml("outlineOf"),
+			GPlatesAppLogic::GeometryUtils::create_geometry_property_value(stored));
+	return feature;
+}
+
+
 std::vector<GPlatesModel::FeatureHandle::non_null_ptr_type>
 GPlatesViewOperations::OceanCrustSliverBuilder::create_slivers(
 		const GPlatesMaths::PolylineOnSphere &reconstructed_ridge,

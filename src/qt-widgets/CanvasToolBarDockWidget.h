@@ -92,8 +92,10 @@ namespace GPlatesQtWidgets
 		void
 		set_up_world_building_tab(
 				QAction *split_action,
+				QAction *rift_maker_action,
 				QAction *flowlines_action,
 				QAction *ocean_crust_action,
+				QAction *free_plate_action,
 				QAction *zero_ma_action);
 
 	Q_SIGNALS:

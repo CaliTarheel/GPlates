@@ -61,7 +61,7 @@ flowchart TD
   subgraph L7 ["GPlates user interface"]
     gui_gp["gui<br/>GPlates-only: 237 of 249 files"]:::gplates
     presentation["presentation<br/>48 files"]:::gplates
-    view_operations["view-operations<br/>105 files"]:::gplates
+    view_operations["view-operations<br/>111 files"]:::gplates
     canvas_tools["canvas-tools<br/>51 files"]:::gplates
     api_gp["api<br/>GPlates-only: 33 of 110 files"]:::gplates
     qt_widgets["qt-widgets<br/>450 files"]:::gplates
@@ -245,11 +245,11 @@ in the *column* directory, over every `.h`/`.cc` in the built `src/` subdirector
 | opengl |  |  | 16 |  |  |  | 10 | 189 | 32 | 100 |  | 614 |  | 24 |  |  |  | 125 | 3 |
 | presentation |  | 1 | 101 |  |  | 1 | 24 | 23 | 76 | 12 | 9 | 3 | 93 | 6 | 26 | 25 |  | 11 | 19 |
 | property-values |  |  |  |  |  |  | 11 | 64 | 5 | 26 | 292 |  |  | 176 |  | 103 |  | 35 |  |
-| qt-widgets |  | 17 | 297 | 8 |  | 8 | 80 | 133 | 225 | 127 | 275 | 35 | 120 | 212 | 847 |  |  | 57 | 35 |
+| qt-widgets |  | 17 | 297 | 8 |  | 8 | 80 | 133 | 225 | 127 | 275 | 35 | 120 | 212 | 847 |  |  | 57 | 37 |
 | scribe |  |  |  |  |  |  |  | 31 |  | 8 |  |  |  |  |  | 172 |  | 23 |  |
-| unit-test |  |  | 57 |  |  | 2 | 42 | 2 | 8 | 81 | 45 |  | 2 | 47 | 2 | 16 | 2 | 11 | 13 |
+| unit-test |  |  | 82 |  |  | 2 | 61 | 2 | 8 | 100 | 55 |  | 4 | 64 | 2 | 16 | 2 | 13 | 22 |
 | utils |  | 1 |  |  |  |  | 1 | 34 |  | 13 | 1 |  |  | 54 |  | 3 |  | 50 |  |
-| view-operations |  |  | 114 | 6 |  |  | 12 | 27 | 62 | 130 | 78 |  | 21 | 44 | 4 | 3 |  | 18 | 259 |
+| view-operations |  |  | 141 | 6 |  |  | 15 | 27 | 64 | 147 | 94 |  | 25 | 58 | 4 | 3 |  | 20 | 270 |
 
 # The pyGPlates module subset
 
@@ -279,9 +279,9 @@ Roots: the exporter `.cc` of every `export_*()` call registered in
 | property-values | 127 / 128 |
 | qt-widgets | 0 / 450 |
 | scribe | 56 / 64 |
-| unit-test | 0 / 33 |
+| unit-test | 0 / 38 |
 | utils | 45 / 75 |
-| view-operations | 0 / 105 |
+| view-operations | 0 / 111 |
 
 What the module takes from each partially-included directory:
 

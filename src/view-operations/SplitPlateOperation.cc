@@ -613,6 +613,89 @@ namespace
 
 
 	boost::optional<SplitPolygonResult>
+	split_at_boundary_contacts(
+			QString &error_message,
+			const GPlatesMaths::PolygonOnSphere &polygon,
+			const GPlatesMaths::PolylineOnSphere &polyline,
+			const GPlatesMaths::GeometryIntersect::Intersection &intersection1,
+			const GPlatesMaths::GeometryIntersect::Intersection &intersection2)
+	{
+		const point_seq_type cut_path = create_cut_path(polyline, intersection1, intersection2);
+		if (!cut_path_is_simple(error_message, cut_path))
+		{
+			return boost::none;
+		}
+		const point_seq_type boundary_path1 =
+				create_polygon_boundary_path(polygon, intersection1, intersection2);
+		const point_seq_type boundary_path2 =
+				create_polygon_boundary_path(polygon, intersection2, intersection1);
+
+		const point_seq_type exterior_ring1 =
+				join_boundary_and_cut(boundary_path1, cut_path, true);
+		const point_seq_type exterior_ring2 =
+				join_boundary_and_cut(boundary_path2, cut_path, false);
+
+		if (GPlatesMaths::PolygonOnSphere::evaluate_construction_parameter_validity(
+					exterior_ring1, true) != GPlatesMaths::PolygonOnSphere::VALID ||
+				GPlatesMaths::PolygonOnSphere::evaluate_construction_parameter_validity(
+					exterior_ring2, true) != GPlatesMaths::PolygonOnSphere::VALID)
+		{
+			error_message = QObject::tr(
+					"The cut would create an invalid polygon. "
+					"Try a cutter whose crossings are farther from polygon vertices.");
+			return boost::none;
+		}
+
+		const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type exterior_polygon1 =
+				GPlatesMaths::PolygonOnSphere::create(exterior_ring1, true);
+		const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type exterior_polygon2 =
+				GPlatesMaths::PolygonOnSphere::create(exterior_ring2, true);
+
+		// Interior rings that are not cut remain intact and belong to whichever
+		// new exterior contains their first vertex.
+		ring_seq_type interior_rings1;
+		ring_seq_type interior_rings2;
+		for (unsigned int ring_index = 0;
+				ring_index < polygon.number_of_interior_rings();
+				++ring_index)
+		{
+			point_seq_type interior_ring(
+					polygon.interior_ring_vertex_begin(ring_index),
+					polygon.interior_ring_vertex_end(ring_index));
+			if (exterior_polygon1->is_point_in_polygon(interior_ring.front()))
+			{
+				interior_rings1.push_back(interior_ring);
+			}
+			else if (exterior_polygon2->is_point_in_polygon(interior_ring.front()))
+			{
+				interior_rings2.push_back(interior_ring);
+			}
+			else
+			{
+				error_message = QObject::tr(
+						"An interior ring could not be assigned to either output polygon.");
+				return boost::none;
+			}
+		}
+
+		const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type reconstructed_polygon1 =
+				GPlatesMaths::PolygonOnSphere::create(exterior_ring1, interior_rings1, true);
+		const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type reconstructed_polygon2 =
+				GPlatesMaths::PolygonOnSphere::create(exterior_ring2, interior_rings2, true);
+		const double first_area = reconstructed_polygon1->get_area().dval();
+		const double second_area = reconstructed_polygon2->get_area().dval();
+		if (first_area <= 1e-12 || second_area <= 1e-12 ||
+				std::fabs(first_area + second_area - polygon.get_area().dval()) > 1e-8)
+		{
+			error_message = QObject::tr("The cut would create degenerate or overlapping polygon pieces.");
+			return boost::none;
+		}
+
+		return SplitPolygonResult(reconstructed_polygon1, reconstructed_polygon2);
+	}
+
+
+	boost::optional<SplitPolygonResult>
 	split_polygon_geometry(
 			QString &error_message,
 			const GPlatesMaths::PolygonOnSphere &polygon,
@@ -696,78 +779,8 @@ namespace
 				intersection_graph.unordered_intersections[
 						intersection_graph.geometry2_ordered_intersections[1]];
 
-		const point_seq_type cut_path = create_cut_path(polyline, intersection1, intersection2);
-		if (!cut_path_is_simple(error_message, cut_path))
-		{
-			return boost::none;
-		}
-		const point_seq_type boundary_path1 =
-				create_polygon_boundary_path(polygon, intersection1, intersection2);
-		const point_seq_type boundary_path2 =
-				create_polygon_boundary_path(polygon, intersection2, intersection1);
-
-		const point_seq_type exterior_ring1 =
-				join_boundary_and_cut(boundary_path1, cut_path, true);
-		const point_seq_type exterior_ring2 =
-				join_boundary_and_cut(boundary_path2, cut_path, false);
-
-		if (GPlatesMaths::PolygonOnSphere::evaluate_construction_parameter_validity(
-					exterior_ring1, true) != GPlatesMaths::PolygonOnSphere::VALID ||
-				GPlatesMaths::PolygonOnSphere::evaluate_construction_parameter_validity(
-					exterior_ring2, true) != GPlatesMaths::PolygonOnSphere::VALID)
-		{
-			error_message = QObject::tr(
-					"The cut would create an invalid polygon. "
-					"Try a cutter whose crossings are farther from polygon vertices.");
-			return boost::none;
-		}
-
-		const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type exterior_polygon1 =
-				GPlatesMaths::PolygonOnSphere::create(exterior_ring1, true);
-		const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type exterior_polygon2 =
-				GPlatesMaths::PolygonOnSphere::create(exterior_ring2, true);
-
-		// Interior rings that are not cut remain intact and belong to whichever
-		// new exterior contains their first vertex.
-		ring_seq_type interior_rings1;
-		ring_seq_type interior_rings2;
-		for (unsigned int ring_index = 0;
-				ring_index < polygon.number_of_interior_rings();
-				++ring_index)
-		{
-			point_seq_type interior_ring(
-					polygon.interior_ring_vertex_begin(ring_index),
-					polygon.interior_ring_vertex_end(ring_index));
-			if (exterior_polygon1->is_point_in_polygon(interior_ring.front()))
-			{
-				interior_rings1.push_back(interior_ring);
-			}
-			else if (exterior_polygon2->is_point_in_polygon(interior_ring.front()))
-			{
-				interior_rings2.push_back(interior_ring);
-			}
-			else
-			{
-				error_message = QObject::tr(
-						"An interior ring could not be assigned to either output polygon.");
-				return boost::none;
-			}
-		}
-
-		const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type reconstructed_polygon1 =
-				GPlatesMaths::PolygonOnSphere::create(exterior_ring1, interior_rings1, true);
-		const GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type reconstructed_polygon2 =
-				GPlatesMaths::PolygonOnSphere::create(exterior_ring2, interior_rings2, true);
-		const double first_area = reconstructed_polygon1->get_area().dval();
-		const double second_area = reconstructed_polygon2->get_area().dval();
-		if (first_area <= 1e-12 || second_area <= 1e-12 ||
-				std::fabs(first_area + second_area - polygon.get_area().dval()) > 1e-8)
-		{
-			error_message = QObject::tr("The cut would create degenerate or overlapping polygon pieces.");
-			return boost::none;
-		}
-
-		return SplitPolygonResult(reconstructed_polygon1, reconstructed_polygon2);
+		return split_at_boundary_contacts(
+				error_message, polygon, polyline, intersection1, intersection2);
 	}
 
 
@@ -905,6 +918,154 @@ GPlatesViewOperations::SplitPlateOperation::split_polygon(
 		const GPlatesMaths::PolylineOnSphere &polyline)
 {
 	return split_polygon_geometry(error_message, polygon, polyline);
+}
+
+
+boost::optional<GPlatesViewOperations::SplitPlateOperation::SketchSplitResult>
+GPlatesViewOperations::SplitPlateOperation::split_polygon_along_sketch(
+		QString &error_message,
+		const GPlatesMaths::PolygonOnSphere &polygon,
+		const GPlatesMaths::PolylineOnSphere &sketch)
+{
+	using namespace GPlatesMaths;
+	const point_seq_type sketch_points(sketch.vertex_begin(), sketch.vertex_end());
+	if (!cut_path_is_simple(error_message, sketch_points))
+	{
+		return boost::none;
+	}
+	for (unsigned int index = 0; index < sketch.number_of_segments(); ++index)
+	{
+		const auto &arc = sketch.get_segment(index);
+		if (arc.is_zero_length() || (index &&
+				dot(arc.rotation_axis(), sketch.get_segment(index - 1).rotation_axis()).dval()
+						< -1 + 1e-12))
+		{
+			error_message = QObject::tr("The sketch has a repeated vertex or doubles back on itself.");
+			return boost::none;
+		}
+	}
+	GeometryIntersect::Graph graph;
+	GeometryIntersect::intersect(graph, polygon, sketch, true);
+	const auto stretches = classify_cutter_stretches(polygon, sketch, graph);
+	if (graph.unordered_intersections.empty() ||
+			stretches.front() != OUTSIDE_STRETCH || stretches.back() != OUTSIDE_STRETCH)
+	{
+		error_message = QObject::tr("The sketch must start and end outside each selected polygon.");
+		return boost::none;
+	}
+	if (graph.unordered_intersections.size() > 512)
+	{
+		error_message = QObject::tr("The sketch makes too many cuts. Use fewer than 256 interior spans.");
+		return boost::none;
+	}
+	for (std::size_t index = 0; index < graph.geometry2_ordered_intersections.size(); ++index)
+	{
+		const auto &contact = graph.unordered_intersections[graph.geometry2_ordered_intersections[index]];
+		if (contact.segment_index1 >= polygon.number_of_segments_in_exterior_ring())
+		{
+			error_message = QObject::tr("The sketch meets a polygon hole. Move it away from the hole.");
+			return boost::none;
+		}
+		if (!contact_is_geometrically_exact(polygon, sketch, contact) ||
+				!((stretches[index] == INSIDE_STRETCH && stretches[index + 1] == OUTSIDE_STRETCH) ||
+				(stretches[index] == OUTSIDE_STRETCH && stretches[index + 1] == INSIDE_STRETCH)))
+		{
+			error_message = QObject::tr("The sketch touches or follows a boundary, or passes too close "
+					"to a vertex to identify a clean crossing. No changes were made.");
+			return boost::none;
+		}
+	}
+	SketchSplitResult result;
+	result.polygons.push_back(polygon.get_non_null_pointer());
+	for (std::size_t index = 1; index + 1 < stretches.size(); ++index)
+	{
+		if (stretches[index] != INSIDE_STRETCH)
+		{
+			continue;
+		}
+		const auto &first = graph.unordered_intersections[graph.geometry2_ordered_intersections[index - 1]];
+		const auto &last = graph.unordered_intersections[graph.geometry2_ordered_intersections[index]];
+		const auto span = PolylineOnSphere::create(create_cut_path(sketch, first, last));
+		bool split = false;
+		for (std::size_t piece_index = 0; piece_index < result.polygons.size(); ++piece_index)
+		{
+			const auto &piece = result.polygons[piece_index];
+			if (classify_cutter_stretch(*piece,
+					point_seq_type(span->vertex_begin(), span->vertex_end())) != INSIDE_STRETCH)
+			{
+				continue;
+			}
+			GeometryIntersect::Graph contacts;
+			GeometryIntersect::intersect(contacts, *piece, *span, true);
+			if (contacts.geometry2_ordered_intersections.size() != 2)
+			{
+				error_message = QObject::tr("A cut cannot be matched to two unambiguous piece boundaries.");
+				return boost::none;
+			}
+			const auto &entry = contacts.unordered_intersections[contacts.geometry2_ordered_intersections[0]];
+			const auto &exit = contacts.unordered_intersections[contacts.geometry2_ordered_intersections[1]];
+			if (entry.segment_index1 >= piece->number_of_segments_in_exterior_ring() ||
+					exit.segment_index1 >= piece->number_of_segments_in_exterior_ring() ||
+					!within_contact_roundoff(entry.position.position_vector(),
+							span->get_vertex(0).position_vector()) ||
+					!within_contact_roundoff(exit.position.position_vector(),
+							span->get_vertex(span->number_of_vertices() - 1).position_vector()))
+			{
+				error_message = QObject::tr("A cut touches an unexpected boundary. No changes were made.");
+				return boost::none;
+			}
+			const auto children = split_at_boundary_contacts(error_message, *piece, *span, entry, exit);
+			if (!children)
+			{
+				return boost::none;
+			}
+			result.polygons[piece_index] = children->polygon1;
+			result.polygons.push_back(children->polygon2);
+			result.cut_spans.push_back(span);
+			split = true;
+			break;
+		}
+		if (!split)
+		{
+			error_message = QObject::tr("An interior sketch span could not split a polygon piece.");
+			return boost::none;
+		}
+	}
+	// Every cut edge is shared by exactly two final pieces. Its direction and the ring's
+	// signed area identify left/right without centroid guesses or arbitrary sample offsets.
+	for (const auto &span : result.cut_spans)
+	{
+		std::size_t left = result.polygons.size();
+		std::size_t right = result.polygons.size();
+		for (std::size_t index = 0; index < result.polygons.size(); ++index)
+		{
+			const auto &piece = result.polygons[index];
+			for (auto arc = piece->exterior_ring_begin(); arc != piece->exterior_ring_end(); ++arc)
+			{
+				const bool forward = within_contact_roundoff(arc->start_point().position_vector(),
+						span->get_vertex(0).position_vector()) &&
+						within_contact_roundoff(arc->end_point().position_vector(),
+								span->get_vertex(1).position_vector());
+				const bool reverse = within_contact_roundoff(arc->end_point().position_vector(),
+						span->get_vertex(0).position_vector()) &&
+						within_contact_roundoff(arc->start_point().position_vector(),
+								span->get_vertex(1).position_vector());
+				if (forward || reverse)
+				{
+					const bool on_left = forward == (piece->get_signed_area().dval() > 0);
+					(on_left ? left : right) = index;
+					break;
+				}
+			}
+		}
+		if (left == result.polygons.size() || right == result.polygons.size() || left == right)
+		{
+			error_message = QObject::tr("The two sides of a cut could not be identified safely.");
+			return boost::none;
+		}
+		result.adjacent_polygons.emplace_back(left, right);
+	}
+	return result;
 }
 
 

@@ -550,6 +550,56 @@ Removed model handles retain their old parent pointer and become inactive. Redo 
 re-adds them to a still-valid destination, explicitly reactivates them, then restores property
 snapshots before releasing notifications. A retained parent pointer alone is not membership.
 
+### Free Plate and Rift Maker
+
+The desktop's `ReleasePlateOperation` obtains one rotation model's ordered inputs and prepares
+detached before/after graphs. Its Plate-0-anchored event rotation supplies both endpoints of a
+new younger root sequence. Younger old-parent samples remain disabled; the older branch and
+ancestor-chain event keys preserve the crossover through subsequent younger parent edits.
+Preparation validates older keyframes and interval midpoints, the younger hold, and current
+reconstructed geometry from the model's active reconstruct-layer inputs. This includes hidden
+active layers and both halves of flowlines. A half-stage feature can change when younger
+history changes even if its plate's event pose is preserved; this refuses the transaction.
+The operation does not silently rebake such a feature's geometry or older history.
+
+The dialog records the reviewed model/feature revisions and revalidates before applying.
+One undo command restores cloned property snapshots and reactivates its retained root feature
+on Redo. Source/destination ownership is checked before mutation. Focus clearing occurs before
+push, following Split's rule. Native rotation text serialization remains precision-limited;
+the command does not change file writers or save automatically.
+
+`RiftMakerOperation` snapshots an existing line or the digitising geometry builder directly.
+Using the feature-creation dialog would clear both the sketch and undo history. Its
+`SplitPlateOperation::split_polygon_along_sketch` helper partitions the sketch with native
+ordered intersections, classifies strict interior spans, and assembles boundary-to-boundary
+cuts. The same accepted point arrays become polygon seams and MOR geometry. Concave reentry
+and disjoint targets create separate spans; hole-boundary cuts, ambiguous ownership and
+self-crossing sketches are refused. Untouched interior rings survive.
+
+Piece IDs are reviewed per region. Child geometry is reverse-reconstructed through each
+assigned plate; native MORs use their own half-stage frame, import time and adjacent plate
+pair. One command updates source polygons and inserts child/MOR snapshots without changing
+the sketch or destination layer connections. Generated features must retain their expected
+collection ownership before Undo/Redo can proceed. Source validity is inherited; temporal
+retirement and an exclusive pre-rift/post-rift handoff are outside this geometry operation.
+
+### Triple-junction crust
+
+`TripleJunctionCrustBuilder` accepts three native MOR arms forming one A–B/B–C/C–A circuit.
+It calculates the initial common point from local terminal great-circle extensions. At each
+old-to-young step it carries the preceding junction with all three plate stage rotations and
+uses the local spherical circumcentre of those positions as the new shared center. The native
+half-stage tips are extended to it, and plate-owned central triangles complete the arm strips.
+Working ridge extensions feed the next interval; original MOR features are not rewritten.
+
+`OceanCrustSliverBuilder` exposes its convex patch, overlap and plate-frame storage helpers to
+both generators. Triple Junction advances earlier patches to each younger sample and validates
+the combined generated crust before attaching features. Degenerate/nonlocal or retreating
+junctions, folded cells and positive-area overlaps are refused with bounded validation work.
+Its UI previews calculated centers, extension lengths and sample counts; changed inputs or a
+stale reconstruction graph/anchor invalidate that preview. This produces connected crust at
+sample ages, not a new reconstruction method for continuously joined visible MORs.
+
 ## Constraints and traps
 
 - **Two `Reconstruction`s.** `src/app-logic/Reconstruction.h` (GPlates-only) is the *aggregate of

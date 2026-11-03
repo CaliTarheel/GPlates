@@ -154,8 +154,10 @@
 #include "view-operations/PlateDirectionArrowsOperation.h"
 #include "view-operations/PlateIdReassignmentOperation.h"
 #include "view-operations/CircularFeatureOperation.h"
+#include "view-operations/ReleasePlateOperation.h"
 #include "view-operations/RenderedGeometryCollection.h"
 #include "view-operations/RenderedGeometryParameters.h"
+#include "view-operations/RiftMakerOperation.h"
 #include "view-operations/RotationFileEditorOperation.h"
 #include "view-operations/SplitPlateOperation.h"
 #include "view-operations/SubductionCutterOperation.h"
@@ -228,6 +230,12 @@ GPlatesQtWidgets::ViewportWindow::ViewportWindow(
 				get_application_state())),
 	d_make_ocean_crust_operation_ptr(
 			new GPlatesViewOperations::MakeOceanCrustOperation(
+				get_application_state(), get_view_state())),
+	d_release_plate_operation_ptr(
+			new GPlatesViewOperations::ReleasePlateOperation(
+				get_application_state(), get_view_state())),
+	d_rift_maker_operation_ptr(
+			new GPlatesViewOperations::RiftMakerOperation(
 				get_application_state(), get_view_state())),
 	d_zero_ma_rotations_operation_ptr(
 			new GPlatesViewOperations::ZeroMaRotationsOperation(
@@ -1234,6 +1242,12 @@ GPlatesQtWidgets::ViewportWindow::connect_world_building_menu_actions()
 			this,
 			SLOT(handle_subduction_cutter()));
 
+	QAction *rift_maker_action = new QAction(tr("Rift Maker..."), this);
+	rift_maker_action->setObjectName("action_Rift_Maker");
+	rift_maker_action->setToolTip(tr("Cut polygons with a sketch and create trimmed mid-ocean ridges"));
+	QObject::connect(rift_maker_action, SIGNAL(triggered()), this, SLOT(handle_rift_maker()));
+	menu_World_Building->insertAction(action_Subduction_Cutter, rift_maker_action);
+
 	QAction *flowlines_action = new QAction(tr("Flow lines..."), this);
 	flowlines_action->setObjectName("action_Flow_Lines");
 	flowlines_action->setToolTip(tr("Create paired flowlines from mid-ocean ridge vertices"));
@@ -1259,13 +1273,20 @@ GPlatesQtWidgets::ViewportWindow::connect_world_building_menu_actions()
 	QObject::connect(ocean_crust_action, SIGNAL(triggered()), this, SLOT(handle_make_ocean_crust()));
 	menu_World_Building->insertAction(action_Subduction_Cutter, ocean_crust_action);
 
+	QAction *free_plate_action = new QAction(tr("Free Plate..."), this);
+	free_plate_action->setObjectName("action_Free_Plate");
+	free_plate_action->setToolTip(tr("Release a plate from its parent at a chosen age"));
+	QObject::connect(free_plate_action, SIGNAL(triggered()), this, SLOT(handle_free_plate()));
+	menu_World_Building->insertAction(action_Subduction_Cutter, free_plate_action);
+
 	QAction *zero_ma_action = new QAction(tr("0MY..."), this);
 	zero_ma_action->setObjectName("action_Zero_Ma_Rotations");
 	zero_ma_action->setToolTip(tr("Copy each plate's youngest positive-age pole to 0 Ma"));
 	QObject::connect(zero_ma_action, SIGNAL(triggered()), this, SLOT(handle_zero_ma_rotations()));
 	menu_World_Building->insertAction(action_Subduction_Cutter, zero_ma_action);
 	d_canvas_tools_dock_ptr->set_up_world_building_tab(
-			action_Split_Plate, flowlines_action, ocean_crust_action, zero_ma_action);
+			action_Split_Plate, rift_maker_action, flowlines_action,
+			ocean_crust_action, free_plate_action, zero_ma_action);
 }
 
 
@@ -2463,6 +2484,38 @@ GPlatesQtWidgets::ViewportWindow::handle_make_ocean_crust()
 	else if (result.outcome == GPlatesViewOperations::MakeOceanCrustOperation::CRUST_CREATED)
 	{
 		QMessageBox::information(this, tr("Make Ocean Crust"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_free_plate()
+{
+	const auto result = d_release_plate_operation_ptr->trigger(this);
+	status_message(result.message);
+	if (result.outcome == GPlatesViewOperations::ReleasePlateOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Free Plate"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::ReleasePlateOperation::OPERATION_COMPLETED)
+	{
+		QMessageBox::information(this, tr("Free Plate"), result.message);
+	}
+}
+
+
+void
+GPlatesQtWidgets::ViewportWindow::handle_rift_maker()
+{
+	const auto result = d_rift_maker_operation_ptr->trigger(this);
+	status_message(result.message);
+	if (result.outcome == GPlatesViewOperations::RiftMakerOperation::OPERATION_ERROR)
+	{
+		QMessageBox::warning(this, tr("Rift Maker"), result.message);
+	}
+	else if (result.outcome == GPlatesViewOperations::RiftMakerOperation::RIFT_CREATED)
+	{
+		QMessageBox::information(this, tr("Rift Maker"), result.message);
 	}
 }
 

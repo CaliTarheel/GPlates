@@ -32,6 +32,9 @@
 #include "model/FeatureHandle.h"
 #include "model/types.h"
 
+#include "maths/PointOnSphere.h"
+#include "maths/PolygonOnSphere.h"
+
 namespace GPlatesAppLogic
 {
 	class ReconstructionTreeCreator;
@@ -46,6 +49,25 @@ namespace GPlatesViewOperations
 {
 	namespace OceanCrustSliverBuilder
 	{
+		/** Shared strict convex-cell and positive-area overlap checks for crust generators. */
+		GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type
+		validate_patch(
+				const std::vector<GPlatesMaths::PointOnSphere> &corners);
+
+		void
+		validate_patch_overlaps(
+				const std::vector<GPlatesMaths::PolygonOnSphere::non_null_ptr_to_const_type> &polygons);
+
+		/** Store a completed patch, supplied at its younger formation age, in its plate frame. */
+		GPlatesModel::FeatureHandle::non_null_ptr_type
+		create_patch_feature(
+				const GPlatesMaths::PolygonOnSphere &polygon_at_birth,
+				GPlatesModel::integer_plate_id_type plate_id,
+				const GPlatesAppLogic::ReconstructionTreeCreator &tree_creator,
+				double older_age,
+				double younger_age,
+				const QString &name);
+
 		/**
 		 * Create detached OceanicCrust polygons from a symmetric native flowline lattice.
 		 *

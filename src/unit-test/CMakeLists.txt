@@ -28,6 +28,10 @@ set(srcs
     ProjectTimestampScheduleTest.cc
     RealTest.cc
     ReconstructionPoleSpeedTest.cc
+    ReleasePlateDialogTest.cc
+    ReleasePlateOperationTest.cc
+    RiftMakerDialogTest.cc
+    RiftMakerOperationTest.cc
     ScribeExportUnitTest.h
     SmartNodeLinkedListTest.cc
     SplitPlateDialogTest.cc
@@ -38,6 +42,7 @@ set(srcs
     TimeControlWidgetTest.cc
     TranscribeTest.cc
     TranscribeTest.h
+    TripleJunctionCrustBuilderTest.cc
     ZeroMaRotationsOperationTest.cc
 )
 

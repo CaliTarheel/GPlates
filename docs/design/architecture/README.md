@@ -148,8 +148,10 @@ WB selects the existing feature-picking tool; WB itself does not add a canvas wo
 change the workflow enumeration. Selecting a canvas tool normally restores its own tab.
 
 The dialogs and undo commands live in `view-operations`: `SplitPlateOperation` chooses
-reconstructed polygons and cutters, `MakeOceanCrustOperation` creates native flowlines from
-ridge vertices, and `ZeroMaRotationsOperation` edits loaded rotation samples. Their geometry
+reconstructed polygons and cutters, `MakeOceanCrustOperation` creates native flowlines and
+normal or triple-junction crust, and `ZeroMaRotationsOperation` edits loaded rotation samples.
+`ReleasePlateOperation` prepares plate-circuit releases and `RiftMakerOperation` couples polygon
+cuts to trimmed native ridge features. Their geometry
 or model preparation functions can run independently of the dialogs in headless tests. They
 use the shared reconstruction and model APIs without adding GUI dependencies to pyGPlates.
 

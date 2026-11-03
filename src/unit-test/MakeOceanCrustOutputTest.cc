@@ -30,6 +30,7 @@
 #include <vector>
 #include <boost/optional.hpp>
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
 #include <QDir>
@@ -42,6 +43,7 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QTableWidget>
 #include <QTimer>
 #include <gtest/gtest.h>
 
@@ -194,6 +196,15 @@ namespace
 			QFile file(d_directory.filePath(filename));
 			ASSERT_TRUE(file.open(QIODevice::WriteOnly | QIODevice::Text));
 			const QByteArray data(
+					"101 0 0 90 3 0 ! junction A\n"
+					"101 950 0 90 3 0 ! junction A\n"
+					"101 1000 0 90 0 0 ! junction A\n"
+					"202 0 0 210 3 0 ! junction B\n"
+					"202 950 0 210 3 0 ! junction B\n"
+					"202 1000 0 210 0 0 ! junction B\n"
+					"303 0 0 330 3 0 ! junction C\n"
+					"303 950 0 330 3 0 ! junction C\n"
+					"303 1000 0 330 0 0 ! junction C\n"
 					"201 0 90 0 0 0 ! left\n"
 					"201 1000 90 0 20 0 ! left\n"
 					"501 0 90 0 0 201 ! stationary relative to left\n"
@@ -207,16 +218,20 @@ namespace
 
 		GPlatesModel::FeatureHandle::non_null_ptr_type
 		make_ridge(
-				unsigned int right_plate)
+				unsigned int right_plate,
+				unsigned int left_plate = 201,
+				double longitude = 20,
+				const QString &name = "Test ridge",
+				bool junction = false)
 		{
 			const auto feature = GPlatesModel::FeatureHandle::create(
 					GPlatesModel::FeatureType::create_gpml("MidOceanRidge"));
 			const auto ref = feature->reference();
 			add_property(ref, GPlatesModel::PropertyName::create_gml("name"),
 					GPlatesPropertyValues::XsString::create(
-							GPlatesUtils::make_icu_string_from_qstring("Test ridge")));
+						GPlatesUtils::make_icu_string_from_qstring(name)));
 			add_property(ref, GPlatesModel::PropertyName::create_gpml("leftPlate"),
-					GPlatesPropertyValues::GpmlPlateId::create(201));
+					GPlatesPropertyValues::GpmlPlateId::create(left_plate));
 			add_property(ref, GPlatesModel::PropertyName::create_gpml("rightPlate"),
 					GPlatesPropertyValues::GpmlPlateId::create(right_plate));
 			add_property(ref, GPlatesModel::PropertyName::create_gpml("reconstructionMethod"),
@@ -226,7 +241,9 @@ namespace
 			add_property(ref, GPlatesModel::PropertyName::create_gpml("geometryImportTime"),
 					GPlatesModel::ModelUtils::create_gml_time_instant(
 							GPlatesPropertyValues::GeoTimeInstant(1000)));
-			const std::vector<GPlatesMaths::PointOnSphere> vertices = {point(-10, 20), point(10, 20)};
+			const std::vector<GPlatesMaths::PointOnSphere> vertices = junction
+					? std::vector<GPlatesMaths::PointOnSphere>{point(80, longitude), point(88, longitude)}
+					: std::vector<GPlatesMaths::PointOnSphere>{point(-10, longitude), point(10, longitude)};
 			add_property(ref, GPlatesModel::PropertyName::create_gpml("centerLineOf"),
 					GPlatesAppLogic::GeometryUtils::create_geometry_property_value(
 							GPlatesMaths::PolylineOnSphere::create(vertices)));
@@ -719,4 +736,88 @@ TEST_F(MakeOceanCrustOutputTest, UnloadedDestinationIsRejectedWithoutUsingAStale
 	EXPECT_EQ(file_count(), files - 1);
 	EXPECT_EQ(serialise(d_source), source);
 	EXPECT_EQ(undo_stack().count(), 0);
+}
+
+
+TEST_F(MakeOceanCrustOutputTest, TripleJunctionPreviewCreatesNativeCrustWithAtomicUndoRedo)
+{
+	const auto ridge_file = create_collection("Three junction arms", {
+			make_ridge(202, 101, 60, "Junction arm A/B", true),
+			make_ridge(303, 202, 180, "Junction arm B/C", true),
+			make_ridge(101, 303, -60, "Junction arm C/A", true)});
+	const auto source = ridge_file.get_file().get_feature_collection();
+	connect_model(reconstruct_layer(source), d_rotation_layer);
+	const auto target = create_collection("Junction output", {});
+	const auto collection = target.get_file().get_feature_collection();
+	const auto originals = serialise(source);
+	const auto original_other_ridge = serialise(d_source);
+	const auto original_target = serialise(collection);
+	const auto files = file_count();
+	const auto result = run_dialog([&](QDialog &dialog)
+	{
+		auto *mode = dialog.findChild<QComboBox *>("crustModeCombo");
+		auto *list = dialog.findChild<QListWidget *>("ridgeList");
+		auto *duration = dialog.findChild<QDoubleSpinBox *>("futureDurationMyr");
+		auto *interval = dialog.findChild<QDoubleSpinBox *>("stepIntervalMyr");
+		auto *preview = dialog.findChild<QPushButton *>("previewTripleJunctionButton");
+		auto *create = dialog.findChild<QPushButton *>("createFlowlinesButton");
+		auto *reviewed = dialog.findChild<QCheckBox *>("tripleJunctionReviewed");
+		auto *positions = dialog.findChild<QTableWidget *>("tripleJunctionSamples");
+		auto *error = dialog.findChild<QLabel *>("flowlineValidationError");
+		ASSERT_TRUE(mode && list && duration && interval && preview && create && reviewed && positions && error);
+		EXPECT_DOUBLE_EQ(duration->value(), 50);
+		EXPECT_DOUBLE_EQ(interval->value(), 10);
+		mode->setCurrentIndex(1);
+		unsigned int selected = 0;
+		for (int index = 0; index < list->count(); ++index)
+		{
+			const bool choose = list->item(index)->text().startsWith("Junction arm");
+			list->item(index)->setCheckState(choose ? Qt::Checked : Qt::Unchecked);
+			selected += choose ? 1 : 0;
+		}
+		ASSERT_EQ(selected, 3u);
+		choose_destination(dialog, "Junction output");
+		preview->click();
+		ASSERT_TRUE(reviewed->isEnabled()) << error->text().toStdString();
+		ASSERT_EQ(positions->rowCount(), 6);
+		EXPECT_EQ(positions->item(0, 0)->text(), "1000");
+		EXPECT_EQ(positions->item(5, 0)->text(), "950");
+		EXPECT_TRUE(dialog.findChild<QLabel *>("tripleJunctionSummary")->text().contains("150 polygons"));
+		create->click();
+		EXPECT_TRUE(dialog.isVisible());
+		EXPECT_TRUE(error->text().contains("confirm"));
+		reviewed->setChecked(true);
+		duration->setValue(49);
+		EXPECT_FALSE(reviewed->isEnabled());
+		EXPECT_FALSE(reviewed->isChecked());
+		EXPECT_EQ(positions->rowCount(), 0);
+		duration->setValue(50);
+		preview->click();
+		ASSERT_TRUE(reviewed->isEnabled()) << error->text().toStdString();
+		reviewed->setChecked(true);
+		create->click();
+	}, Operation::OCEAN_CRUST);
+	ASSERT_EQ(result.outcome, Operation::CRUST_CREATED) << result.message.toStdString();
+	ASSERT_EQ(collection->size(), 150u);
+	EXPECT_EQ(file_count(), files);
+	EXPECT_EQ(serialise(source), originals);
+	EXPECT_EQ(serialise(d_source), original_other_ridge);
+	ASSERT_EQ(undo_stack().count(), 1);
+	const auto generated = normalise_redo_revisions(serialise(collection));
+	for (unsigned int cycle = 0; cycle < 3; ++cycle)
+	{
+		undo_stack().undo();
+		EXPECT_EQ(serialise(collection), original_target);
+		undo_stack().redo();
+		ASSERT_EQ(collection->size(), 150u);
+		EXPECT_EQ(normalise_redo_revisions(serialise(collection)), generated);
+		const auto output = reconstruct_layer(collection).
+				get_layer_output<GPlatesAppLogic::ReconstructLayerProxy>();
+		ASSERT_TRUE(output);
+		std::vector<GPlatesAppLogic::ReconstructedFeatureGeometry::non_null_ptr_type> geometries;
+		(*output)->get_reconstructed_feature_geometries(geometries);
+		EXPECT_EQ(geometries.size(), 150u);
+		EXPECT_EQ(serialise(source), originals);
+		EXPECT_EQ(serialise(d_source), original_other_ridge);
+	}
 }

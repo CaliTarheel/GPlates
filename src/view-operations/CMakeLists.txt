@@ -48,6 +48,8 @@ set(srcs
     QueryProximityThreshold.h
     ReconstructionPoleSpeed.cc
     ReconstructionPoleSpeed.h
+    ReleasePlateOperation.cc
+    ReleasePlateOperation.h
     RenderedArrowedPolyline.h
     RenderedCircleSymbol.h
     RenderedColouredEdgeSurfaceMesh.h
@@ -88,6 +90,8 @@ set(srcs
     RenderedSquareSymbol.h
     RenderedStrainMarkerSymbol.h
     RenderedString.h
+    RiftMakerOperation.cc
+    RiftMakerOperation.h
     RotationFileEditorOperation.cc
     RotationFileEditorOperation.h
     RenderedSubductionTeethPolyline.h
@@ -105,6 +109,8 @@ set(srcs
     SubductionCutterGeometry.h
     SubductionCutterOperation.cc
     SubductionCutterOperation.h
+    TripleJunctionCrustBuilder.cc
+    TripleJunctionCrustBuilder.h
     UndoRedo.cc
     UndoRedo.h
     VisibleReconstructionGeometryExport.cc

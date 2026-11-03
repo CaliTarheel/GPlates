@@ -33,14 +33,19 @@
 #include <stdexcept>
 
 #include <QComboBox>
+#include <QCheckBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
+#include <QGroupBox>
+#include <QHeaderView>
 #include <QLabel>
 #include <QListWidget>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QStandardItemModel>
+#include <QTableWidget>
 #include <QVBoxLayout>
 
 #include "app-logic/ApplicationState.h"
@@ -48,10 +53,12 @@
 #include "app-logic/FlowlineUtils.h"
 #include "app-logic/GeometryUtils.h"
 #include "app-logic/Layer.h"
+#include "app-logic/PlanetaryParameters.h"
 #include "app-logic/ReconstructedFlowline.h"
 #include "app-logic/ReconstructGraph.h"
 #include "app-logic/ReconstructLayerProxy.h"
 #include "app-logic/Reconstruction.h"
+#include "app-logic/ReconstructionTree.h"
 #include "app-logic/ReconstructionTreeCreator.h"
 
 #include "file-io/FeatureCollectionFileFormatRegistry.h"
@@ -60,6 +67,7 @@
 #include "gui/FeatureFocus.h"
 
 #include "maths/MultiPointOnSphere.h"
+#include "maths/LatLonPoint.h"
 #include "maths/PolylineOnSphere.h"
 
 #include "model/ModelUtils.h"
@@ -78,6 +86,7 @@
 #include "utils/UnicodeStringUtils.h"
 
 #include "view-operations/OceanCrustSliverBuilder.h"
+#include "view-operations/TripleJunctionCrustBuilder.h"
 #include "view-operations/UndoRedo.h"
 #include "view-operations/WorldbuildingFeatureCollectionUtils.h"
 
@@ -701,6 +710,116 @@ GPlatesViewOperations::MakeOceanCrustOperation::trigger(
 	}
 	auto *form = new QFormLayout;
 	layout->addLayout(form);
+	auto *crust_mode = new QComboBox(&dialog);
+	crust_mode->setObjectName("crustModeCombo");
+	crust_mode->addItems({QObject::tr("Normal"), QObject::tr("Triple Junction")});
+	if (create_crust)
+	{
+		form->addRow(QObject::tr("Crust construction:"), crust_mode);
+	}
+	else
+	{
+		crust_mode->hide();
+	}
+	const auto is_triple = [=]() { return create_crust && crust_mode->currentIndex() == 1; };
+	auto *junction_controls = new QGroupBox(QObject::tr("Triple junction preview"), &dialog);
+	junction_controls->setObjectName("tripleJunctionControls");
+	auto *junction_layout = new QVBoxLayout(junction_controls);
+	auto *junction_note = new QLabel(QObject::tr(
+			"Choose three arms forming A/B, B/C and C/A. Their terminal directions must meet "
+			"locally. The source ridges stay unchanged; new crust meets at the sampled ages. "
+			"This does not create continuously connected MOR animation."), junction_controls);
+	junction_note->setWordWrap(true);
+	junction_layout->addWidget(junction_note);
+	auto *endpoint_form = new QFormLayout;
+	junction_layout->addLayout(endpoint_form);
+	std::vector<QComboBox *> endpoint_choices;
+	std::vector<QLabel *> endpoint_labels;
+	for (int arm = 0; arm < 3; ++arm)
+	{
+		auto *choice = new QComboBox(junction_controls);
+		choice->setObjectName(QString("junctionEndpoint%1").arg(arm + 1));
+		choice->addItems({QObject::tr("Automatic endpoint"), QObject::tr("Start endpoint"),
+				QObject::tr("End endpoint")});
+		auto *label = new QLabel(QObject::tr("Select ridge %1").arg(arm + 1), junction_controls);
+		label->setWordWrap(true);
+		endpoint_form->addRow(label, choice);
+		endpoint_choices.push_back(choice);
+		endpoint_labels.push_back(label);
+	}
+	auto *preview_button = new QPushButton(QObject::tr("Calculate and preview junction"), junction_controls);
+	preview_button->setObjectName("previewTripleJunctionButton");
+	junction_layout->addWidget(preview_button);
+	auto *preview_summary = new QLabel(junction_controls);
+	preview_summary->setObjectName("tripleJunctionSummary");
+	preview_summary->setWordWrap(true);
+	junction_layout->addWidget(preview_summary);
+	auto *preview_positions = new QTableWidget(0, 4, junction_controls);
+	preview_positions->setObjectName("tripleJunctionSamples");
+	preview_positions->setHorizontalHeaderLabels({QObject::tr("Age (Ma)"), QObject::tr("Latitude"),
+			QObject::tr("Longitude"), QObject::tr("New polygons")});
+	preview_positions->setEditTriggers(QAbstractItemView::NoEditTriggers);
+	preview_positions->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+	preview_positions->setMaximumHeight(190);
+	junction_layout->addWidget(preview_positions);
+	auto *reviewed = new QCheckBox(QObject::tr("I reviewed the junction position and sampled output"),
+			junction_controls);
+	reviewed->setObjectName("tripleJunctionReviewed");
+	reviewed->setEnabled(false);
+	junction_layout->addWidget(reviewed);
+	auto *junction_scroll = new QScrollArea(&dialog);
+	junction_scroll->setObjectName("tripleJunctionPreviewScrollArea");
+	junction_scroll->setWidgetResizable(true);
+	junction_scroll->setFrameShape(QFrame::NoFrame);
+	junction_scroll->setMinimumHeight(260);
+	junction_scroll->setMaximumHeight(320);
+	junction_scroll->setWidget(junction_controls);
+	form->addRow(junction_scroll);
+	junction_scroll->hide();
+	boost::optional<TripleJunctionCrustBuilder::Result> junction_preview;
+	boost::optional<GPlatesAppLogic::ReconstructionTree::non_null_ptr_to_const_type> preview_tree;
+	const auto invalidate_preview = [&]()
+	{
+		junction_preview = boost::none;
+		preview_tree = boost::none;
+		reviewed->setChecked(false);
+		reviewed->setEnabled(false);
+		preview_positions->setRowCount(0);
+		preview_summary->setText(QObject::tr("Calculate a preview before creating crust."));
+	};
+	const auto refresh_endpoints = [&]()
+	{
+		unsigned int selected = 0;
+		for (int index = 0; index < list->count(); ++index)
+		{
+			if (list->item(index)->checkState() == Qt::Checked && selected < 3)
+			{
+				endpoint_labels[selected]->setText(list->item(index)->text());
+				endpoint_choices[selected]->setEnabled(true);
+				endpoint_choices[selected++]->setCurrentIndex(0);
+			}
+		}
+		while (selected < 3)
+		{
+			endpoint_labels[selected]->setText(QObject::tr("Select ridge %1").arg(selected + 1));
+			endpoint_choices[selected]->setEnabled(false);
+			endpoint_choices[selected++]->setCurrentIndex(0);
+		}
+		invalidate_preview();
+	};
+	QObject::connect(list, &QListWidget::itemChanged, &dialog, [&](QListWidgetItem *) { refresh_endpoints(); });
+	QObject::connect(crust_mode, QOverload<int>::of(&QComboBox::currentIndexChanged), &dialog, [&](int)
+	{
+		junction_scroll->setVisible(is_triple());
+		refresh_endpoints();
+		dialog.adjustSize();
+	});
+	for (auto *choice : endpoint_choices)
+	{
+		QObject::connect(choice, QOverload<int>::of(&QComboBox::currentIndexChanged),
+				&dialog, [&](int) { invalidate_preview(); });
+	}
+	refresh_endpoints();
 	std::vector<GPlatesModel::FeatureCollectionHandle::weak_ref> destination_collections;
 	auto *destination = new QComboBox(&dialog);
 	destination->setObjectName("outputCollectionCombo");
@@ -750,7 +869,7 @@ GPlatesViewOperations::MakeOceanCrustOperation::trigger(
 	duration->setObjectName("futureDurationMyr");
 	duration->setDecimals(6);
 	duration->setRange(0.000001, std::max(start_time, 10000.0));
-	duration->setValue(std::min(10.0, start_time));
+	duration->setValue(std::min(create_crust ? 50.0 : 10.0, start_time));
 	duration->setToolTip(QObject::tr(
 			"Elapsed million years toward 0 Ma; cannot exceed the start age."));
 	form->addRow(QObject::tr("Future duration (Myr):"), duration);
@@ -758,7 +877,7 @@ GPlatesViewOperations::MakeOceanCrustOperation::trigger(
 	interval->setObjectName("stepIntervalMyr");
 	interval->setDecimals(6);
 	interval->setRange(0.000001, std::max(start_time, 10000.0));
-	interval->setValue(1.0);
+	interval->setValue(create_crust ? 10.0 : 1.0);
 	interval->setToolTip(QObject::tr(
 			"Time between samples, in million years. The final step may be shorter."));
 	form->addRow(QObject::tr("Step interval (Myr):"), interval);
@@ -783,7 +902,9 @@ GPlatesViewOperations::MakeOceanCrustOperation::trigger(
 				.arg(start_time, 0, 'g', 15).arg(start_time - duration->value(), 0, 'g', 15));
 	};
 	QObject::connect(duration, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-			&dialog, [=](double) { update_range(); });
+			&dialog, [&](double) { update_range(); invalidate_preview(); });
+	QObject::connect(interval, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+			&dialog, [&](double) { invalidate_preview(); });
 	update_range();
 	const auto selected_destination = [&]()
 	{
@@ -823,6 +944,132 @@ GPlatesViewOperations::MakeOceanCrustOperation::trigger(
 			throw std::invalid_argument(reason.toStdString());
 		}
 	};
+	const auto selected_junction_arms = [&]()
+	{
+		if (d_application_state.get_current_reconstruction().get_reconstruction_time() != start_time)
+		{
+			throw std::runtime_error("The reconstruction time changed. Reopen this dialog.");
+		}
+		std::vector<TripleJunctionCrustBuilder::RidgeArm> arms;
+		std::set<GPlatesAppLogic::Layer> models;
+		for (int index = 0; index < list->count(); ++index)
+		{
+			if (list->item(index)->checkState() != Qt::Checked)
+			{
+				continue;
+			}
+			const auto &ridge = ridges[index];
+			if (!ridge.layer.is_valid() || !ridge.layer.is_active() ||
+					!ridge.geometry->is_valid() || !ridge.geometry->property().is_still_valid() ||
+					ridge.geometry->get_feature_ref()->revision_id() != ridge.revision)
+			{
+				throw std::runtime_error("A source ridge changed. Reopen this dialog.");
+			}
+			const auto captured_tree = ridge.geometry->get_reconstruction_tree();
+			const auto current_tree = ridge.geometry->get_reconstruction_tree_creator().
+					get_reconstruction_tree(start_time);
+			if (captured_tree->get_reconstruction_graph() != current_tree->get_reconstruction_graph() ||
+					captured_tree->get_anchor_plate_id() != current_tree->get_anchor_plate_id())
+			{
+				throw std::runtime_error("The rotation model or anchor changed. Reopen this dialog "
+						"to select freshly reconstructed ridges.");
+			}
+			models.insert(rotation_model_for_layer(
+					ridge.layer, d_application_state.get_reconstruct_graph()));
+			GPlatesAppLogic::FlowlineUtils::FlowlinePropertyFinder properties;
+			properties.visit_feature(ridge.geometry->get_feature_ref());
+			if (!properties.get_left_plate() || !properties.get_right_plate() || arms.size() >= 3)
+			{
+				throw std::invalid_argument("Select exactly three ridges with left and right plate IDs.");
+			}
+			const auto *polyline = dynamic_cast<const GPlatesMaths::PolylineOnSphere *>(
+					ridge.geometry->reconstructed_geometry().get());
+			arms.emplace_back(polyline->get_non_null_pointer(), *properties.get_left_plate(),
+					*properties.get_right_plate(), properties.get_name(),
+					endpoint_choices[arms.size()]->currentIndex() - 1);
+		}
+		if (arms.size() != 3 || models.size() != 1)
+		{
+			throw std::invalid_argument("Triple Junction needs three ridges using one rotation model.");
+		}
+		return arms;
+	};
+	const auto junction_creator = [&]()
+	{
+		for (int index = 0; index < list->count(); ++index)
+		{
+			if (list->item(index)->checkState() == Qt::Checked)
+			{
+				return ridges[index].geometry->get_reconstruction_tree_creator();
+			}
+		}
+		throw std::invalid_argument("Select three ridge arms first.");
+	};
+	const auto validate_preview = [&]()
+	{
+		selected_junction_arms();
+		if (!junction_preview || !reviewed->isChecked() || !preview_tree)
+		{
+			throw std::invalid_argument("Calculate the junction preview and confirm you reviewed it.");
+		}
+		const auto current = junction_creator().get_reconstruction_tree(start_time);
+		if (current->get_reconstruction_graph() != (*preview_tree)->get_reconstruction_graph() ||
+				current->get_anchor_plate_id() != (*preview_tree)->get_anchor_plate_id())
+		{
+			invalidate_preview();
+			throw std::runtime_error("The rotation model changed. Calculate the preview again.");
+		}
+	};
+	QObject::connect(preview_button, &QPushButton::clicked, &dialog, [&]()
+	{
+		invalidate_preview();
+		try
+		{
+			validate_destination();
+			const auto arms = selected_junction_arms();
+			const auto creator = junction_creator();
+			junction_preview = TripleJunctionCrustBuilder::create_crust(
+					arms, creator, start_time, duration->value(), interval->value());
+			preview_tree = creator.get_reconstruction_tree(start_time);
+			const auto &preview = *junction_preview;
+			const auto initial = GPlatesMaths::make_lat_lon_point(preview.d_centres.front());
+			QString summary = QObject::tr("Initial centre: %1° latitude, %2° longitude.\n")
+					.arg(initial.latitude(), 0, 'f', 6).arg(initial.longitude(), 0, 'f', 6);
+			const double radius = d_application_state.get_planetary_parameters().
+					effective_radius_kilometres();
+			for (std::size_t arm = 0; arm < arms.size(); ++arm)
+			{
+				summary += QObject::tr("Arm %1: %2 endpoint, extended %3 km.\n").arg(arm + 1)
+						.arg(preview.d_junction_ends[arm] == 0 ? QObject::tr("start") : QObject::tr("end"))
+						.arg(radius * preview.d_initial_extensions_radians[arm], 0, 'f', 3);
+			}
+			summary += QObject::tr("%1 polygons, including %2 central patches, in %3 steps.")
+					.arg(preview.d_features.size()).arg(preview.d_junction_patch_count)
+					.arg(preview.d_step_patch_counts.size());
+			preview_summary->setText(summary);
+			preview_positions->setRowCount(static_cast<int>(preview.d_ages.size()));
+			for (std::size_t row = 0; row < preview.d_ages.size(); ++row)
+			{
+				const auto location = GPlatesMaths::make_lat_lon_point(preview.d_centres[row]);
+				const QStringList cells = {QString::number(preview.d_ages[row], 'g', 12),
+						QString::number(location.latitude(), 'f', 6),
+						QString::number(location.longitude(), 'f', 6),
+						QString::number(row ? preview.d_step_patch_counts[row - 1] : 0)};
+				for (int column = 0; column < cells.size(); ++column)
+				{
+					preview_positions->setItem(static_cast<int>(row), column,
+							new QTableWidgetItem(cells[column]));
+				}
+			}
+			reviewed->setEnabled(true);
+			error->clear();
+		}
+		catch (const std::exception &exception)
+		{
+			invalidate_preview();
+			error->setText(QString::fromUtf8(exception.what()));
+		}
+	});
 	QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 	QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, [&]()
 	{
@@ -858,6 +1105,10 @@ GPlatesViewOperations::MakeOceanCrustOperation::trigger(
 						"select fewer ridges or a larger step interval.");
 			}
 			validate_destination();
+			if (is_triple())
+			{
+				validate_preview();
+			}
 			dialog.accept();
 		}
 		catch (const std::exception &exception)
@@ -879,6 +1130,10 @@ GPlatesViewOperations::MakeOceanCrustOperation::trigger(
 					"The reconstruction time changed. Reopen the dialog and try again.");
 		}
 		validate_destination();
+		if (is_triple())
+		{
+			validate_preview();
+		}
 		std::map<GPlatesAppLogic::Layer, Output> grouped;
 		std::size_t seed_count = 0;
 		std::size_t ridge_count = 0;
@@ -915,7 +1170,17 @@ GPlatesViewOperations::MakeOceanCrustOperation::trigger(
 						ridge.layer, d_application_state.get_reconstruct_graph());
 				Output &output = grouped[rotation_model];
 				output.rotation_layer = rotation_model;
-				if (create_crust)
+				if (is_triple())
+				{
+					// The preview owns detached output for all three arms. Insert it once, only
+					// after every source and the destination have been checked again.
+					if (output.features.empty())
+					{
+						output.features = junction_preview->d_features;
+						created_feature_count = output.features.size();
+					}
+				}
+				else if (create_crust)
 				{
 					const auto features = OceanCrustSliverBuilder::create_slivers(*polyline,
 							*properties.get_left_plate(), *properties.get_right_plate(),
