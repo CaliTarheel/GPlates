@@ -40,6 +40,7 @@ set(srcs
     StringSetTest.cc
     SubductionCutterGeometryTest.cc
     TimeControlWidgetTest.cc
+    TopologyReconstructTest.cc
     TranscribeTest.cc
     TranscribeTest.h
     TripleJunctionCrustBuilderTest.cc
